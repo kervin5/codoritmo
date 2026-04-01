@@ -1,0 +1,77 @@
+[
+  {
+    "id": "operators_basic",
+    "file": "fixtures/test/operadores-01.psc",
+    "expectation": "success"
+  },
+  {
+    "id": "subprocess_return",
+    "file": "fixtures/test/subproceso-05.psc",
+    "expectation": "success"
+  },
+  {
+    "id": "reference_array",
+    "file": "fixtures/test/referencia-01.psc",
+    "expectation": "success"
+  },
+  {
+    "id": "write_no_newline",
+    "file": "fixtures/test/escribirnl-02.psc",
+    "expectation": "success"
+  },
+  {
+    "id": "repeat_while",
+    "file": "fixtures/test/repetir-mientras-1.psc",
+    "expectation": "success"
+  },
+  {
+    "id": "string_builtins",
+    "file": "fixtures/test/cadenas-01.psc",
+    "expectation": "success"
+  },
+  {
+    "id": "dynamic_dimensions_allowed",
+    "file": "fixtures/test/arreglos-03.psc",
+    "expectation": "success"
+  },
+  {
+    "id": "equal_assignment_profile",
+    "file": "fixtures/test/overload_equal-2.psc",
+    "expectation": "success"
+  },
+  {
+    "id": "array_bounds_low",
+    "file": "fixtures/test/arreglos-04.psc",
+    "expectation": "runtime_error"
+  },
+  {
+    "id": "array_bounds_zero",
+    "file": "fixtures/test/arreglos-06.psc",
+    "expectation": "runtime_error"
+  },
+  {
+    "id": "invalid_structures",
+    "file": "fixtures/test/estructuras-01.psc",
+    "expectation": "parse_error"
+  },
+  {
+    "id": "accents_disabled",
+    "file": "fixtures/test/caracteres-02.psc",
+    "expectation": "parse_error"
+  },
+  {
+    "id": "force_define_assignment",
+    "file": "fixtures/test/forcedefinevars-05.psc",
+    "expectation": "runtime_error"
+  },
+  {
+    "id": "protect_for_counter",
+    "file": "fixtures/test/para-9.psc",
+    "expectation": "runtime_error"
+  },
+  {
+    "id": "integer_only_switch",
+    "file": "fixtures/test/segun-5.psc",
+    "expectation": "parse_error"
+  }
+]

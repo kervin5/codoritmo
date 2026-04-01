@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3ede3;
+  --foreground: #29261f;
+  --panel: rgba(250, 246, 238, 0.92);
+  --line: rgba(76, 65, 49, 0.12);
+  /* Stacked workspace + diagram/export secondary toolbars (desktop) */
+  --workspace-toolbar-chrome: rgba(250, 246, 239, 0.96);
+  --muted: #777163;
+  --accent: #2f816b;
+  --accent-strong: #1d5e4d;
+  --accent-soft: rgba(47, 129, 107, 0.16);
+  --accent-surface: rgba(47, 129, 107, 0.1);
+  --ink: #171b1a;
+  --ink-raised: #1e2423;
+  --ink-line: rgba(255, 255, 255, 0.08);
+  --ink-contrast: #eef3ec;
+  --mint: #88b369;
+  --mint-strong: #5f7e45;
+  --mint-soft: rgba(136, 179, 105, 0.16);
+  --mint-surface: rgba(136, 179, 105, 0.1);
+  --coral: #dc8e6f;
+  --coral-strong: #9e5b43;
+  --coral-soft: rgba(220, 142, 111, 0.16);
+  --coral-surface: rgba(220, 142, 111, 0.1);
+  --cyan: #78aeb1;
+  --cyan-strong: #4f7d81;
+  --cyan-soft: rgba(120, 174, 177, 0.16);
+  --cyan-surface: rgba(120, 174, 177, 0.1);
+  --pink: #c88ca3;
+  --pink-strong: #8d5f72;
+  --pink-soft: rgba(200, 140, 163, 0.16);
+  --pink-surface: rgba(200, 140, 163, 0.1);
+  --amber: #cb9748;
+  --amber-strong: #8c6123;
+  --amber-soft: rgba(203, 151, 72, 0.16);
+  --amber-surface: rgba(203, 151, 72, 0.1);
+  --success-strong: var(--accent-strong);
+  --warning-strong: var(--amber-strong);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-workspace-toolbar-chrome: var(--workspace-toolbar-chrome);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), "Helvetica Neue", sans-serif;
+  min-height: 100svh;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: #0f172a;
+}
+
+.surface-enter {
+  animation: surface-enter 0.42s cubic-bezier(0.22, 0.84, 0.28, 1) both;
+}
+
+@keyframes surface-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes diagram-loop-dash {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+.diagram-canvas .react-flow__pane {
+  cursor: grab;
+}
+
+.diagram-canvas .react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.diagram-canvas .react-flow__node {
+  background: transparent;
+  border: 0;
+}
+
+.diagram-canvas .react-flow__handle {
+  opacity: 0;
+}
+
+.diagram-canvas .react-flow__attribution {
+  display: none;
+}
+
+.diagram-canvas .react-flow__controls {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 10px 24px rgba(43, 36, 28, 0.08);
+}
+
+.diagram-canvas .react-flow__controls-button {
+  background: rgba(255, 252, 247, 0.96);
+  border-bottom: 1px solid var(--line);
+  color: var(--foreground);
+}
+
+.diagram-canvas .react-flow__controls-button:hover {
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.diagram-canvas .react-flow__edge.diagram-loop-edge .react-flow__edge-path {
+  stroke-dasharray: 10 8;
+  animation: diagram-loop-dash 0.9s linear infinite;
+}
