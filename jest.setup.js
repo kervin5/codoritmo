@@ -7,4 +7,6 @@ class ResizeObserverMock {
 }
 
 global.ResizeObserver = ResizeObserverMock
-global.HTMLElement.prototype.scrollIntoView = jest.fn()
+if (typeof HTMLElement !== "undefined") {
+  global.HTMLElement.prototype.scrollIntoView = jest.fn()
+}
