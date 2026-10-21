@@ -416,12 +416,47 @@ export interface ParseResult {
   diagnostics: Diagnostic[];
 }
 
-export type ExecutionState = "ok" | "parse_error" | "runtime_error" | "paused";
+export type ExecutionState =
+  | "ok"
+  | "parse_error"
+  | "runtime_error"
+  | "paused"
+  | "stopped";
 
 export interface ExecutionResult {
   output: string[];
   diagnostics: Diagnostic[];
   state: ExecutionState;
+}
+
+export type VariableSnapshotValue =
+  | boolean
+  | number
+  | string
+  | null
+  | VariableSnapshotValue[];
+
+/** Plain, structured-clone-safe view of one variable for debugger UIs. */
+export interface VariableSnapshot {
+  name: string;
+  dataType?: string;
+  initialized: boolean;
+  /** 0 is the innermost scope; larger numbers are enclosing scopes. */
+  scopeDepth: number;
+  value: VariableSnapshotValue;
+}
+
+/** Emitted before each statement runs; the basis for a step debugger. */
+export interface ExecutionStatementEvent {
+  line: number;
+  column: number;
+  kind: StatementNode["kind"];
+  /** 0 in the main routine, +1 per nested SubProceso/Funcion call. */
+  callDepth: number;
+  routine: string | null;
+  step: number;
+  /** Computed lazily, since walking scopes on every statement is costly. */
+  variables(): VariableSnapshot[];
 }
 
 export interface GenerationResult {
@@ -489,6 +524,7 @@ export interface Runtime {
 
 export interface BrowserRuntimeOptions {
   input?: string[];
+  maxOutputLines?: number;
   onAwaitingInputChange?: (awaiting: boolean) => void;
   onOutput?: (output: string[]) => void;
   onAwaitingKeyChange?: (awaiting: boolean) => void;

@@ -181,6 +181,9 @@ export interface Dictionary {
     renameTabTitle: string;
     run: string;
     running: string;
+    stepLimitExceeded: string;
+    stop: string;
+    stopped: string;
     searchProfiles: string;
     diagram: string;
     source: string;

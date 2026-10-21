@@ -7,7 +7,7 @@ import {
 } from "react";
 
 import {
-  type BrowserRuntimeController,
+  type ExecutionHandle,
   type Diagnostic,
   type EngineProfile,
   type SourceSpan,
@@ -44,7 +44,7 @@ interface WorkspaceSectionProps {
   activeSession: WorkspaceSession;
   awaitingInput: boolean;
   awaitingKey: boolean;
-  controllerRef: RefObject<BrowserRuntimeController | null>;
+  controllerRef: RefObject<ExecutionHandle | null>;
   dictionary: Dictionary;
   editorRef: RefObject<EditorHandle | null>;
   isRunning: boolean;
@@ -82,6 +82,7 @@ interface WorkspaceSectionProps {
   onRevealSource: (span: SourceSpan) => void;
   onRenameSession: (sessionId: string, title: string) => void;
   onRun: () => void;
+  onStop: () => void;
   onSessionChange: (sessionId: string) => void;
   onWorkspaceTabChange: (tab: WorkspaceSession["workspaceTab"]) => void;
   onEditProfile: () => void;
@@ -423,6 +424,7 @@ export default function WorkspaceSection({
   onRevealSource,
   onRenameSession,
   onRun,
+  onStop,
   onSessionChange,
   onWorkspaceTabChange,
   profiles,
@@ -589,6 +591,15 @@ export default function WorkspaceSection({
                       tone="secondary"
                     />
                   </span>
+
+                  <ActionButton
+                    disabled={!isRunning}
+                    icon="stop"
+                    iconOnly
+                    label={dictionary.workspace.stop}
+                    onClick={onStop}
+                    tone="secondary"
+                  />
 
                   <ActionButton
                     disabled={isRunning}

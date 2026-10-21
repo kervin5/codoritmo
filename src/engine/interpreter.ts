@@ -7,6 +7,7 @@ import {
   Diagnostic,
   EngineSettings,
   ExecutionResult,
+  ExecutionStatementEvent,
   ExpressionNode,
   isIntegerType,
   isLogicalType,
@@ -19,6 +20,8 @@ import {
   RoutineNode,
   StatementNode,
   typesCompatible,
+  VariableSnapshot,
+  VariableSnapshotValue,
 } from "./types";
 import { createOutputBuffer, formatRuntimeValue } from "./runtime";
 
@@ -41,9 +44,13 @@ interface ArrayValue {
 
 interface ExecutionContext {
   buffer: ReturnType<typeof createOutputBuffer>;
+  callDepth: number;
+  routineName: string | null;
   routines: Map<string, RoutineNode>;
   runtime: Runtime;
   settings: EngineSettings;
+  /** Shared across routine calls so the budget covers the whole run. */
+  counter: { steps: number; lastStatement: StatementNode | null };
 }
 
 class RuntimeError extends Error {
@@ -52,10 +59,56 @@ class RuntimeError extends Error {
   }
 }
 
+class ExecutionStopped extends Error {
+  constructor() {
+    super("Execution stopped.");
+  }
+}
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
+function snapshotValue(value: RuntimeValue): VariableSnapshotValue {
+  if (value !== null && typeof value === "object") {
+    return value.items.map((item) =>
+      "kind" in item ? snapshotValue(item) : snapshotValue(item.value)
+    );
+  }
+
+  return value;
+}
+
 class Scope {
   private readonly values = new Map<string, Cell>();
+  private readonly displayNames = new Map<string, string>();
 
   constructor(private readonly parent?: Scope) {}
+
+  snapshot(): VariableSnapshot[] {
+    const variables = this.parent?.snapshot() ?? [];
+    for (const variable of variables) {
+      variable.scopeDepth += 1;
+    }
+    const shadowed = new Set(this.values.keys());
+    const visible = variables.filter(
+      (variable) => !shadowed.has(variable.name.toLowerCase())
+    );
+
+    for (const [key, cell] of this.values) {
+      visible.push({
+        name: this.displayNames.get(key) ?? key,
+        dataType: cell.dataType,
+        initialized: cell.initialized,
+        scopeDepth: 0,
+        value: snapshotValue(cell.value),
+      });
+    }
+
+    return visible;
+  }
 
   define(name: string, initial: Partial<Cell> = {}): Cell {
     const cell: Cell = {
@@ -65,11 +118,13 @@ class Scope {
       ...initial,
     };
     this.values.set(name.toLowerCase(), cell);
+    this.displayNames.set(name.toLowerCase(), name);
     return cell;
   }
 
   bind(name: string, cell: Cell): Cell {
     this.values.set(name.toLowerCase(), cell);
+    this.displayNames.set(name.toLowerCase(), name);
     return cell;
   }
 
@@ -211,16 +266,49 @@ function toNumberOrString(value: RuntimeValue): number | string {
   return typeof value === "string" ? value : toNumber(value);
 }
 
+export interface InterpreterLimits {
+  /**
+   * Hand control back to the event loop every N steps so timers, messages
+   * and (on the main thread) rendering can run during long executions.
+   */
+  yieldEvery?: number;
+  /** Abort with RUNTIME_STEP_LIMIT once this many steps have run. */
+  maxSteps?: number;
+  /** Keep only the most recent N console lines in the result. */
+  maxOutputLines?: number;
+}
+
+export interface InterpreterHooks {
+  /**
+   * Called before every statement runs. Returning a promise suspends the
+   * program until it settles, which is how a step debugger can pause.
+   */
+  onStatement?: (event: ExecutionStatementEvent) => void | Promise<void>;
+  /** Polled every step; returning true ends the run with state "stopped". */
+  shouldStop?: () => boolean;
+  /**
+   * How to yield every `limits.yieldEvery` steps. Defaults to setTimeout(0),
+   * which browsers clamp to 4ms or more; hosts can supply something cheaper.
+   */
+  yieldToHost?: () => Promise<void>;
+}
+
 export interface InterpreterOptions {
+  hooks?: InterpreterHooks;
+  limits?: InterpreterLimits;
   random?: () => number;
   settings?: Partial<EngineSettings>;
 }
 
 export class Interpreter {
+  private readonly hooks: InterpreterHooks;
+  private readonly limits: InterpreterLimits;
   private readonly random: () => number;
   private readonly settings: EngineSettings;
 
   constructor(options: InterpreterOptions = {}) {
+    this.hooks = options.hooks ?? {};
+    this.limits = options.limits ?? {};
     this.random = options.random ?? Math.random;
     this.settings = normalizeEngineSettings(options.settings);
   }
@@ -233,7 +321,7 @@ export class Interpreter {
     program: ProgramNode,
     runtime: Runtime
   ): Promise<ExecutionResult> {
-    const buffer = createOutputBuffer();
+    const buffer = createOutputBuffer(this.limits.maxOutputLines);
     const routines = new Map<string, RoutineNode>();
 
     for (const routine of program.routines) {
@@ -253,6 +341,14 @@ export class Interpreter {
           output: buffer.snapshot(),
           diagnostics: [error.diagnostic],
           state: "runtime_error",
+        };
+      }
+
+      if (error instanceof ExecutionStopped) {
+        return {
+          output: buffer.snapshot(),
+          diagnostics: [],
+          state: "stopped",
         };
       }
 
@@ -292,9 +388,49 @@ export class Interpreter {
     return {
       runtime,
       buffer,
+      callDepth: 0,
+      routineName: null,
       routines,
       settings: this.settings,
+      counter: { steps: 0, lastStatement: null },
     };
+  }
+
+  /**
+   * Counts one unit of work. Blocks count too, so loops with an empty body
+   * still advance the budget and can be stopped.
+   */
+  private step(
+    statement: StatementNode | null,
+    context: ExecutionContext
+  ): Promise<void> | undefined {
+    context.counter.steps += 1;
+    if (statement) {
+      context.counter.lastStatement = statement;
+    }
+
+    if (this.hooks.shouldStop?.()) {
+      throw new ExecutionStopped();
+    }
+
+    const { maxSteps, yieldEvery } = this.limits;
+    if (maxSteps !== undefined && context.counter.steps > maxSteps) {
+      this.runtimeError(
+        context.counter.lastStatement,
+        `Execution stopped after ${maxSteps} steps. The program may contain an infinite loop.`,
+        "RUNTIME_STEP_LIMIT"
+      );
+    }
+
+    if (yieldEvery && context.counter.steps % yieldEvery === 0) {
+      return (this.hooks.yieldToHost ?? yieldToEventLoop)().then(() => {
+        if (this.hooks.shouldStop?.()) {
+          throw new ExecutionStopped();
+        }
+      });
+    }
+
+    return undefined;
   }
 
   private async executeBlock(
@@ -302,7 +438,29 @@ export class Interpreter {
     scope: Scope,
     context: ExecutionContext
   ): Promise<RuntimeValue | undefined> {
+    const blockStep = this.step(null, context);
+    if (blockStep) {
+      await blockStep;
+    }
+
     for (const statement of statements) {
+      const statementStep = this.step(statement, context);
+      if (statementStep) {
+        await statementStep;
+      }
+
+      if (this.hooks.onStatement) {
+        await this.hooks.onStatement({
+          line: statement.span?.start.line ?? 1,
+          column: statement.span?.start.column ?? 1,
+          kind: statement.kind,
+          callDepth: context.callDepth,
+          routine: context.routineName,
+          step: context.counter.steps,
+          variables: () => scope.snapshot(),
+        });
+      }
+
       const result = await this.executeStatement(statement, scope, context);
       if (result !== undefined) {
         return result;
@@ -1165,7 +1323,11 @@ export class Interpreter {
       });
     }
 
-    const returned = await this.executeBlock(routine.body, scope, context);
+    const returned = await this.executeBlock(routine.body, scope, {
+      ...context,
+      callDepth: context.callDepth + 1,
+      routineName: routine.name,
+    });
     if (returned !== undefined) {
       return returned;
     }

@@ -11,21 +11,23 @@ import {
 import { usePathname } from "next/navigation";
 
 import {
-  createBrowserRuntime,
+  DEFAULT_MAX_STEPS,
   engineProfiles,
   examplePrograms,
   getEngineProfile,
-  Interpreter,
   JavaScriptGenerator,
   normalizeEngineSettings,
   Parser,
   resolveProfileId,
+  startExecution,
   type Diagnostic,
   type EngineSettings,
   type ExampleProgram,
+  type ExecutionHandle,
   type SourceSpan,
 } from "@/src/engine";
 import { defaultLocale, type Locale } from "@/src/i18n/config";
+import { formatMessage } from "@/src/i18n/format";
 import { localizeExamples, localizeProfiles } from "@/src/i18n/helpers";
 import { esDictionary } from "@/src/i18n/es";
 import type { Dictionary } from "@/src/i18n/types";
@@ -144,9 +146,7 @@ export default function Playground({
     span: SourceSpan;
   } | null>(null);
 
-  const controllerRef = useRef<ReturnType<typeof createBrowserRuntime> | null>(
-    null
-  );
+  const controllerRef = useRef<ExecutionHandle | null>(null);
   const editorRef = useRef<EditorHandle | null>(null);
   const pathname = usePathname();
   const untitledCounterRef = useRef(untitledCounter);
@@ -155,6 +155,13 @@ export default function Playground({
   useEffect(() => {
     untitledCounterRef.current = untitledCounter;
   }, [untitledCounter]);
+
+  useEffect(() => {
+    // Never leave a worker spinning after the IDE goes away.
+    return () => {
+      controllerRef.current?.stop();
+    };
+  }, []);
 
   const activeSession =
     sessions.find((session) => session.id === activeSessionId) ?? sessions[0];
@@ -388,6 +395,10 @@ export default function Playground({
   };
 
   const closeSession = (sessionId: string) => {
+    if (sessionId === runningSessionId) {
+      controllerRef.current?.stop();
+    }
+
     if (sessions.length === 1) {
       const replacement = createBlankSession(
         untitledCounter,
@@ -683,6 +694,7 @@ export default function Playground({
     const sessionId = activeSession.id;
     const session = activeSession;
 
+    controllerRef.current?.stop();
     setShellPanel("none");
     setRunningSessionId(sessionId);
     setAwaitingInputSessionId(null);
@@ -699,27 +711,28 @@ export default function Playground({
       }))
     );
 
-    const controller = createBrowserRuntime({
+    const revealDock = () => {
+      setSessions((current) =>
+        updateSessionById(current, sessionId, (draft) => ({
+          ...draft,
+          bottomDockCollapsed: false,
+        }))
+      );
+    };
+
+    const execution = startExecution({
+      source: session.source,
+      settings: session.settings,
       onAwaitingInputChange: (awaiting) => {
         setAwaitingInputSessionId(awaiting ? sessionId : null);
         if (awaiting) {
-          setSessions((current) =>
-            updateSessionById(current, sessionId, (draft) => ({
-              ...draft,
-              bottomDockCollapsed: false,
-            }))
-          );
+          revealDock();
         }
       },
       onAwaitingKeyChange: (awaiting) => {
         setAwaitingKeySessionId(awaiting ? sessionId : null);
         if (awaiting) {
-          setSessions((current) =>
-            updateSessionById(current, sessionId, (draft) => ({
-              ...draft,
-              bottomDockCollapsed: false,
-            }))
-          );
+          revealDock();
         }
       },
       onOutput: (output) => {
@@ -732,42 +745,59 @@ export default function Playground({
       },
     });
 
-    controllerRef.current = controller;
+    controllerRef.current = execution;
 
-    const interpreter = new Interpreter({ settings: session.settings });
-    const result = await interpreter.run(session.source, controller.runtime);
+    const result = await execution.result;
+    if (controllerRef.current === execution) {
+      controllerRef.current = null;
+    }
+
+    const diagnostics = result.diagnostics.map((diagnostic) =>
+      diagnostic.code === "RUNTIME_STEP_LIMIT"
+        ? {
+            ...diagnostic,
+            message: formatMessage(dictionary.workspace.stepLimitExceeded, {
+              steps: DEFAULT_MAX_STEPS.toLocaleString(locale),
+            }),
+          }
+        : diagnostic
+    );
+    const output =
+      result.state === "stopped"
+        ? [...result.output, dictionary.workspace.stopped]
+        : result.output;
 
     setSessions((current) =>
       updateSessionById(current, sessionId, (draft) => ({
         ...draft,
-        output: result.output,
-        resultDiagnostics: result.diagnostics,
+        output,
+        resultDiagnostics: diagnostics,
         bottomDockCollapsed: false,
-        bottomTab: result.diagnostics.length > 0 ? "problems" : "output",
-        helpContent: result.diagnostics[0]
-          ? createDiagnosticHelp(result.diagnostics[0], dictionary)
+        bottomTab: diagnostics.length > 0 ? "problems" : "output",
+        helpContent: diagnostics[0]
+          ? createDiagnosticHelp(diagnostics[0], dictionary)
           : draft.helpContent,
       }))
     );
 
-    if (result.diagnostics[0]) {
+    if (diagnostics[0]) {
       updateActiveSession((sessionDraft) => ({
         ...sessionDraft,
-        helpContent: createDiagnosticHelp(result.diagnostics[0]!, dictionary),
+        helpContent: createDiagnosticHelp(diagnostics[0]!, dictionary),
       }));
     }
 
     setRunningSessionId((current) => (current === sessionId ? null : current));
-    if (!controller.isAwaitingInput()) {
-      setAwaitingInputSessionId((current) =>
-        current === sessionId ? null : current
-      );
-    }
-    if (!controller.isAwaitingKey()) {
-      setAwaitingKeySessionId((current) =>
-        current === sessionId ? null : current
-      );
-    }
+    setAwaitingInputSessionId((current) =>
+      current === sessionId ? null : current
+    );
+    setAwaitingKeySessionId((current) =>
+      current === sessionId ? null : current
+    );
+  };
+
+  const handleStop = () => {
+    controllerRef.current?.stop();
   };
 
   const handleSubmitInput = () => {
@@ -841,6 +871,7 @@ export default function Playground({
           onRevealSource={handleRevealSource}
           onRenameSession={renameSession}
           onRun={handleRun}
+          onStop={handleStop}
           onSessionChange={setActiveSession}
           onWorkspaceTabChange={handleWorkspaceTabChange}
           profiles={localizedProfiles}
