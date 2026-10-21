@@ -19,6 +19,7 @@ import {
   RotateCcw,
   Search,
   SlidersHorizontal,
+  Square,
   Terminal,
   Waypoints,
   X,
@@ -54,6 +55,7 @@ export type IconName =
   | 'search'
   | 'settings'
   | 'spark'
+  | 'stop'
   | 'workspace';
 
 const ICON_MAP: Record<IconName, LucideIcon> = {
@@ -81,6 +83,7 @@ const ICON_MAP: Record<IconName, LucideIcon> = {
   search:         Search,
   settings:       SlidersHorizontal,
   spark:          Zap,
+  stop:           Square,
   workspace:      PanelLeft,
 };
 

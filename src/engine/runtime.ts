@@ -8,11 +8,17 @@ class OutputBuffer {
   private readonly lines: string[] = [];
   private pending = "";
 
+  /** With maxLines set, the oldest lines are dropped once the cap is hit. */
+  constructor(private readonly maxLines?: number) {}
+
   write(value: string, newline = true): void {
     this.pending += value;
     if (newline) {
       this.lines.push(this.pending);
       this.pending = "";
+      if (this.maxLines !== undefined && this.lines.length > this.maxLines) {
+        this.lines.splice(0, this.lines.length - this.maxLines);
+      }
     }
   }
 
@@ -28,8 +34,8 @@ class OutputBuffer {
   }
 }
 
-export function createOutputBuffer(): OutputBuffer {
-  return new OutputBuffer();
+export function createOutputBuffer(maxLines?: number): OutputBuffer {
+  return new OutputBuffer(maxLines);
 }
 
 export function parseInputText(input: string): string[] {
@@ -78,7 +84,7 @@ export function formatNumber(value: number): string {
 export function createBrowserRuntime(
   options: BrowserRuntimeOptions = {}
 ): BrowserRuntimeController {
-  const buffer = createOutputBuffer();
+  const buffer = createOutputBuffer(options.maxOutputLines);
   let queue = [...(options.input ?? [])];
   let awaitingInput = false;
   let resolveInput: ((value: string) => void) | null = null;

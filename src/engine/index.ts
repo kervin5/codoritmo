@@ -2,6 +2,19 @@ export { JavaScriptGenerator, runGeneratedJavaScript } from "./generator";
 export { Lexer } from "./lexer";
 export { Parser } from "./parser";
 export { Interpreter } from "./interpreter";
+export type {
+  InterpreterHooks,
+  InterpreterLimits,
+  InterpreterOptions,
+} from "./interpreter";
+export {
+  DEFAULT_MAX_OUTPUT_LINES,
+  DEFAULT_MAX_STEPS,
+  DEFAULT_YIELD_EVERY,
+  startExecution,
+} from "./execution";
+export type { ExecutionHandle, ExecutionOptions } from "./execution";
+export type { SerializedStatementEvent } from "./worker-protocol";
 export {
   addCustomProfile,
   defaultEngineSettings,
@@ -34,6 +47,7 @@ export type {
   ExampleProgram,
   ExecutionResult,
   ExecutionState,
+  ExecutionStatementEvent,
   ExpressionNode,
   FixtureManifestEntry,
   FixtureArgumentParseResult,
@@ -50,4 +64,6 @@ export type {
   SwitchCaseNode,
   Token,
   TokenKind,
+  VariableSnapshot,
+  VariableSnapshotValue,
 } from "./types";

@@ -30,7 +30,12 @@ Module._extensions[".ts"] = function compileTs(module, filename) {
   module._compile(output, filename);
 };
 
-const engine = require(path.join(workerData.engineDirectory, "index.ts"));
+// Load the modules directly rather than index.ts: index re-exports the browser
+// worker factory, whose import.meta makes Node treat it as an ES module.
+const engine = {
+  ...require(path.join(workerData.engineDirectory, "interpreter.ts")),
+  ...require(path.join(workerData.engineDirectory, "settings.ts")),
+};
 
 class InputExhaustedError extends Error {}
 

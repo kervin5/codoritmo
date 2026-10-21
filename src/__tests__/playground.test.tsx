@@ -563,6 +563,37 @@ FinProceso`,
     });
   });
 
+  it("stops an infinite loop from the Stop button", async () => {
+    const user = userEvent.setup();
+    renderPlayground();
+
+    expect(screen.getByRole("button", { name: "Stop" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Codoritmo editor"), {
+      target: {
+        value: `Proceso Infinito
+  Escribir "Inicio"
+  Mientras Verdadero Hacer
+  FinMientras
+FinProceso`,
+      },
+    });
+
+    await user.click(screen.getByRole("button", { name: "Run" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("output-console")).toHaveTextContent(
+        "Inicio *** Execution stopped ***"
+      );
+      expect(screen.getByRole("button", { name: "Stop" })).toBeDisabled();
+    });
+  });
+
   it("runs output in the bottom dock and routes parse failures to problems", async () => {
     const user = userEvent.setup();
     renderPlayground();
