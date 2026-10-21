@@ -1,6 +1,7 @@
 import {
   engineProfiles,
   getEngineProfile,
+  isExportLanguage,
   normalizeEngineSettings,
 } from '@/src/engine';
 import type { ExampleProgram } from '@/src/engine';
@@ -257,7 +258,9 @@ function restoreSession(
     profileId: session.profileId ?? profile.id,
     settings,
     exampleId: session.exampleId ?? null,
-    exportLanguage: session.exportLanguage ?? 'javascript',
+    exportLanguage: isExportLanguage(session.exportLanguage)
+      ? session.exportLanguage
+      : 'javascript',
     workspaceTab: session.workspaceTab === 'diagram'
       ? 'diagram'
       : session.workspaceTab === 'export'

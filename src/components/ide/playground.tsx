@@ -15,8 +15,8 @@ import {
   engineProfiles,
   examplePrograms,
   getEngineProfile,
+  generateExport,
   Interpreter,
-  JavaScriptGenerator,
   normalizeEngineSettings,
   Parser,
   resolveProfileId,
@@ -315,10 +315,8 @@ export default function Playground({
       return;
     }
 
-    const generator = new JavaScriptGenerator({
+    const result = generateExport(parsed.program, activeSession.exportLanguage, {
       settings: activeSession.settings,
-    });
-    const result = generator.generate(parsed.program, {
       target: activeSession.generationTarget,
     });
 
@@ -334,6 +332,7 @@ export default function Playground({
       );
     });
   }, [
+    activeSession.exportLanguage,
     activeSession.generationTarget,
     activeSession.id,
     activeSession.settings,

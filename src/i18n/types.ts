@@ -173,6 +173,8 @@ export interface Dictionary {
     exportLanguage: string;
     exportTarget: string;
     language: string;
+    languageC: string;
+    languageCpp: string;
     languageJavaScript: string;
     newTab: string;
     node: string;

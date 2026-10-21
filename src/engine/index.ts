@@ -1,4 +1,16 @@
 export { JavaScriptGenerator, runGeneratedJavaScript } from "./generator";
+export {
+  CGenerator,
+  CppGenerator,
+  exportLanguages,
+  generateExport,
+  isExportLanguage,
+} from "./generators";
+export type {
+  ExportLanguage,
+  ExportLanguageDefinition,
+  ExportOptions,
+} from "./generators";
 export { Lexer } from "./lexer";
 export { Parser } from "./parser";
 export { Interpreter } from "./interpreter";

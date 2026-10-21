@@ -10,6 +10,7 @@ import {
   type BrowserRuntimeController,
   type Diagnostic,
   type EngineProfile,
+  exportLanguages,
   type SourceSpan,
 } from "@/src/engine";
 import { formatMessage } from "@/src/i18n/format";
@@ -440,7 +441,15 @@ export default function WorkspaceSection({
         activeSession.bottomDockCollapsed ? "64px" : "min(280px, 40svh)"
       }`;
   const sourceDownloadLabel = dictionary.workspace.downloadSource;
-  const exportDownloadLabel = dictionary.workspace.downloadExport;
+  const exportLanguageLabels: Record<ExportLanguage, string> = {
+    javascript: dictionary.workspace.languageJavaScript,
+    c: dictionary.workspace.languageC,
+    cpp: dictionary.workspace.languageCpp,
+  };
+  const exportLanguage = exportLanguages[activeSession.exportLanguage];
+  const exportDownloadLabel = formatMessage(dictionary.workspace.downloadExport, {
+    language: exportLanguageLabels[activeSession.exportLanguage],
+  });
   const canDownloadExport = activeSession.generatedCode.trim().length > 0;
 
   const handleSourceDownload = () => {
@@ -460,10 +469,10 @@ export default function WorkspaceSection({
       activeSession.generatedCode,
       createDownloadFilename(
         activeSession.title,
-        "js",
-        activeSession.generationTarget
+        exportLanguage.fileExtension,
+        exportLanguage.supportsTargets ? activeSession.generationTarget : undefined
       ),
-      "text/javascript;charset=utf-8"
+      exportLanguage.mimeType
     );
   };
 
@@ -670,16 +679,17 @@ export default function WorkspaceSection({
                             onChange={(value) =>
                               onExportLanguageChange(value as ExportLanguage)
                             }
-                            options={[
-                              {
-                                label: dictionary.workspace.languageJavaScript,
-                                value: "javascript",
-                              },
-                            ]}
+                            options={(
+                              Object.keys(exportLanguageLabels) as ExportLanguage[]
+                            ).map((language) => ({
+                              label: exportLanguageLabels[language],
+                              value: language,
+                            }))}
                             value={activeSession.exportLanguage}
                             visibleLabel={false}
                           />
                         </div>
+                        {exportLanguage.supportsTargets ? (
                         <div className="min-w-0 flex-1 lg:max-w-[320px]">
                           <SelectField
                             ariaLabel={dictionary.workspace.exportTarget}
@@ -699,6 +709,7 @@ export default function WorkspaceSection({
                             visibleLabel={false}
                           />
                         </div>
+                        ) : null}
                       </div>
 
                       <div className="ml-auto flex shrink-0 items-center">
