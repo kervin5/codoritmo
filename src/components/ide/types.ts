@@ -1,6 +1,7 @@
 import type {
   Diagnostic,
   EngineSettings,
+  ExportLanguage,
   JavaScriptExportTarget,
 } from '@/src/engine';
 
@@ -10,7 +11,7 @@ export type WorkspaceTab = 'diagram' | 'export' | 'source';
 
 export type BottomTab = 'output' | 'problems';
 
-export type ExportLanguage = 'javascript';
+export type { ExportLanguage };
 
 export interface DiagramNodeOffset {
   x: number;

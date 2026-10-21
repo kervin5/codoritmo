@@ -441,6 +441,25 @@ FinProceso`);
 
     expect(screen.getByLabelText("Export Language")).toBeInTheDocument();
     expect(screen.getByLabelText("Export Target")).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Export Language"), "c");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("generated-code")).toHaveTextContent(
+        "#include<stdio.h>"
+      );
+    });
+    expect(screen.queryByLabelText("Export Target")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download C" })).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Export Language"), "cpp");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("generated-code")).toHaveTextContent(
+        "#include<iostream>"
+      );
+    });
+    expect(screen.getByRole("button", { name: "Download C++" })).toBeInTheDocument();
   });
 
   it("renders the diagram tab and switches routines for programs with subroutines", async () => {
