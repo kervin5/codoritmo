@@ -2,7 +2,7 @@ import { normalizeEngineSettings } from './settings';
 import { EngineSettings, Token, TokenKind } from './types';
 
 const wordStartPattern = /[\p{L}_]/u;
-const wordPartPattern = /[\p{L}\p{N}_]/u;
+const wordPartPattern = /[\p{L}\p{Nd}_]/u;
 
 function normalizeWord(word: string): string {
   return word.normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase();
@@ -23,17 +23,20 @@ export class Lexer {
 
   tokenize(): Token[] {
     const tokens: Token[] = [];
+    let spaceBefore = true;
 
     while (!this.isAtEnd()) {
       const char = this.peek();
 
       if (char === ' ' || char === '\t' || char === '\r') {
         this.advance();
+        spaceBefore = true;
         continue;
       }
 
       if (char === '\n') {
         this.advanceNewline();
+        spaceBefore = true;
         continue;
       }
 
@@ -42,50 +45,35 @@ export class Lexer {
         continue;
       }
 
-      if (char === '{') {
-        const special = this.tryReadBraceOperator();
-        if (special) {
-          tokens.push(special);
-          continue;
-        }
-
-        this.skipBraceComment();
-        continue;
+      let token: Token | null;
+      if (char === '"' || char === "'" || char === '\u201c' || char === '\u201d') {
+        token = this.readString(char);
+      } else if (/\d/.test(char) || (char === '.' && /\d/.test(this.peekNext()))) {
+        token = this.readNumber();
+      } else if (wordStartPattern.test(char)) {
+        token = this.readWord();
+      } else {
+        token = this.readSymbol();
       }
 
-      if (char === '"' || char === "'") {
-        tokens.push(this.readString(char));
-        continue;
+      if (!token) {
+        const invalidLine = this.line;
+        const invalidColumn = this.column;
+        const invalidOffset = this.offset;
+        const invalidChar = this.advance();
+        token = {
+          kind: TokenKind.INVALID,
+          lexeme: invalidChar,
+          normalized: invalidChar,
+          line: invalidLine,
+          column: invalidColumn,
+          offset: invalidOffset,
+        };
       }
 
-      if (/\d/.test(char)) {
-        tokens.push(this.readNumber());
-        continue;
-      }
-
-      if (wordStartPattern.test(char)) {
-        tokens.push(this.readWord());
-        continue;
-      }
-
-      const token = this.readSymbol();
-      if (token) {
-        tokens.push(token);
-        continue;
-      }
-
-      const invalidLine = this.line;
-      const invalidColumn = this.column;
-      const invalidOffset = this.offset;
-      const invalidChar = this.advance();
-      tokens.push({
-        kind: TokenKind.INVALID,
-        lexeme: invalidChar,
-        normalized: invalidChar,
-        line: invalidLine,
-        column: invalidColumn,
-        offset: invalidOffset,
-      });
+      token.spaceBefore = spaceBefore;
+      spaceBefore = false;
+      tokens.push(token);
     }
 
     tokens.push({
@@ -95,6 +83,7 @@ export class Lexer {
       line: this.line,
       column: this.column,
       offset: this.offset,
+      spaceBefore: true,
     });
 
     return tokens;
@@ -142,88 +131,43 @@ export class Lexer {
     }
   }
 
-  private skipBraceComment(): void {
-    this.advance();
-    while (!this.isAtEnd() && this.peek() !== '}') {
-      if (this.peek() === '\n') {
-        this.advanceNewline();
-      } else {
-        this.advance();
-      }
-    }
-
-    if (!this.isAtEnd()) {
-      this.advance();
-    }
-  }
-
-  private tryReadBraceOperator(): Token | null {
+  // PSeInt strings have no escape sequences and cannot span lines. Either
+  // quote style may be used; typographic quotes pasted from documents are
+  // accepted as double quotes.
+  private readString(quote: string): Token | null {
     const startLine = this.line;
     const startColumn = this.column;
     const startOffset = this.offset;
-    const chunk = this.source.slice(this.offset, this.offset + 5);
+    const closers = quote === "'" ? ["'"] : ['"', '\u201c', '\u201d'];
 
-    const operatorMap: Array<[string, TokenKind]> = [
-      ['{%}', TokenKind.MOD],
-      ['{&&}', TokenKind.AND],
-      ['{||}', TokenKind.OR],
-      ['{!}', TokenKind.NOT],
-    ];
+    this.advance();
+    let value = '';
 
-    for (const [operator, kind] of operatorMap) {
-      if (chunk.startsWith(operator)) {
-        this.offset += operator.length;
-        this.column += operator.length;
+    while (!this.isAtEnd() && !closers.includes(this.peek())) {
+      if (this.peek() === '\n') {
         return {
-          kind,
-          lexeme: operator,
-          normalized: operator,
+          kind: TokenKind.INVALID,
+          lexeme: quote + value,
+          normalized: quote + value,
           line: startLine,
           column: startColumn,
           offset: startOffset,
         };
       }
-    }
-
-    return null;
-  }
-
-  private readString(quote: string): Token {
-    const startLine = this.line;
-    const startColumn = this.column;
-    const startOffset = this.offset;
-
-    this.advance();
-    let value = '';
-
-    while (!this.isAtEnd() && this.peek() !== quote) {
-      if (this.peek() === '\n') {
-        this.advanceNewline();
-        value += '\n';
-        continue;
-      }
-
-      if (this.peek() === '\\') {
-        this.advance();
-        const escaped = this.advance();
-        const escapeMap: Record<string, string> = {
-          n: '\n',
-          r: '\r',
-          t: '\t',
-          '"': '"',
-          "'": "'",
-          '\\': '\\',
-        };
-        value += escapeMap[escaped] ?? escaped;
-        continue;
-      }
-
       value += this.advance();
     }
 
-    if (!this.isAtEnd()) {
-      this.advance();
+    if (this.isAtEnd()) {
+      return {
+        kind: TokenKind.INVALID,
+        lexeme: quote + value,
+        normalized: quote + value,
+        line: startLine,
+        column: startColumn,
+        offset: startOffset,
+      };
     }
+    this.advance();
 
     return {
       kind: TokenKind.STRING,
@@ -245,9 +189,8 @@ export class Lexer {
       lexeme += this.advance();
     }
 
-    if (!this.isAtEnd() && (this.peek() === '.' || this.peek() === ',')) {
-      const separator = this.advance();
-      lexeme += separator === ',' ? '.' : separator;
+    if (!this.isAtEnd() && this.peek() === '.' && /\d/.test(this.peekNext())) {
+      lexeme += this.advance();
 
       while (!this.isAtEnd() && /\d/.test(this.peek())) {
         lexeme += this.advance();
@@ -277,9 +220,9 @@ export class Lexer {
     const normalized = normalizeWord(lexeme);
     let kind: TokenKind = TokenKind.WORD;
 
-    if (this.settings.wordOperators && normalized === 'Y' && lexeme !== 'y') {
+    if (this.settings.wordOperators && normalized === 'Y') {
       kind = TokenKind.AND;
-    } else if (this.settings.wordOperators && normalized === 'O' && lexeme !== 'o') {
+    } else if (this.settings.wordOperators && normalized === 'O') {
       kind = TokenKind.OR;
     } else if (this.settings.wordOperators && normalized === 'NO') {
       kind = TokenKind.NOT;
@@ -348,6 +291,16 @@ export class Lexer {
       return finish(TokenKind.NEQ, '!=');
     }
 
+    if (current === '&' && next === '&') {
+      this.advance();
+      return finish(TokenKind.AND, '&&');
+    }
+
+    if (current === '|' && next === '|') {
+      this.advance();
+      return finish(TokenKind.OR, '||');
+    }
+
     const singleMap: Record<string, TokenKind> = {
       '+': TokenKind.PLUS,
       '-': TokenKind.MINUS,
@@ -365,10 +318,16 @@ export class Lexer {
       ';': TokenKind.SEMICOLON,
       ':': TokenKind.COLON,
       '!': TokenKind.NOT,
+      '~': TokenKind.NOT,
+      '&': TokenKind.AND,
+      '|': TokenKind.OR,
+      '%': TokenKind.MOD,
     };
 
     const kind = singleMap[current];
     if (!kind) {
+      this.offset = offset;
+      this.column = column;
       return null;
     }
 

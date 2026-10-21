@@ -49,7 +49,30 @@ export function formatRuntimeValue(value: unknown): string {
     return "";
   }
 
+  if (typeof value === "number") {
+    return formatNumber(value);
+  }
+
   return String(value);
+}
+
+// PSeInt shows numbers rounded to 10 decimals (0.1+0.2 prints 0.3, 1/3
+// prints 0.3333333333) and never in exponent notation.
+export function formatNumber(value: number): string {
+  if (!Number.isFinite(value)) {
+    return String(value);
+  }
+  if (Number.isInteger(value) && Math.abs(value) < 1e21) {
+    return BigInt(value).toString();
+  }
+  if (Math.abs(value) >= 1e21) {
+    return BigInt(Math.round(value)).toString();
+  }
+  let text = value.toFixed(10);
+  if (text.includes(".")) {
+    text = text.replace(/0+$/, "").replace(/\.$/, "");
+  }
+  return text === "-0" ? "0" : text;
 }
 
 export function createBrowserRuntime(

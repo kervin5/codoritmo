@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- plain CommonJS so it can run as a worker without a build step */
 // Worker thread that runs upstream PSeInt test cases through the TypeScript
 // engine. Runs off the jest thread so a case that never yields (an infinite
 // loop) can be killed with worker.terminate() without stalling the suite.
@@ -59,7 +60,9 @@ async function runCase(testCase) {
       }
       return queue.shift();
     },
-    clear() {},
+    clear() {
+      emitLine("***LimpiarPantalla***");
+    },
     async sleep(ms) {
       emitLine(`***Esperar${ms}***`);
     },

@@ -38,22 +38,25 @@ FinProceso`;
     ]);
   });
 
-  it("executes logical operators while still allowing lowercase y and o as variable names", async () => {
+  it("treats Y/O as logical operators in either case", async () => {
     const source = `Proceso Test
   x <- 5
-  y <- 10
-  o <- 0
-  Si x > 3 Y y < 20 Entonces
-    o <- 1
+  z <- 10
+  r <- 0
+  Si x > 3 y z < 20 Entonces
+    r <- 1
   FinSi
-  Escribir o
+  Si x > 30 o z < 20 Entonces
+    r <- r + 1
+  FinSi
+  Escribir r
 FinProceso`;
 
     const controller = createBrowserRuntime();
     const result = await new Interpreter().run(source, controller.runtime);
 
     expect(result.state).toBe("ok");
-    expect(result.output).toEqual(["1"]);
+    expect(result.output).toEqual(["2"]);
   });
 
   it("supports by-reference mutation and no-newline output", async () => {

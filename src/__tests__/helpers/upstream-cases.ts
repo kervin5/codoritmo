@@ -30,7 +30,9 @@ const markerPattern = /^=== Line (\d+): (SynError|ExeError|Warning) (\d+)/;
 // the first SynError/ExeError decides the expected state and line.
 export function parseExpectedOutput(text: string): ExpectedOutcome {
   const output: string[] = [];
-  for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+  for (const rawLine of text.replace(/\r\n/g, "\n").split("\n")) {
+    // An error raised while waiting for input is printed after the prompt.
+    const line = rawLine.startsWith("> ===") ? rawLine.slice(2) : rawLine;
     if (line.startsWith("> ") || line === ">") {
       continue;
     }

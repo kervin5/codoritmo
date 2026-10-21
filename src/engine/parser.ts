@@ -1,3 +1,4 @@
+import { BUILTIN_SIGNATURES, checkProgram } from './checker';
 import { Lexer } from './lexer';
 import { normalizeEngineSettings } from './settings';
 import {
@@ -7,6 +8,7 @@ import {
   DimensionItemNode,
   EngineSettings,
   ExpressionNode,
+  isDataTypeWord,
   MainRoutineNode,
   ParameterNode,
   ParseResult,
@@ -22,14 +24,19 @@ import {
 const RESERVED_WORDS = new Set([
   'ALGORITMO',
   'BAJAR',
+  'BORRAR',
+  'BORRARPANTALLA',
   'CADA',
   'CARACTER',
   'CASO',
   'COMO',
   'CON',
+  'CONPASO',
   'DE',
   'DEFINIR',
+  'DEOTROMODO',
   'DIMENSION',
+  'DIMENSIONAR',
   'DISTINTA',
   'DISTINTO',
   'DIVISIBLE',
@@ -55,14 +62,19 @@ const RESERVED_WORDS = new Set([
   'FUNCION',
   'HACER',
   'HASTA',
+  'HASTAQUE',
   'IGUAL',
   'IMPAR',
+  'IMPRIMIR',
+  'INFORMAR',
   'LEER',
   'LIMPIAR',
+  'LIMPIARPANTALLA',
   'LOGICO',
   'MAYOR',
   'MENOR',
   'MIENTRAS',
+  'MIENTRASQUE',
   'MILISEGUNDO',
   'MILISEGUNDOS',
   'MODO',
@@ -74,6 +86,7 @@ const RESERVED_WORDS = new Set([
   'PANTALLA',
   'PAR',
   'PARA',
+  'PARACADA',
   'PASO',
   'POR',
   'POSITIVA',
@@ -81,6 +94,8 @@ const RESERVED_WORDS = new Set([
   'PROCESO',
   'QUE',
   'REAL',
+  'REDIMENSION',
+  'REDIMENSIONAR',
   'REFERENCIA',
   'REPETIR',
   'RETURN',
@@ -89,24 +104,66 @@ const RESERVED_WORDS = new Set([
   'SEGUNDO',
   'SEGUNDOS',
   'SI',
+  'SIES',
   'SINO',
   'SIN',
+  'SINBAJAR',
+  'SINSALTAR',
   'SUBALGORITMO',
   'SUBPROCESO',
   'TECLA',
   'UNA',
+  'VERDADERO',
 ]);
 
-const DATA_TYPE_WORDS = new Set([
-  'CADENA',
-  'CARACTER',
-  'ENTERA',
-  'ENTERO',
-  'LOGICA',
-  'LOGICO',
-  'NUMERICA',
-  'NUMERICO',
-  'REAL',
+const BUILTIN_FUNCTIONS = new Set(Object.keys(BUILTIN_SIGNATURES));
+
+/** Predefined functions without arguments, usable without parentheses. */
+const ZERO_ARG_BUILTINS = new Set(['PI', 'EULER', 'FECHAACTUAL', 'HORAACTUAL']);
+
+const ROUTINE_OPENERS = ['SUBPROCESO', 'SUBALGORITMO', 'FUNCION'];
+const MAIN_OPENERS = ['PROCESO', 'ALGORITMO'];
+
+const MAIN_CLOSERS = [
+  { canonical: 'FINPROCESO', words: ['FIN', 'PROCESO'] },
+  { canonical: 'FINALGORITMO', words: ['FIN', 'ALGORITMO'] },
+];
+
+// Any routine opener may be closed by any routine closer (they are one
+// keyword with several spellings upstream).
+const ROUTINE_CLOSERS = [
+  { canonical: 'FINFUNCION', words: ['FIN', 'FUNCION'] },
+  { canonical: 'FINSUBPROCESO', words: ['FIN', 'SUBPROCESO'] },
+  { canonical: 'FINSUBALGORITMO', words: ['FIN', 'SUBALGORITMO'] },
+];
+
+const SPLIT_CLOSER_SECOND_WORDS = [
+  'SI',
+  'MIENTRAS',
+  'PARA',
+  'SEGUN',
+  'PROCESO',
+  'ALGORITMO',
+  'FUNCION',
+  'SUBPROCESO',
+  'SUBALGORITMO',
+];
+
+const BLOCK_END_WORDS = new Set([
+  'FINSI',
+  'SINO',
+  'FINMIENTRAS',
+  'FINPARA',
+  'FINSEGUN',
+  'FINPROCESO',
+  'FINALGORITMO',
+  'FINFUNCION',
+  'FINSUBPROCESO',
+  'FINSUBALGORITMO',
+  'HASTAQUE',
+  'DEOTROMODO',
+  ...MAIN_OPENERS,
+  ...ROUTINE_OPENERS,
 ]);
 
 class ParserError extends Error {
@@ -117,20 +174,35 @@ class ParserError extends Error {
 
 const nonAsciiPattern = /[^\x00-\x7F]/;
 
+function normalizeName(name: string): string {
+  return name.normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase();
+}
+
 export class Parser {
   private readonly tokens: Token[];
   private readonly settings: EngineSettings;
+  private readonly routineNames: Set<string>;
   private position = 0;
+  /** Index of the first token of the statement being parsed. */
+  private statementStart = 0;
+  /** True while parsing the argument list of Escribir/Leer. */
+  private ioList = false;
 
   constructor(source: string, options: { settings?: Partial<EngineSettings> } = {}) {
     this.settings = normalizeEngineSettings(options.settings);
     this.tokens = new Lexer(source, this.settings).tokenize();
+    this.routineNames = this.scanRoutineNames();
   }
 
   parse(): ParseResult {
     try {
+      const program = this.parseProgram();
+      const diagnostic = checkProgram(program);
+      if (diagnostic) {
+        return { program: null, diagnostics: [diagnostic] };
+      }
       return {
-        program: this.parseProgram(),
+        program,
         diagnostics: [],
       };
     } catch (error) {
@@ -145,6 +217,34 @@ export class Parser {
     }
   }
 
+  // Routine names are known before parsing bodies so that `name(...)` can be
+  // told apart from array indexing with parentheses, and `name` alone from a
+  // variable.
+  private scanRoutineNames(): Set<string> {
+    const names = new Set<string>();
+    for (let index = 0; index < this.tokens.length; index += 1) {
+      const token = this.tokens[index]!;
+      const startsLine = index === 0 || this.tokens[index - 1]!.line < token.line;
+      if (token.kind !== TokenKind.WORD || !startsLine || !ROUTINE_OPENERS.includes(token.normalized)) {
+        continue;
+      }
+      const next = this.tokens[index + 1];
+      const afterNext = this.tokens[index + 2];
+      const nameToken =
+        afterNext && (afterNext.kind === TokenKind.ARROW || afterNext.kind === TokenKind.EQ)
+          ? this.tokens[index + 3]
+          : next;
+      if (nameToken && nameToken.kind === TokenKind.WORD && nameToken.line === token.line) {
+        names.add(nameToken.lexeme.toLowerCase());
+      }
+    }
+    return names;
+  }
+
+  private isRoutineName(name: string): boolean {
+    return this.routineNames.has(name.toLowerCase());
+  }
+
   private parseProgram(): ProgramNode {
     const routines: RoutineNode[] = [];
     let entry: MainRoutineNode | null = null;
@@ -156,7 +256,8 @@ export class Parser {
         break;
       }
 
-      if (this.matchWord('PROCESO') || this.matchWord('ALGORITMO')) {
+      this.statementStart = this.position;
+      if (this.matchAnyWord(...MAIN_OPENERS)) {
         if (entry) {
           this.fail(this.peek(), 'Only one Proceso or Algoritmo entry point is allowed.', 'PARSE_DUPLICATE_ENTRY');
         }
@@ -164,11 +265,19 @@ export class Parser {
         continue;
       }
 
-      if (this.matchAnyWord('SUBPROCESO', 'SUBALGORITMO', 'FUNCION')) {
+      if (this.matchAnyWord(...ROUTINE_OPENERS)) {
         if (!this.settings.enableUserFunctions) {
           this.fail(this.peek(), 'User routines are disabled in the current profile.', 'PARSE_USER_ROUTINES_DISABLED');
         }
-        routines.push(this.parseRoutine());
+        const routine = this.parseRoutine();
+        if (routines.some((other) => other.name.toLowerCase() === routine.name.toLowerCase())) {
+          this.failAtLine(
+            routine.span?.start.line ?? this.previous().line,
+            `The routine "${routine.name}" is already defined.`,
+            'PARSE_DUPLICATE_ROUTINE'
+          );
+        }
+        routines.push(routine);
         continue;
       }
 
@@ -188,16 +297,18 @@ export class Parser {
 
   private parseMainRoutine(): MainRoutineNode {
     const start = this.advance();
-    const name = this.consumeName('Expected a name after Proceso/Algoritmo.');
+    const name = this.consumeHeaderName(start, 'Expected a name after Proceso/Algoritmo.');
     this.consumeOptional(TokenKind.COLON);
+    this.expectEndOfHeader(start);
 
-    const body = this.parseStatements(() =>
-      this.matchesTerminatorWord('FINPROCESO') || this.matchesTerminatorWord('FINALGORITMO')
+    const body = this.parseStatements(() => this.matchesAnyCloser(MAIN_CLOSERS));
+    const end = this.consumeCloser(
+      start,
+      MAIN_CLOSERS,
+      start.normalized === 'PROCESO'
+        ? 'Expected FinProceso to close the process.'
+        : 'Expected FinAlgoritmo to close the algorithm.'
     );
-
-    const end = start.normalized === 'PROCESO'
-      ? this.consumeTerminatorWord('FINPROCESO', ['FIN', 'PROCESO'], 'Expected FinProceso to close the process.')
-      : this.consumeTerminatorWord('FINALGORITMO', ['FIN', 'ALGORITMO'], 'Expected FinAlgoritmo to close the algorithm.');
 
     return {
       type: 'MainRoutine',
@@ -216,19 +327,17 @@ export class Parser {
         ? 'Funcion'
         : 'SubProceso';
 
-    let firstName = this.consumeName('Expected a routine name.');
+    let firstName = this.consumeHeaderName(start, 'Expected a routine name.');
     let returnTarget: string | undefined;
 
-    if (this.match(TokenKind.ARROW) || this.match(TokenKind.EQ)) {
+    if (!this.atNewLine() && (this.match(TokenKind.ARROW) || this.match(TokenKind.EQ))) {
       returnTarget = firstName;
       this.advance();
-      firstName = this.consumeName('Expected a routine name after the return target.');
-    } else if (headerKind === 'Funcion') {
-      returnTarget = firstName;
+      firstName = this.consumeHeaderName(start, 'Expected a routine name after the return target.');
     }
 
     const params: ParameterNode[] = [];
-    if (this.consumeOptional(TokenKind.LPAREN)) {
+    if (!this.atNewLine() && this.consumeOptional(TokenKind.LPAREN)) {
       if (!this.match(TokenKind.RPAREN)) {
         do {
           params.push(this.parseParameter());
@@ -236,22 +345,16 @@ export class Parser {
       }
       this.consume(TokenKind.RPAREN, 'Expected ")" after the parameter list.');
     }
+    this.expectEndOfHeader(start);
 
-    const body = this.parseStatements(() =>
-      this.matchesTerminatorWord('FINFUNCION') ||
-      this.matchesTerminatorWord('FINSUBPROCESO') ||
-      this.matchesTerminatorWord('FINSUBALGORITMO')
+    const body = this.parseStatements(() => this.matchesAnyCloser(ROUTINE_CLOSERS));
+    const end = this.consumeCloser(
+      start,
+      ROUTINE_CLOSERS,
+      headerKind === 'Funcion'
+        ? 'Expected FinFuncion to close the function.'
+        : 'Expected FinSubProceso or FinSubAlgoritmo to close the routine.'
     );
-
-    const end = headerKind === 'Funcion'
-      ? this.consumeTerminatorWord('FINFUNCION', ['FIN', 'FUNCION'], 'Expected FinFuncion to close the function.')
-      : this.consumeAnyTerminatorWord(
-          [
-            { canonical: 'FINSUBPROCESO', words: ['FIN', 'SUBPROCESO'] },
-            { canonical: 'FINSUBALGORITMO', words: ['FIN', 'SUBALGORITMO'] },
-          ],
-          'Expected FinSubProceso or FinSubAlgoritmo to close the routine.'
-        );
 
     return {
       type: 'Routine',
@@ -267,16 +370,23 @@ export class Parser {
   private parseParameter(): ParameterNode {
     const start = this.peek();
     const name = this.consumeName('Expected a parameter name.');
-    const byReference = this.matchWord('POR');
+    let byReference = false;
+    let explicitByValue = false;
 
-    if (byReference) {
-      this.advance();
-      this.consumeWord('REFERENCIA', 'Expected Referencia after Por.');
+    if (this.consumeOptionalWord('POR')) {
+      if (this.consumeOptionalWord('REFERENCIA')) {
+        byReference = true;
+      } else if (this.consumeOptionalWord('VALOR') || this.consumeOptionalWord('COPIA')) {
+        explicitByValue = true;
+      } else {
+        this.failExpected('Expected Referencia, Valor or Copia after Por.', 'PARSE_WORD');
+      }
     }
 
     return {
       name,
       byReference,
+      ...(explicitByValue ? { explicitByValue } : {}),
       span: this.createSpan(start, this.previous()),
     };
   }
@@ -286,7 +396,7 @@ export class Parser {
 
     while (!this.isAtEnd()) {
       this.skipTerminators();
-      if (stop() || this.isAtEnd()) {
+      if (this.isAtEnd() || stop() || this.isBlockEnd()) {
         break;
       }
       statements.push(this.parseStatement());
@@ -297,55 +407,71 @@ export class Parser {
   }
 
   private parseStatement(): StatementNode {
-    if (this.matchWord('DEFINIR')) {
-      return this.parseDefine();
+    this.statementStart = this.position;
+    const word = this.peek().kind === TokenKind.WORD ? this.peek().normalized : '';
+
+    switch (word) {
+      case 'DEFINIR':
+        return this.finishSimple(this.parseDefine());
+      case 'DIMENSION':
+      case 'DIMENSIONAR':
+        return this.finishSimple(this.parseDimension(false));
+      case 'REDIMENSION':
+      case 'REDIMENSIONAR':
+        return this.finishSimple(this.parseDimension(true));
+      case 'ESCRIBIR':
+      case 'MOSTRAR':
+      case 'IMPRIMIR':
+      case 'INFORMAR':
+        return this.finishSimple(this.parseWrite());
+      case 'LEER':
+        return this.finishSimple(this.parseRead());
+      case 'SI':
+        return this.parseIf();
+      case 'MIENTRAS':
+        return this.parseWhile();
+      case 'REPETIR':
+        return this.parseRepeat();
+      case 'PARA':
+      case 'PARACADA':
+        return this.parseFor();
+      case 'SEGUN':
+        return this.parseSwitch();
+      case 'LIMPIAR':
+      case 'BORRAR':
+      case 'LIMPIARPANTALLA':
+      case 'BORRARPANTALLA':
+        return this.finishSimple(this.parseClear());
+      case 'ESPERAR':
+      case 'ESPERARTECLA':
+        return this.finishSimple(this.parseWait());
+      case 'RETORNAR':
+      case 'RETURN':
+        return this.finishSimple(this.parseReturn());
     }
 
-    if (this.matchWord('DIMENSION')) {
-      return this.parseDimension();
+    const shortDefine = this.tryParseShortDefine();
+    if (shortDefine) {
+      return this.finishSimple(shortDefine);
     }
 
-    if (this.matchAnyWord('ESCRIBIR', 'MOSTRAR')) {
-      return this.parseWrite();
+    return this.finishSimple(this.parseAssignmentOrExpression());
+  }
+
+  // Sequential instructions end at ";", the end of the line, or a keyword
+  // that closes the enclosing block. With force_semicolon the ";" is required.
+  private finishSimple(statement: StatementNode): StatementNode {
+    if (this.settings.forceSemicolon) {
+      if (!this.match(TokenKind.SEMICOLON)) {
+        this.failExpected('Expected ";" at the end of the instruction.', 'PARSE_MISSING_SEMICOLON');
+      }
+      return statement;
     }
 
-    if (this.matchWord('LEER')) {
-      return this.parseRead();
+    if (!this.isStatementBoundary()) {
+      this.fail(this.peek(), `Unexpected token "${this.peek().lexeme}" after the instruction.`, 'PARSE_TRAILING_TOKENS');
     }
-
-    if (this.matchWord('SI')) {
-      return this.parseIf();
-    }
-
-    if (this.matchWord('MIENTRAS')) {
-      return this.parseWhile();
-    }
-
-    if (this.matchWord('REPETIR')) {
-      return this.parseRepeat();
-    }
-
-    if (this.matchWord('PARA')) {
-      return this.parseFor();
-    }
-
-    if (this.matchWord('SEGUN')) {
-      return this.parseSwitch();
-    }
-
-    if (this.matchWord('LIMPIAR')) {
-      return this.parseClear();
-    }
-
-    if (this.matchWord('ESPERAR') || this.matchWord('ESPERARTECLA')) {
-      return this.parseWait();
-    }
-
-    if (this.matchAnyWord('RETORNAR', 'RETURN')) {
-      return this.parseReturn();
-    }
-
-    return this.parseAssignmentOrExpression();
+    return statement;
   }
 
   private parseDefine(): StatementNode {
@@ -358,26 +484,71 @@ export class Parser {
 
     this.consumeWord('COMO', 'Expected Como after the variable list.');
     const dataType = this.consumeDataType('Expected a data type after Como.');
-    const end = this.previous();
     return {
       kind: 'define',
       dataType,
       names,
-      span: this.createSpan(start, end),
+      span: this.createSpan(start, this.previous()),
     };
   }
 
-  private parseDimension(): StatementNode {
+  // `x Es Entero` / `a, b Son Cadenas`
+  private tryParseShortDefine(): StatementNode | null {
+    const checkpoint = this.position;
+    if (!this.isIdentifierToken(this.peek())) {
+      return null;
+    }
+    const start = this.peek();
+    const names: string[] = [];
+    while (this.isIdentifierToken(this.peek()) && (names.length === 0 || !this.atNewLine())) {
+      names.push(this.advance().lexeme);
+      if (!this.consumeOptional(TokenKind.COMMA)) {
+        break;
+      }
+    }
+    if (
+      names.length > 0 &&
+      !this.atNewLine() &&
+      this.matchAnyWord('ES', 'SON') &&
+      this.peekNext().kind === TokenKind.WORD &&
+      isDataTypeWord(this.peekNext().normalized) &&
+      this.peekNext().line === this.peek().line
+    ) {
+      this.advance();
+      const dataType = this.advance().lexeme;
+      return {
+        kind: 'define',
+        dataType,
+        names,
+        span: this.createSpan(start, this.previous()),
+      };
+    }
+    this.position = checkpoint;
+    return null;
+  }
+
+  private parseDimension(resize: boolean): StatementNode {
     const start = this.advance();
+    if (resize && !this.settings.allowResizeArrays) {
+      this.fail(start, 'Redimensionar is disabled in the current profile.', 'PARSE_RESIZE_DISABLED');
+    }
     const items: DimensionItemNode[] = [];
 
     do {
       const itemStart = this.peek();
       const name = this.consumeName('Expected an array name after Dimension.');
-      this.consume(TokenKind.LBRACKET, 'Expected "[" after the array name.');
+      const usesParens = !this.atNewLine() && this.match(TokenKind.LPAREN);
+      if (!usesParens && (this.atNewLine() || !this.match(TokenKind.LBRACKET))) {
+        this.failExpected('Expected "[" after the array name.', 'PARSE_TOKEN');
+      }
+      this.advance();
       const dimensions = [this.parseExpression()];
       while (this.consumeOptional(TokenKind.COMMA)) {
         dimensions.push(this.parseExpression());
+      }
+
+      for (const dimension of dimensions) {
+        this.checkStaticDimension(dimension);
       }
 
       if (!this.settings.allowDynamicDimensions) {
@@ -392,7 +563,10 @@ export class Parser {
         }
       }
 
-      const endBracket = this.consume(TokenKind.RBRACKET, 'Expected "]" after the dimensions.');
+      const endBracket = this.consume(
+        usesParens ? TokenKind.RPAREN : TokenKind.RBRACKET,
+        usesParens ? 'Expected ")" after the dimensions.' : 'Expected "]" after the dimensions.'
+      );
       items.push({
         name,
         dimensions,
@@ -403,32 +577,86 @@ export class Parser {
     return {
       kind: 'dimension',
       items,
+      ...(resize ? { resize } : {}),
       span: this.createSpan(start, this.previous()),
     };
+  }
+
+  // Literal sizes can be rejected before running.
+  private checkStaticDimension(dimension: ExpressionNode): void {
+    const value = this.staticNumberValue(dimension);
+    if (value === null) {
+      return;
+    }
+    if (!Number.isInteger(value)) {
+      this.fail(this.peekAtSpanStart(dimension), 'Array dimensions must be integers.', 'PARSE_DIMENSION_NOT_INTEGER');
+    }
+    if (value < 0 || (value === 0 && !this.settings.allowResizeArrays)) {
+      this.fail(this.peekAtSpanStart(dimension), 'Array dimensions must be positive.', 'PARSE_DIMENSION_NOT_POSITIVE');
+    }
+  }
+
+  private staticNumberValue(expression: ExpressionNode): number | null {
+    if (expression.kind === 'literal' && expression.valueType === 'number') {
+      return expression.value as number;
+    }
+    if (expression.kind === 'unary' && expression.operator === '-') {
+      const inner = this.staticNumberValue(expression.operand);
+      return inner === null ? null : -inner;
+    }
+    if (expression.kind === 'group') {
+      return this.staticNumberValue(expression.expression);
+    }
+    return null;
+  }
+
+  private matchSinSaltar(): boolean {
+    return (
+      !this.atNewLine() &&
+      (this.matchWords(['SIN', 'SALTAR']) ||
+        this.matchWords(['SIN', 'BAJAR']) ||
+        this.matchAnyWord('SINSALTAR', 'SINBAJAR'))
+    );
+  }
+
+  private consumeSinSaltar(): void {
+    if (this.matchAnyWord('SINSALTAR', 'SINBAJAR')) {
+      this.advance();
+      return;
+    }
+    this.advance();
+    this.advance();
   }
 
   private parseWrite(): StatementNode {
     const start = this.advance();
     let newline = true;
 
-    if (this.matchWords(['SIN', 'BAJAR'])) {
-      this.advance();
-      this.advance();
+    if (this.matchSinSaltar()) {
+      this.consumeSinSaltar();
       newline = false;
     }
 
-    const expressions: ExpressionNode[] = [];
-    if (!this.isStatementBoundary()) {
-      expressions.push(this.parseExpression());
-      while (this.consumeOptional(TokenKind.COMMA)) {
-        expressions.push(this.parseExpression());
-      }
+    if (this.isStatementBoundary()) {
+      this.failExpected('Escribir requires at least one expression.', 'PARSE_WRITE_EMPTY');
+    }
 
-      if (this.matchWords(['SIN', 'BAJAR'])) {
-        this.advance();
-        this.advance();
-        newline = false;
+    const expressions: ExpressionNode[] = [this.parseIoExpression()];
+    while (true) {
+      if (this.consumeOptional(TokenKind.COMMA)) {
+        expressions.push(this.parseIoExpression());
+        continue;
       }
+      if (this.matchSinSaltar()) {
+        this.consumeSinSaltar();
+        newline = false;
+        break;
+      }
+      if (this.isStatementBoundary() || !this.settings.lazySyntax || !this.peek().spaceBefore) {
+        break;
+      }
+      // Flexible syntax: expressions may be separated by spaces.
+      expressions.push(this.parseIoExpression());
     }
 
     return {
@@ -439,12 +667,32 @@ export class Parser {
     };
   }
 
+  private parseIoExpression(): ExpressionNode {
+    const previous = this.ioList;
+    this.ioList = true;
+    try {
+      return this.parseExpression();
+    } finally {
+      this.ioList = previous;
+    }
+  }
+
   private parseRead(): StatementNode {
     const start = this.advance();
-    const targets = [this.parseAssignableExpression()];
+    if (this.isStatementBoundary()) {
+      this.failExpected('Leer requires at least one variable.', 'PARSE_READ_EMPTY');
+    }
+    const targets = [this.parseIoAssignable()];
 
-    while (this.consumeOptional(TokenKind.COMMA)) {
-      targets.push(this.parseAssignableExpression());
+    while (true) {
+      if (this.consumeOptional(TokenKind.COMMA)) {
+        targets.push(this.parseIoAssignable());
+        continue;
+      }
+      if (this.isStatementBoundary() || !this.settings.lazySyntax || !this.peek().spaceBefore) {
+        break;
+      }
+      targets.push(this.parseIoAssignable());
     }
 
     return {
@@ -454,9 +702,26 @@ export class Parser {
     };
   }
 
+  private parseIoAssignable(): AssignableExpressionNode {
+    const previous = this.ioList;
+    this.ioList = true;
+    try {
+      return this.parseAssignableExpression();
+    } finally {
+      this.ioList = previous;
+    }
+  }
+
+  private parseCondition(opener: Token, missingMessage: string): ExpressionNode {
+    if (this.isStatementBoundary() || this.matchAnyWord('ENTONCES', 'HACER')) {
+      this.failAtLine(opener.line, missingMessage, 'PARSE_MISSING_CONDITION');
+    }
+    return this.parseExpression();
+  }
+
   private parseIf(): StatementNode {
     const start = this.advance();
-    const condition = this.parseExpression();
+    const condition = this.parseCondition(start, 'Expected a condition after Si.');
     if (!this.settings.lazySyntax) {
       this.consumeWord('ENTONCES', 'Expected Entonces after the condition.');
     } else {
@@ -466,7 +731,7 @@ export class Parser {
     const elseBranch = this.consumeOptionalWord('SINO')
       ? this.parseStatements(() => this.matchesTerminatorWord('FINSI'))
       : [];
-    const end = this.consumeTerminatorWord('FINSI', ['FIN', 'SI'], 'Expected FinSi to close the conditional.');
+    const end = this.consumeCloser(start, [{ canonical: 'FINSI', words: ['FIN', 'SI'] }], 'Expected FinSi to close the conditional.');
 
     return {
       kind: 'if',
@@ -482,14 +747,14 @@ export class Parser {
     if (this.settings.lazySyntax) {
       this.consumeOptionalWord('QUE');
     }
-    const condition = this.parseExpression();
+    const condition = this.parseCondition(start, 'Expected a condition after Mientras.');
     if (!this.settings.lazySyntax) {
       this.consumeWord('HACER', 'Expected Hacer after the loop condition.');
     } else {
       this.consumeOptionalWord('HACER');
     }
     const body = this.parseStatements(() => this.matchesTerminatorWord('FINMIENTRAS'));
-    const end = this.consumeTerminatorWord('FINMIENTRAS', ['FIN', 'MIENTRAS'], 'Expected FinMientras to close the loop.');
+    const end = this.consumeCloser(start, [{ canonical: 'FINMIENTRAS', words: ['FIN', 'MIENTRAS'] }], 'Expected FinMientras to close the loop.');
 
     return {
       kind: 'while',
@@ -499,25 +764,35 @@ export class Parser {
     };
   }
 
+  private matchesRepeatUntil(): boolean {
+    return this.matchWords(['HASTA', 'QUE']) || this.matchWord('HASTAQUE');
+  }
+
+  private matchesRepeatWhile(): boolean {
+    return this.matchWords(['MIENTRAS', 'QUE']) || this.matchWord('MIENTRASQUE');
+  }
+
   private parseRepeat(): StatementNode {
     const start = this.advance();
-    const body = this.parseStatements(
-      () => this.matchWords(['HASTA', 'QUE']) || this.matchWords(['MIENTRAS', 'QUE'])
-    );
+    const body = this.parseStatements(() => this.matchesRepeatUntil() || this.matchesRepeatWhile());
 
-    const mode = this.matchWords(['HASTA', 'QUE']) ? 'until' : 'while';
-    if (mode === 'until') {
-      this.advance();
-      this.advance();
-    } else {
+    let mode: 'until' | 'while';
+    if (this.matchesRepeatUntil()) {
+      mode = 'until';
+    } else if (this.matchesRepeatWhile()) {
+      mode = 'while';
       if (!this.settings.allowRepeatWhile) {
         this.fail(this.peek(), 'Repetir ... Mientras Que is disabled in the current profile.', 'PARSE_REPEAT_WHILE_DISABLED');
       }
-      this.consumeWord('MIENTRAS', 'Expected Mientras after Repetir.');
-      this.consumeWord('QUE', 'Expected Que after Mientras.');
+    } else {
+      this.failAtLine(start.line, 'Expected Hasta Que to close Repetir.', 'PARSE_MISSING_CLOSER');
+    }
+    const closer = this.advance();
+    if (closer.normalized === 'HASTA' || closer.normalized === 'MIENTRAS') {
+      this.advance();
     }
 
-    const condition = this.parseExpression();
+    const condition = this.parseCondition(closer, 'Expected a condition after Hasta Que.');
     return {
       kind: 'repeat',
       mode,
@@ -530,12 +805,14 @@ export class Parser {
   private parseFor(): StatementNode {
     const start = this.advance();
 
-    if (this.consumeOptionalWord('CADA')) {
+    if (start.normalized === 'PARACADA' || this.consumeOptionalWord('CADA')) {
       if (!this.settings.allowForEach) {
         this.fail(this.previous(), 'Para Cada is disabled in the current profile.', 'PARSE_FOR_EACH_DISABLED');
       }
       const variable = this.consumeName('Expected the iteration variable after "Para Cada".');
-      this.consumeWord('DE', 'Expected De after the iteration variable.');
+      if (!this.consumeOptionalWord('DE') && !this.consumeOptionalWord('EN')) {
+        this.failExpected('Expected De after the iteration variable.', 'PARSE_WORD');
+      }
       const collection = this.parseExpression();
       if (!this.settings.lazySyntax) {
         this.consumeWord('HACER', 'Expected Hacer after the collection expression.');
@@ -543,7 +820,7 @@ export class Parser {
         this.consumeOptionalWord('HACER');
       }
       const body = this.parseStatements(() => this.matchesTerminatorWord('FINPARA'));
-      const end = this.consumeTerminatorWord('FINPARA', ['FIN', 'PARA'], 'Expected FinPara to close the foreach loop.');
+      const end = this.consumeCloser(start, [{ canonical: 'FINPARA', words: ['FIN', 'PARA'] }], 'Expected FinPara to close the foreach loop.');
 
       return {
         kind: 'forEach',
@@ -573,20 +850,18 @@ export class Parser {
     }
 
     let step: ExpressionNode | undefined;
-    if (this.consumeOptionalWord('CON')) {
+    if (this.matchStepKeyword()) {
       if (!this.settings.lazySyntax) {
-        this.fail(this.previous(), 'Con Paso before Hasta is disabled in the current profile.', 'PARSE_FOR_LAZY_SYNTAX_DISABLED');
+        this.fail(this.peek(), 'Con Paso before Hasta is disabled in the current profile.', 'PARSE_FOR_LAZY_SYNTAX_DISABLED');
       }
-      this.consumeWord('PASO', 'Expected Paso after Con.');
-      step = this.parseExpression();
+      step = this.parseStep();
     }
 
     this.consumeWord('HASTA', 'Expected Hasta in the for-loop header.');
     const endExpression = this.parseExpression();
 
-    if (!step && this.consumeOptionalWord('CON')) {
-      this.consumeWord('PASO', 'Expected Paso after Con.');
-      step = this.parseExpression();
+    if (!step && this.matchStepKeyword()) {
+      step = this.parseStep();
     }
 
     if (!this.settings.lazySyntax) {
@@ -595,7 +870,7 @@ export class Parser {
       this.consumeOptionalWord('HACER');
     }
     const body = this.parseStatements(() => this.matchesTerminatorWord('FINPARA'));
-    const end = this.consumeTerminatorWord('FINPARA', ['FIN', 'PARA'], 'Expected FinPara to close the loop.');
+    const end = this.consumeCloser(start, [{ canonical: 'FINPARA', words: ['FIN', 'PARA'] }], 'Expected FinPara to close the loop.');
 
     return {
       kind: 'for',
@@ -608,10 +883,31 @@ export class Parser {
     };
   }
 
+  private matchStepKeyword(): boolean {
+    return !this.atNewLine() && (this.matchWords(['CON', 'PASO']) || this.matchWord('CONPASO'));
+  }
+
+  private parseStep(): ExpressionNode {
+    if (this.advance().normalized === 'CON') {
+      this.advance();
+    }
+    if (this.isStatementBoundary() || this.matchWord('HACER')) {
+      this.failExpected('Expected the step value after Con Paso.', 'PARSE_FOR_STEP');
+    }
+    return this.parseExpression();
+  }
+
   private parseSwitch(): StatementNode {
     const start = this.advance();
+    if (this.isStatementBoundary() || this.matchWord('HACER')) {
+      this.failAtLine(start.line, 'Expected an expression after Segun.', 'PARSE_MISSING_CONDITION');
+    }
     const expression = this.parseExpression();
-    this.consumeWord('HACER', 'Expected Hacer after the switch expression.');
+    if (!this.settings.lazySyntax) {
+      this.consumeWord('HACER', 'Expected Hacer after the switch expression.');
+    } else {
+      this.consumeOptionalWord('HACER');
+    }
 
     if (this.settings.integerOnlySwitch && this.isObviouslyNonNumericSwitchExpression(expression)) {
       this.fail(
@@ -624,23 +920,32 @@ export class Parser {
     const cases: SwitchCaseNode[] = [];
     let defaultCase: StatementNode[] = [];
 
-    while (!this.isAtEnd() && !this.matchesTerminatorWord('FINSEGUN')) {
+    while (!this.isAtEnd()) {
       this.skipTerminators();
+      if (this.matchesTerminatorWord('FINSEGUN')) {
+        break;
+      }
 
-      if (this.matchWords(['DE', 'OTRO', 'MODO'])) {
-        this.advance();
-        this.advance();
-        this.advance();
+      if (this.matchesDefaultCase()) {
+        if (this.advance().normalized === 'DE') {
+          this.advance();
+          this.advance();
+        }
         this.consume(TokenKind.COLON, 'Expected ":" after "De Otro Modo".');
         defaultCase = this.parseStatements(() => this.isSwitchBoundary());
         continue;
       }
 
-      this.consumeOptionalSwitchCasePrefix();
-      const values = [this.parseExpression()];
-      while (this.consumeOptional(TokenKind.COMMA)) {
-        values.push(this.parseExpression());
+      if (this.isBlockEnd() || this.isAtEnd()) {
+        break;
       }
+
+      this.statementStart = this.position;
+      this.consumeOptionalSwitchCasePrefix();
+      const values: ExpressionNode[] = [];
+      do {
+        values.push(...this.flattenCaseAlternatives(this.parseExpression()));
+      } while (this.consumeOptional(TokenKind.COMMA));
 
       if (this.settings.integerOnlySwitch) {
         for (const value of values) {
@@ -663,7 +968,7 @@ export class Parser {
       });
     }
 
-    const end = this.consumeTerminatorWord('FINSEGUN', ['FIN', 'SEGUN'], 'Expected FinSegun to close the switch.');
+    const end = this.consumeCloser(start, [{ canonical: 'FINSEGUN', words: ['FIN', 'SEGUN'] }], 'Expected FinSegun to close the switch.');
     return {
       kind: 'switch',
       expression,
@@ -673,9 +978,26 @@ export class Parser {
     };
   }
 
+  // In a case list `5, 6 o 7:` the word O separates alternatives.
+  private flattenCaseAlternatives(expression: ExpressionNode): ExpressionNode[] {
+    if (expression.kind === 'binary' && expression.operator === 'OR') {
+      return [
+        ...this.flattenCaseAlternatives(expression.left),
+        ...this.flattenCaseAlternatives(expression.right),
+      ];
+    }
+    return [expression];
+  }
+
+  private matchesDefaultCase(): boolean {
+    return this.matchWords(['DE', 'OTRO', 'MODO']) || this.matchWord('DEOTROMODO');
+  }
+
   private parseClear(): StatementNode {
     const start = this.advance();
-    this.consumeWord('PANTALLA', 'Expected Pantalla after Limpiar.');
+    if (start.normalized === 'LIMPIAR' || start.normalized === 'BORRAR') {
+      this.consumeWord('PANTALLA', `Expected Pantalla after ${start.lexeme}.`);
+    }
     return {
       kind: 'clear',
       span: this.createSpan(start, this.previous()),
@@ -710,6 +1032,9 @@ export class Parser {
       };
     }
 
+    if (this.isStatementBoundary()) {
+      this.failExpected('Expected a duration or Tecla after Esperar.', 'PARSE_WAIT_UNIT');
+    }
     const duration = this.parseExpression();
     let multiplier = 1;
     if (
@@ -720,7 +1045,7 @@ export class Parser {
     } else if (this.consumeOptionalWord('SEGUNDO') || this.consumeOptionalWord('SEGUNDOS')) {
       multiplier = 1000;
     } else {
-      this.fail(this.peek(), 'Expected a time unit after Esperar.', 'PARSE_WAIT_UNIT');
+      this.failExpected('Expected a time unit after Esperar.', 'PARSE_WAIT_UNIT');
     }
 
     return {
@@ -761,10 +1086,10 @@ export class Parser {
       this.position = checkpoint;
     }
 
-    if (target) {
+    if (target && !this.atNewLine()) {
       if (this.match(TokenKind.ARROW)) {
         const operator = this.advance();
-        const value = this.parseExpression();
+        const value = this.parseAssignedValue(operator);
         return {
           kind: 'assignment',
           target,
@@ -777,7 +1102,7 @@ export class Parser {
         if (!this.settings.overloadEqual) {
           this.fail(operator, 'Assignment with "=" is disabled in the current profile.', 'PARSE_EQUAL_ASSIGNMENT_DISABLED');
         }
-        const value = this.parseExpression();
+        const value = this.parseAssignedValue(operator);
         return {
           kind: 'assignment',
           target,
@@ -785,15 +1110,32 @@ export class Parser {
           span: this.createSpan(this.tokens[checkpoint], operator),
         };
       }
-      this.position = checkpoint;
     }
+    this.position = checkpoint;
 
     const expression = this.parseExpression();
+    const isRoutineCall =
+      (expression.kind === 'call' || expression.kind === 'identifier') &&
+      this.isRoutineName(expression.kind === 'call' ? expression.callee : expression.name);
+    if (!isRoutineCall) {
+      this.fail(
+        this.tokens[checkpoint]!,
+        `"${this.tokens[checkpoint]!.lexeme}" is not a valid instruction.`,
+        'PARSE_INVALID_INSTRUCTION'
+      );
+    }
     return {
       kind: 'expression',
       expression,
       span: expression.span,
     };
+  }
+
+  private parseAssignedValue(operator: Token): ExpressionNode {
+    if (this.isStatementBoundary()) {
+      this.fail(operator, 'Expected an expression after the assignment.', 'PARSE_EXPRESSION');
+    }
+    return this.parseExpression();
   }
 
   private parseExpression(): ExpressionNode {
@@ -802,7 +1144,7 @@ export class Parser {
 
   private parseOr(): ExpressionNode {
     let expression = this.parseAnd();
-    while (this.match(TokenKind.OR)) {
+    while (this.matchOperator(TokenKind.OR)) {
       const operator = this.advance();
       const right = this.parseAnd();
       expression = this.binary(expression, 'OR', right, operator);
@@ -812,7 +1154,7 @@ export class Parser {
 
   private parseAnd(): ExpressionNode {
     let expression = this.parseEquality();
-    while (this.match(TokenKind.AND)) {
+    while (this.matchOperator(TokenKind.AND)) {
       const operator = this.advance();
       const right = this.parseEquality();
       expression = this.binary(expression, 'AND', right, operator);
@@ -822,13 +1164,13 @@ export class Parser {
 
   private parseEquality(): ExpressionNode {
     let expression = this.parseComparison();
-    while (this.match(TokenKind.EQ) || this.match(TokenKind.NEQ)) {
+    while (this.matchOperator(TokenKind.EQ) || this.matchOperator(TokenKind.NEQ)) {
       const operator = this.advance();
       const right = this.parseComparison();
       expression = this.binary(expression, operator.kind === TokenKind.NEQ ? '<>' : '=', right, operator);
     }
 
-    const colloquial = this.settings.colloquialConditions
+    const colloquial = this.settings.colloquialConditions && !this.atNewLine()
       ? this.parseColloquialSuffix(expression)
       : null;
     return colloquial ?? expression;
@@ -879,6 +1221,7 @@ export class Parser {
           args: [left],
         },
         right: left,
+        span: left.span,
       };
     } else if (this.consumeOptionalWord('DIVISIBLE')) {
       this.consumeWord('POR', 'Expected Por after "Es Divisible".');
@@ -910,7 +1253,18 @@ export class Parser {
       kind: 'unary',
       operator: 'NOT',
       operand: expression,
+      span: expression.span,
     };
+  }
+
+  // The word O is lexed as the OR operator; inside colloquial comparisons
+  // ("igual o mayor") it is part of the phrase.
+  private consumeOptionalOrWord(): boolean {
+    if (this.match(TokenKind.OR) && this.peek().normalized === 'O') {
+      this.advance();
+      return true;
+    }
+    return this.consumeOptionalWord('O');
   }
 
   private parseColloquialComparison(left: ExpressionNode): ExpressionNode {
@@ -923,13 +1277,14 @@ export class Parser {
         operator: '=',
         left,
         right,
+        span: left.span,
       };
     }
 
     let operator = '=';
 
     if (this.consumeOptionalWord('IGUAL')) {
-      if (this.consumeOptionalWord('O')) {
+      if (this.consumeOptionalOrWord()) {
         if (this.consumeOptionalWord('MAYOR')) {
           operator = '>=';
           if (this.matchAnyWord('A', 'QUE')) {
@@ -955,7 +1310,7 @@ export class Parser {
         }
       }
     } else if (this.consumeOptionalWord('MAYOR')) {
-      if (this.consumeOptionalWord('O')) {
+      if (this.consumeOptionalOrWord()) {
         this.consumeWord('IGUAL', 'Expected Igual after "Mayor O".');
         operator = '>=';
       } else {
@@ -965,7 +1320,7 @@ export class Parser {
         this.advance();
       }
     } else if (this.consumeOptionalWord('MENOR')) {
-      if (this.consumeOptionalWord('O')) {
+      if (this.consumeOptionalOrWord()) {
         this.consumeWord('IGUAL', 'Expected Igual after "Menor O".');
         operator = '<=';
       } else {
@@ -987,6 +1342,7 @@ export class Parser {
       operator,
       left,
       right,
+      span: left.span,
     };
   }
 
@@ -994,10 +1350,10 @@ export class Parser {
     let expression = this.parseAdditive();
 
     while (
-      this.match(TokenKind.LT) ||
-      this.match(TokenKind.GT) ||
-      this.match(TokenKind.LEQ) ||
-      this.match(TokenKind.GEQ)
+      this.matchOperator(TokenKind.LT) ||
+      this.matchOperator(TokenKind.GT) ||
+      this.matchOperator(TokenKind.LEQ) ||
+      this.matchOperator(TokenKind.GEQ)
     ) {
       const operator = this.advance();
       const right = this.parseAdditive();
@@ -1017,8 +1373,9 @@ export class Parser {
   private parseAdditive(): ExpressionNode {
     let expression = this.parseMultiplicative();
 
-    while (this.match(TokenKind.PLUS) || this.match(TokenKind.MINUS)) {
+    while (this.matchOperator(TokenKind.PLUS) || this.matchOperator(TokenKind.MINUS)) {
       const operator = this.advance();
+      this.rejectSignAfterOperator();
       const right = this.parseMultiplicative();
       expression = this.binary(expression, operator.kind === TokenKind.PLUS ? '+' : '-', right, operator);
     }
@@ -1030,11 +1387,12 @@ export class Parser {
     let expression = this.parsePower();
 
     while (
-      this.match(TokenKind.STAR) ||
-      this.match(TokenKind.SLASH) ||
-      this.match(TokenKind.MOD)
+      this.matchOperator(TokenKind.STAR) ||
+      this.matchOperator(TokenKind.SLASH) ||
+      this.matchOperator(TokenKind.MOD)
     ) {
       const operator = this.advance();
+      this.rejectSignAfterOperator();
       const right = this.parsePower();
       const normalizedOperator = operator.kind === TokenKind.STAR
         ? '*'
@@ -1050,8 +1408,9 @@ export class Parser {
   private parsePower(): ExpressionNode {
     let expression = this.parseUnary();
 
-    while (this.match(TokenKind.POWER)) {
+    while (this.matchOperator(TokenKind.POWER)) {
       const operator = this.advance();
+      this.rejectSignAfterOperator();
       const right = this.parseUnary();
       expression = this.binary(expression, '^', right, operator);
     }
@@ -1059,23 +1418,38 @@ export class Parser {
     return expression;
   }
 
+  // `3+-2` or `3*+2` are two consecutive operators in PSeInt; the sign
+  // needs parentheses: `3+(-2)`.
+  private rejectSignAfterOperator(): void {
+    if (this.match(TokenKind.PLUS) || this.match(TokenKind.MINUS)) {
+      this.fail(this.peek(), 'Two consecutive operators.', 'PARSE_CONSECUTIVE_OPERATORS');
+    }
+  }
+
   private parseUnary(): ExpressionNode {
     if (this.match(TokenKind.NOT)) {
       const operator = this.advance();
+      // NO applies to a whole comparison: `no 1=2` is `no (1=2)`.
+      const operand = this.parseEquality();
       return {
         kind: 'unary',
         operator: 'NOT',
-        operand: this.parseUnary(),
+        operand,
         span: this.createSpan(operator, this.previous()),
       };
     }
 
-    if (this.match(TokenKind.MINUS)) {
+    if (this.match(TokenKind.MINUS) || this.match(TokenKind.PLUS)) {
       const operator = this.advance();
+      this.rejectSignAfterOperator();
+      const operand = this.parseUnary();
+      if (operator.kind === TokenKind.PLUS) {
+        return operand;
+      }
       return {
         kind: 'unary',
         operator: '-',
-        operand: this.parseUnary(),
+        operand,
         span: this.createSpan(operator, this.previous()),
       };
     }
@@ -1087,11 +1461,20 @@ export class Parser {
     let expression = this.parsePrimary();
 
     while (true) {
-      if (this.consumeOptional(TokenKind.LPAREN)) {
+      if (this.match(TokenKind.LPAREN) && !this.atNewLine()) {
         if (expression.kind !== 'identifier') {
-          this.fail(this.previous(), 'Only named routines can be invoked.', 'PARSE_CALL_TARGET');
+          return expression;
         }
 
+        const isFunction =
+          this.isRoutineName(expression.name) || BUILTIN_FUNCTIONS.has(normalizeName(expression.name));
+        // Flexible syntax: in `Escribir a (1)` the space separates two
+        // expressions unless `a` is a function.
+        if (this.ioList && this.peek().spaceBefore && !isFunction) {
+          return expression;
+        }
+
+        this.advance();
         const args: ExpressionNode[] = [];
         if (!this.match(TokenKind.RPAREN)) {
           do {
@@ -1100,16 +1483,31 @@ export class Parser {
         }
 
         const end = this.consume(TokenKind.RPAREN, 'Expected ")" after the argument list.');
+        if (isFunction) {
+          expression = {
+            kind: 'call',
+            callee: expression.name,
+            args,
+            span: this.createSpan(this.peekAtSpanStart(expression), end),
+          };
+          continue;
+        }
+
+        // Not a function: parentheses index an array, as in `a(1)`.
+        if (args.length === 0) {
+          this.fail(end, 'Expected array indices.', 'PARSE_ARRAY_INDEX');
+        }
         expression = {
-          kind: 'call',
-          callee: expression.name,
-          args,
+          kind: 'arrayAccess',
+          target: expression,
+          indices: args,
           span: this.createSpan(this.peekAtSpanStart(expression), end),
         };
-        continue;
+        return expression;
       }
 
-      if (this.consumeOptional(TokenKind.LBRACKET)) {
+      if (this.match(TokenKind.LBRACKET) && !this.atNewLine()) {
+        this.advance();
         const indices = [this.parseExpression()];
         while (this.consumeOptional(TokenKind.COMMA)) {
           indices.push(this.parseExpression());
@@ -1129,6 +1527,10 @@ export class Parser {
   }
 
   private parsePrimary(): ExpressionNode {
+    if (this.isStatementBoundaryForOperand()) {
+      this.failExpected('Expected an expression.', 'PARSE_EXPRESSION');
+    }
+
     if (this.match(TokenKind.NUMBER)) {
       const token = this.advance();
       return {
@@ -1161,7 +1563,10 @@ export class Parser {
 
     if (this.consumeOptional(TokenKind.LPAREN)) {
       const start = this.previous();
+      const previousIoList = this.ioList;
+      this.ioList = false;
       const expression = this.parseExpression();
+      this.ioList = previousIoList;
       const end = this.consume(TokenKind.RPAREN, 'Expected ")" to close the grouped expression.');
       return {
         kind: 'group',
@@ -1176,6 +1581,19 @@ export class Parser {
 
     if (this.isIdentifierToken(this.peek())) {
       const token = this.advance();
+      const normalized = token.normalized;
+      if (
+        ZERO_ARG_BUILTINS.has(normalized) &&
+        !this.isRoutineName(token.lexeme) &&
+        !(this.match(TokenKind.LPAREN) && !this.atNewLine())
+      ) {
+        return {
+          kind: 'call',
+          callee: token.lexeme,
+          args: [],
+          span: this.createSpan(token, token),
+        };
+      }
       return {
         kind: 'identifier',
         name: token.lexeme,
@@ -1186,10 +1604,26 @@ export class Parser {
     this.fail(this.peek(), `Unexpected token "${this.peek().lexeme}" in the expression.`, 'PARSE_EXPRESSION');
   }
 
+  private isStatementBoundaryForOperand(): boolean {
+    return (
+      this.match(TokenKind.EOF) ||
+      this.match(TokenKind.SEMICOLON) ||
+      (this.position > this.statementStart && this.atNewLine())
+    );
+  }
+
   private parseAssignableExpression(): AssignableExpressionNode {
     const expression = this.parsePostfix();
     if (expression.kind === 'identifier' || expression.kind === 'arrayAccess') {
       return expression;
+    }
+    if (expression.kind === 'call' && !this.isRoutineName(expression.callee) && expression.args.length > 0) {
+      return {
+        kind: 'arrayAccess',
+        target: { kind: 'identifier', name: expression.callee, span: expression.span },
+        indices: expression.args,
+        span: expression.span,
+      };
     }
 
     this.fail(this.peek(), 'Expected an assignable target.', 'PARSE_ASSIGNABLE');
@@ -1246,22 +1680,27 @@ export class Parser {
   private isSwitchBoundary(): boolean {
     return (
       this.matchesTerminatorWord('FINSEGUN') ||
-      this.matchWords(['DE', 'OTRO', 'MODO']) ||
+      this.matchesDefaultCase() ||
       this.looksLikeSwitchCase()
     );
   }
 
   private looksLikeSwitchCase(): boolean {
     const checkpoint = this.position;
+    const statementStart = this.statementStart;
+    this.statementStart = this.position;
     try {
       this.consumeOptionalSwitchCasePrefix();
       this.parseExpression();
-      const isCase = this.match(TokenKind.COLON);
-      this.position = checkpoint;
-      return isCase;
+      while (this.consumeOptional(TokenKind.COMMA)) {
+        this.parseExpression();
+      }
+      return this.match(TokenKind.COLON);
     } catch {
-      this.position = checkpoint;
       return false;
+    } finally {
+      this.position = checkpoint;
+      this.statementStart = statementStart;
     }
   }
 
@@ -1289,22 +1728,32 @@ export class Parser {
     }
   }
 
+  /** The next token starts a new line (and so a new instruction). */
+  private atNewLine(): boolean {
+    return this.position > 0 && this.peek().line > this.previous().line;
+  }
+
+  private isBlockEnd(): boolean {
+    const token = this.peek();
+    if (token.kind !== TokenKind.WORD) {
+      return false;
+    }
+    if (BLOCK_END_WORDS.has(token.normalized)) {
+      return true;
+    }
+    if (token.normalized === 'FIN' && SPLIT_CLOSER_SECOND_WORDS.includes(this.peekNext().normalized)) {
+      return true;
+    }
+    return this.matchesRepeatUntil() || this.matchesDefaultCase();
+  }
+
   private isStatementBoundary(): boolean {
     return (
       this.match(TokenKind.SEMICOLON) ||
       this.match(TokenKind.EOF) ||
-      this.matchesTerminatorWord('FINSI') ||
-      this.matchWord('SINO') ||
-      this.matchesTerminatorWord('FINMIENTRAS') ||
-      this.matchesTerminatorWord('FINPARA') ||
-      this.matchesTerminatorWord('FINSEGUN') ||
-      this.matchesTerminatorWord('FINPROCESO') ||
-      this.matchesTerminatorWord('FINALGORITMO') ||
-      this.matchesTerminatorWord('FINFUNCION') ||
-      this.matchesTerminatorWord('FINSUBPROCESO') ||
-      this.matchesTerminatorWord('FINSUBALGORITMO') ||
-      this.matchWords(['HASTA', 'QUE']) ||
-      this.matchWords(['MIENTRAS', 'QUE'])
+      this.atNewLine() ||
+      this.isBlockEnd() ||
+      this.matchesRepeatWhile()
     );
   }
 
@@ -1313,18 +1762,31 @@ export class Parser {
     if (!this.settings.allowAccents && token.kind === TokenKind.WORD && nonAsciiPattern.test(token.lexeme)) {
       this.fail(token, 'Accented identifiers are disabled in the current profile.', 'PARSE_IDENTIFIER_ACCENTS_DISABLED');
     }
-    if (!this.isIdentifierToken(token)) {
-      this.fail(token, message, 'PARSE_NAME');
+    if (this.atNewLine() || !this.isIdentifierToken(token)) {
+      this.failExpected(message, 'PARSE_NAME');
     }
 
     this.advance();
     return token.lexeme;
   }
 
+  private consumeHeaderName(header: Token, message: string): string {
+    if (this.atNewLine() || this.isAtEnd()) {
+      this.failAtLine(header.line, message, 'PARSE_NAME');
+    }
+    return this.consumeName(message);
+  }
+
+  private expectEndOfHeader(header: Token): void {
+    if (!this.isStatementBoundary()) {
+      this.failAtLine(header.line, `Unexpected token "${this.peek().lexeme}" after the header.`, 'PARSE_TRAILING_TOKENS');
+    }
+  }
+
   private consumeDataType(message: string): string {
     const token = this.peek();
-    if (token.kind !== TokenKind.WORD || !DATA_TYPE_WORDS.has(token.normalized)) {
-      this.fail(token, message, 'PARSE_TYPE');
+    if (this.atNewLine() || token.kind !== TokenKind.WORD || !isDataTypeWord(token.normalized)) {
+      this.failExpected(message, 'PARSE_TYPE');
     }
 
     this.advance();
@@ -1338,8 +1800,8 @@ export class Parser {
   }
 
   private consume(expected: TokenKind, message: string): Token {
-    if (!this.match(expected)) {
-      this.fail(this.peek(), message, 'PARSE_TOKEN');
+    if (!this.match(expected) || this.atNewLine()) {
+      this.failExpected(message, 'PARSE_TOKEN');
     }
     return this.advance();
   }
@@ -1354,14 +1816,7 @@ export class Parser {
 
   private consumeWord(word: string, message: string): Token {
     if (!this.matchWord(word)) {
-      this.fail(this.peek(), message, 'PARSE_WORD');
-    }
-    return this.advance();
-  }
-
-  private consumeAnyWord(words: string[], message: string): Token {
-    if (!this.matchAnyWord(...words)) {
-      this.fail(this.peek(), message, 'PARSE_WORD');
+      this.failExpected(message, 'PARSE_WORD');
     }
     return this.advance();
   }
@@ -1383,47 +1838,39 @@ export class Parser {
       return false;
     }
 
-    return (
-      (canonical === 'FINSI' && this.matchWords(['FIN', 'SI'])) ||
-      (canonical === 'FINMIENTRAS' && this.matchWords(['FIN', 'MIENTRAS'])) ||
-      (canonical === 'FINPARA' && this.matchWords(['FIN', 'PARA'])) ||
-      (canonical === 'FINSEGUN' && this.matchWords(['FIN', 'SEGUN'])) ||
-      (canonical === 'FINPROCESO' && this.matchWords(['FIN', 'PROCESO'])) ||
-      (canonical === 'FINALGORITMO' && this.matchWords(['FIN', 'ALGORITMO'])) ||
-      (canonical === 'FINFUNCION' && this.matchWords(['FIN', 'FUNCION'])) ||
-      (canonical === 'FINSUBPROCESO' && this.matchWords(['FIN', 'SUBPROCESO'])) ||
-      (canonical === 'FINSUBALGORITMO' && this.matchWords(['FIN', 'SUBALGORITMO']))
-    );
+    const second = canonical.slice(3);
+    return this.matchWords(['FIN', second]);
   }
 
-  private consumeTerminatorWord(
-    canonical: string,
-    lazyWords: string[],
-    message: string
-  ): Token {
-    if (this.matchWord(canonical)) {
-      return this.advance();
-    }
-
-    if (this.settings.lazySyntax && this.matchWords(lazyWords)) {
-      this.advance();
-      return this.advance();
-    }
-
-    this.fail(this.peek(), message, 'PARSE_WORD');
+  private matchesAnyCloser(options: Array<{ canonical: string; words: string[] }>): boolean {
+    return options.some((option) => this.matchesTerminatorWord(option.canonical));
   }
 
-  private consumeAnyTerminatorWord(
+  // Missing closers are reported on the line of the block they should close.
+  private consumeCloser(
+    opener: Token,
     options: Array<{ canonical: string; words: string[] }>,
     message: string
   ): Token {
+    if (this.matchWord('SINO') || this.matchesDefaultCase()) {
+      this.fail(this.peek(), `"${this.peek().lexeme}" is not valid here.`, 'PARSE_MISPLACED_KEYWORD');
+    }
     for (const option of options) {
-      if (this.matchesTerminatorWord(option.canonical)) {
-        return this.consumeTerminatorWord(option.canonical, option.words, message);
+      if (this.matchWord(option.canonical)) {
+        return this.advance();
+      }
+      if (this.settings.lazySyntax && this.matchWords(option.words)) {
+        this.advance();
+        return this.advance();
       }
     }
 
-    this.fail(this.peek(), message, 'PARSE_WORD');
+    this.failAtLine(opener.line, message, 'PARSE_MISSING_CLOSER');
+  }
+
+  /** An operator token that continues the expression on the same line. */
+  private matchOperator(expected: TokenKind): boolean {
+    return this.match(expected) && !this.atNewLine();
   }
 
   private match(expected: TokenKind): boolean {
@@ -1445,12 +1892,14 @@ export class Parser {
 
   private advance(): Token {
     const token = this.tokens[this.position]!;
-    this.position += 1;
+    if (token.kind !== TokenKind.EOF) {
+      this.position += 1;
+    }
     return token;
   }
 
   private previous(): Token {
-    return this.tokens[this.position - 1]!;
+    return this.tokens[Math.max(this.position - 1, 0)]!;
   }
 
   private peek(): Token {
@@ -1463,6 +1912,27 @@ export class Parser {
 
   private isAtEnd(): boolean {
     return this.peek().kind === TokenKind.EOF;
+  }
+
+  // Something expected is missing. When the offending token already belongs
+  // to the next line, the error is reported on the line of the instruction
+  // being parsed, as PSeInt does.
+  private failExpected(message: string, code: string): never {
+    const token = this.peek();
+    if (this.position > this.statementStart && (token.line > this.previous().line || token.kind === TokenKind.EOF)) {
+      this.failAtLine(this.previous().line, message, code);
+    }
+    this.fail(token, message, code);
+  }
+
+  private failAtLine(line: number, message: string, code: string): never {
+    throw new ParserError({
+      message,
+      line,
+      column: 1,
+      severity: 'error',
+      code,
+    });
   }
 
   private fail(token: Token, message: string, code: string): never {

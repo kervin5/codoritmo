@@ -1,3 +1,4 @@
+import { normalizeIdentifier } from "./checker";
 import { Parser } from "./parser";
 import { normalizeEngineSettings } from "./settings";
 import {
@@ -11,6 +12,7 @@ import {
   isIntegerType,
   isLogicalType,
   isNumericType,
+  isTextType,
   MainRoutineNode,
   normalizeDataType,
   ParseResult,
@@ -18,6 +20,7 @@ import {
   Runtime,
   RoutineNode,
   StatementNode,
+  StaticType,
   typesCompatible,
 } from "./types";
 import { createOutputBuffer, formatRuntimeValue } from "./runtime";
@@ -31,6 +34,9 @@ interface Cell {
   initialized: boolean;
   protectedCounter: boolean;
   value: RuntimeValue;
+  /** How the variable came to exist: Definir, use, or as a parameter/return. */
+  origin?: "define" | "usage" | "param";
+  definedBy?: StatementNode;
 }
 
 interface ArrayValue {
@@ -55,7 +61,8 @@ class RuntimeError extends Error {
 class Scope {
   private readonly values = new Map<string, Cell>();
 
-  constructor(private readonly parent?: Scope) {}
+  /** Static types inferred for the routine this scope belongs to. */
+  constructor(readonly inferredTypes: Record<string, StaticType> = {}) {}
 
   define(name: string, initial: Partial<Cell> = {}): Cell {
     const cell: Cell = {
@@ -73,21 +80,24 @@ class Scope {
     return cell;
   }
 
-  resolve(name: string): Cell | null {
-    const local = this.values.get(name.toLowerCase());
-    if (local) {
-      return local;
-    }
+  unbind(name: string): void {
+    this.values.delete(name.toLowerCase());
+  }
 
-    return this.parent?.resolve(name) ?? null;
+  resolve(name: string): Cell | null {
+    return this.values.get(name.toLowerCase()) ?? null;
   }
 
   resolveLocal(name: string): Cell | null {
-    return this.values.get(name.toLowerCase()) ?? null;
+    return this.resolve(name);
   }
 
   hasLocal(name: string): boolean {
     return this.values.has(name.toLowerCase());
+  }
+
+  staticType(name: string): StaticType | undefined {
+    return this.inferredTypes[name.toLowerCase()];
   }
 }
 
@@ -111,6 +121,19 @@ function createDefaultValue(dataType: string | undefined): RuntimeValue {
   }
 }
 
+function defaultForStaticType(type: StaticType | undefined): ScalarValue {
+  switch (type) {
+    case "num":
+      return 0;
+    case "bool":
+      return false;
+    case "str":
+      return "";
+    default:
+      return null;
+  }
+}
+
 function inferDataType(value: RuntimeValue): string | undefined {
   if (typeof value === "boolean") {
     return DataType.LOGICO;
@@ -124,6 +147,21 @@ function inferDataType(value: RuntimeValue): string | undefined {
     return DataType.CARACTER;
   }
 
+  return undefined;
+}
+
+function staticTypeOfValue(value: RuntimeValue): StaticType | undefined {
+  if (typeof value === "number") return "num";
+  if (typeof value === "string") return "str";
+  if (typeof value === "boolean") return "bool";
+  return undefined;
+}
+
+function staticTypeOfDataType(dataType: string | undefined): StaticType | undefined {
+  if (!dataType) return undefined;
+  if (isNumericType(dataType)) return "num";
+  if (isLogicalType(dataType)) return "bool";
+  if (isTextType(dataType)) return "str";
   return undefined;
 }
 
@@ -141,7 +179,7 @@ function createArray(
       rest.length > 0
         ? createArray(rest, leafValue, initialized, dataType)
         : {
-            value: cloneValue(leafValue),
+            value: leafValue,
             initialized,
             protectedCounter: false,
             dataType,
@@ -150,29 +188,21 @@ function createArray(
   };
 }
 
-function cloneValue(value: RuntimeValue): RuntimeValue {
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
+function isArrayValue(value: RuntimeValue): value is ArrayValue {
+  return value !== null && typeof value === "object" && value.kind === "array";
+}
 
-  if (value.kind === "array") {
-    return {
-      kind: "array",
-      dimensions: [...value.dimensions],
-      items: value.items.map((item) =>
-        "kind" in item
-          ? (cloneValue(item) as ArrayValue)
-          : {
-              value: cloneValue(item.value),
-              initialized: item.initialized,
-              protectedCounter: item.protectedCounter,
-              dataType: item.dataType,
-            }
-      ),
-    };
+/** All element cells of an array, in row-major order. */
+function arrayLeaves(array: ArrayValue): Cell[] {
+  const cells: Cell[] = [];
+  for (const item of array.items) {
+    if ("kind" in item) {
+      cells.push(...arrayLeaves(item));
+    } else {
+      cells.push(item);
+    }
   }
-
-  return value;
+  return cells;
 }
 
 function toBoolean(value: RuntimeValue): boolean {
@@ -209,6 +239,20 @@ function toNumber(value: RuntimeValue): number {
 
 function toNumberOrString(value: RuntimeValue): number | string {
   return typeof value === "string" ? value : toNumber(value);
+}
+
+const numericInputPattern = /^[+-]?(\d+\.?\d*|\.\d+)$/;
+
+// Type of a value typed by the user at a Leer prompt.
+function guessInputType(input: string): StaticType {
+  if (numericInputPattern.test(input)) {
+    return "num";
+  }
+  const upper = input.toUpperCase();
+  if (upper === "VERDADERO" || upper === "FALSO") {
+    return "bool";
+  }
+  return "str";
 }
 
 export interface InterpreterOptions {
@@ -279,7 +323,7 @@ export class Interpreter {
     buffer: ReturnType<typeof createOutputBuffer>,
     routines: Map<string, RoutineNode>
   ): Promise<void> {
-    const scope = new Scope();
+    const scope = new Scope(main.inferredTypes);
     const context = this.createContext(runtime, buffer, routines);
     await this.executeBlock(main.body, scope, context);
   }
@@ -312,6 +356,25 @@ export class Interpreter {
     return undefined;
   }
 
+  private async evaluateCondition(
+    expression: ExpressionNode,
+    scope: Scope,
+    context: ExecutionContext
+  ): Promise<boolean> {
+    const value = await this.evaluateExpression(expression, scope, context);
+    if (typeof value === "boolean") {
+      return value;
+    }
+    if (value === null) {
+      return false;
+    }
+    this.runtimeError(
+      expression,
+      "La condición debe ser una expresión lógica.",
+      "RUNTIME_CONDITION_NOT_LOGICAL"
+    );
+  }
+
   private async executeStatement(
     statement: StatementNode,
     scope: Scope,
@@ -328,8 +391,22 @@ export class Interpreter {
               value: createDefaultValue(normalizedType ?? undefined),
               initialized: !context.settings.forceInitVars,
               dataType: normalizedType ?? undefined,
+              origin: "define",
+              definedBy: statement,
             });
             continue;
+          }
+
+          // A variable can only be defined before it is used (and only once).
+          if (
+            local.origin === "usage" ||
+            (local.origin === "define" && local.definedBy !== statement)
+          ) {
+            this.runtimeError(
+              statement,
+              `La variable "${name}" ya estaba definida o fue utilizada antes de Definir.`,
+              "RUNTIME_ALREADY_DEFINED"
+            );
           }
 
           this.applyDataType(local, normalizedType ?? "", context.settings);
@@ -344,18 +421,43 @@ export class Interpreter {
               scope,
               context
             );
-            const size = Number(value);
-            if (!Number.isInteger(size) || size <= 0) {
+            if (typeof value !== "number") {
+              this.runtimeError(
+                dimension,
+                "Las dimensiones deben ser numéricas.",
+                "RUNTIME_ARRAY_DIMENSION"
+              );
+            }
+            if (!Number.isInteger(value)) {
+              this.runtimeError(
+                dimension,
+                "Las dimensiones solo pueden ser números enteros.",
+                "RUNTIME_ARRAY_DIMENSION"
+              );
+            }
+            if (value < 0 || (value === 0 && !context.settings.allowResizeArrays)) {
               this.runtimeError(
                 dimension,
                 "Array dimensions must evaluate to positive integers.",
                 "RUNTIME_ARRAY_DIMENSION"
               );
             }
-            dimensions.push(size);
+            dimensions.push(value);
+          }
+
+          if (statement.resize) {
+            this.resizeArray(item.name, dimensions, scope, statement);
+            continue;
           }
 
           const existing = scope.resolve(item.name) ?? scope.define(item.name);
+          if (isArrayValue(existing.value)) {
+            this.runtimeError(
+              statement,
+              `El arreglo "${item.name}" ya fue dimensionado.`,
+              "RUNTIME_ARRAY_REDIMENSIONED"
+            );
+          }
           const leafType = existing.dataType;
           existing.value = createArray(
             dimensions,
@@ -379,6 +481,14 @@ export class Interpreter {
           context
         );
 
+        if (isArrayValue(value)) {
+          this.runtimeError(
+            statement,
+            "No se puede asignar un arreglo completo.",
+            "RUNTIME_ARRAY_ASSIGNMENT"
+          );
+        }
+
         // Type checking - only if target has a declared type
         if (target.dataType) {
           const valueType = inferDataType(value);
@@ -390,9 +500,7 @@ export class Interpreter {
             );
           }
 
-          // Check for integer truncation case (PSeInt error 314)
-          // When assigning a real to an integer (ENTERO/NUMERICO), it should error if the value has a decimal part
-          // REAL can accept decimal values, so only check for ENTERO/NUMERICO
+          // PSeInt error 314: an Entero variable cannot hold a decimal value.
           if (
             isIntegerType(target.dataType) &&
             typeof value === "number" &&
@@ -418,6 +526,13 @@ export class Interpreter {
             scope,
             context
           );
+          if (isArrayValue(value)) {
+            this.runtimeError(
+              expression,
+              "Faltan subíndices para el arreglo.",
+              "RUNTIME_ARRAY_MISSING_INDEX"
+            );
+          }
           const output = formatRuntimeValue(value);
           context.buffer.write(output, false);
           await context.runtime.write(output, false);
@@ -430,48 +545,23 @@ export class Interpreter {
       }
       case "read": {
         for (const target of statement.targets) {
-          const cell = await this.resolveReference(
-            target,
-            scope,
-            context,
-            "read_target"
-          );
-          const rawInput = await context.runtime.read();
-
-          // Convert input based on the cell's data type
-          if (cell.dataType) {
-            if (isNumericType(cell.dataType)) {
-              cell.value = toNumber(rawInput);
-            } else if (isLogicalType(cell.dataType)) {
-              cell.value = toBoolean(rawInput);
-            } else {
-              cell.value = rawInput;
-            }
-          } else {
-            cell.value = rawInput;
-          }
-
-          cell.initialized = true;
-          cell.dataType ??= inferDataType(cell.value);
+          await this.readInto(target, statement, scope, context);
         }
         return undefined;
       }
       case "if": {
-        const condition = await this.evaluateExpression(
+        const branch = (await this.evaluateCondition(
           statement.condition,
           scope,
           context
-        );
-        const branch = toBoolean(condition)
+        ))
           ? statement.thenBranch
           : statement.elseBranch;
         return this.executeBlock(branch, scope, context);
       }
       case "while":
         while (
-          toBoolean(
-            await this.evaluateExpression(statement.condition, scope, context)
-          )
+          await this.evaluateCondition(statement.condition, scope, context)
         ) {
           const loopResult = await this.executeBlock(
             statement.body,
@@ -484,24 +574,6 @@ export class Interpreter {
         }
         return undefined;
       case "repeat":
-        if (statement.mode === "until") {
-          do {
-            const loopResult = await this.executeBlock(
-              statement.body,
-              scope,
-              context
-            );
-            if (loopResult !== undefined) {
-              return loopResult;
-            }
-          } while (
-            !toBoolean(
-              await this.evaluateExpression(statement.condition, scope, context)
-            )
-          );
-          return undefined;
-        }
-
         do {
           const loopResult = await this.executeBlock(
             statement.body,
@@ -512,9 +584,8 @@ export class Interpreter {
             return loopResult;
           }
         } while (
-          toBoolean(
-            await this.evaluateExpression(statement.condition, scope, context)
-          )
+          (await this.evaluateCondition(statement.condition, scope, context)) ===
+          (statement.mode === "while")
         );
         return undefined;
       case "for": {
@@ -584,46 +655,33 @@ export class Interpreter {
           scope,
           context
         );
-        if (
-          !collection ||
-          typeof collection !== "object" ||
-          collection.kind !== "array"
-        ) {
+        if (!isArrayValue(collection)) {
           this.runtimeError(
             statement.collection,
             "Para Cada requires an array collection.",
             "RUNTIME_FOR_EACH"
           );
         }
-        const target = this.resolveIdentifierCell(
-          statement.variable,
-          scope,
-          statement,
-          "write"
-        );
-        for (const item of collection.items) {
-          if ("kind" in item) {
-            target.value = item;
-            target.initialized = true;
-          } else {
-            if (context.settings.forceInitVars && !item.initialized) {
-              this.runtimeError(
-                statement.collection,
-                "Cannot iterate over an uninitialized array element.",
-                "RUNTIME_UNINITIALIZED"
-              );
+        // The loop variable is an alias of each element: assigning to it
+        // (or reading into it) changes the array.
+        const previous = scope.resolveLocal(statement.variable);
+        try {
+          for (const item of arrayLeaves(collection)) {
+            scope.bind(statement.variable, item);
+            const loopResult = await this.executeBlock(
+              statement.body,
+              scope,
+              context
+            );
+            if (loopResult !== undefined) {
+              return loopResult;
             }
-            target.value = item.value;
-            target.initialized = item.initialized;
           }
-          target.dataType ??= inferDataType(target.value);
-          const loopResult = await this.executeBlock(
-            statement.body,
-            scope,
-            context
-          );
-          if (loopResult !== undefined) {
-            return loopResult;
+        } finally {
+          if (previous) {
+            scope.bind(statement.variable, previous);
+          } else {
+            scope.unbind(statement.variable);
           }
         }
         return undefined;
@@ -634,6 +692,13 @@ export class Interpreter {
           scope,
           context
         );
+        if (typeof value === "boolean" || isArrayValue(value)) {
+          this.runtimeError(
+            statement.expression,
+            "La expresión de Segun debe ser numérica o de texto.",
+            "RUNTIME_SWITCH_TYPE"
+          );
+        }
         if (
           context.settings.integerOnlySwitch &&
           !Number.isInteger(toNumber(value))
@@ -664,9 +729,21 @@ export class Interpreter {
                 "RUNTIME_SWITCH_INTEGER_ONLY"
               );
             }
+            if (
+              typeof resolved === "boolean" ||
+              (value !== null &&
+                resolved !== null &&
+                typeof resolved !== typeof value)
+            ) {
+              this.runtimeError(
+                caseValue,
+                "El valor de la opción no coincide con el tipo de la expresión de Segun.",
+                "RUNTIME_SWITCH_TYPE"
+              );
+            }
             caseValues.push(resolved);
           }
-          if (caseValues.some((candidate) => candidate === value)) {
+          if (caseValues.some((candidate) => this.valuesEqual(candidate, value))) {
             matched = true;
             const caseResult = await this.executeBlock(
               switchCase.body,
@@ -687,7 +764,7 @@ export class Interpreter {
         return undefined;
       }
       case "expression":
-        await this.evaluateExpression(statement.expression, scope, context);
+        await this.evaluateExpression(statement.expression, scope, context, true);
         return undefined;
       case "clear":
         context.buffer.clear();
@@ -711,6 +788,147 @@ export class Interpreter {
     }
   }
 
+  private async readInto(
+    target: AssignableExpressionNode,
+    statement: StatementNode,
+    scope: Scope,
+    context: ExecutionContext
+  ): Promise<void> {
+    const cell = await this.resolveReference(
+      target,
+      scope,
+      context,
+      "read_target"
+    );
+    if (isArrayValue(cell.value)) {
+      this.runtimeError(
+        statement,
+        "Faltan subíndices para el arreglo.",
+        "RUNTIME_ARRAY_MISSING_INDEX"
+      );
+    }
+
+    let rawInput: string;
+    try {
+      rawInput = await context.runtime.read();
+    } catch (error) {
+      this.runtimeError(
+        statement,
+        `Sin entradas disponibles${error instanceof Error && error.message ? ` (${error.message})` : ""}.`,
+        "RUNTIME_NO_INPUT"
+      );
+    }
+
+    // The type the variable must hold: from Definir, from what the program
+    // does with it elsewhere (static inference), or from its current value.
+    const baseName = this.baseName(target);
+    const expected =
+      staticTypeOfDataType(cell.dataType) ??
+      scope.staticType(baseName) ??
+      (cell.initialized ? staticTypeOfValue(cell.value) : undefined);
+
+    let input = rawInput;
+    const upper = input.toUpperCase();
+    if (upper === "VERDADERO" || upper === "FALSO") {
+      input = upper;
+    }
+    if (expected === "bool" && input.length === 1) {
+      const letter = input.toUpperCase();
+      if (letter === "F" || letter === "0") input = "FALSO";
+      if (letter === "V" || letter === "1") input = "VERDADERO";
+    }
+
+    const guessed = guessInputType(input);
+    const finalType = expected ?? guessed;
+    if (finalType !== "str" && guessed !== finalType) {
+      this.runtimeError(
+        statement,
+        `No coinciden los tipos (${baseName}).`,
+        "RUNTIME_INPUT_TYPE"
+      );
+    }
+    if (
+      finalType === "num" &&
+      isIntegerType(cell.dataType) &&
+      input.includes(".")
+    ) {
+      this.runtimeError(
+        statement,
+        `No coinciden los tipos (${baseName}), el valor ingresado debe ser un entero.`,
+        "RUNTIME_INPUT_INTEGER"
+      );
+    }
+
+    cell.value =
+      finalType === "num"
+        ? Number(input)
+        : finalType === "bool"
+          ? input === "VERDADERO"
+          : rawInput;
+    cell.initialized = true;
+    cell.dataType ??= inferDataType(cell.value);
+  }
+
+  private baseName(target: ExpressionNode): string {
+    if (target.kind === "identifier") return target.name;
+    if (target.kind === "arrayAccess") return this.baseName(target.target);
+    return "";
+  }
+
+  private resizeArray(
+    name: string,
+    dimensions: number[],
+    scope: Scope,
+    statement: StatementNode
+  ): void {
+    const cell = scope.resolve(name);
+    if (!cell || !isArrayValue(cell.value)) {
+      this.runtimeError(
+        statement,
+        `"${name}" no es un arreglo.`,
+        "RUNTIME_ARRAY_TARGET"
+      );
+    }
+    const current = cell.value;
+    if (current.dimensions.length !== dimensions.length) {
+      this.runtimeError(
+        statement,
+        "No se puede cambiar la cantidad de dimensiones de un arreglo.",
+        "RUNTIME_RESIZE_DIMENSIONS"
+      );
+    }
+    const leafType =
+      cell.dataType ??
+      arrayLeaves(current).find((leaf) => leaf.dataType)?.dataType;
+    const resized = createArray(
+      dimensions,
+      leafType ? createDefaultValue(leafType) : null,
+      leafType ? !this.settings.forceInitVars : false,
+      leafType
+    );
+    const copy = (from: ArrayValue, to: ArrayValue) => {
+      const shared = Math.min(from.items.length, to.items.length);
+      for (let index = 0; index < shared; index += 1) {
+        const source = from.items[index]!;
+        const destination = to.items[index]!;
+        if ("kind" in source && "kind" in destination) {
+          copy(source, destination);
+        } else if (!("kind" in source)) {
+          to.items[index] = source;
+        }
+      }
+    };
+    copy(current, resized);
+    cell.value = resized;
+  }
+
+  private valuesEqual(left: RuntimeValue, right: RuntimeValue): boolean {
+    if (typeof left === "number" && typeof right === "number") {
+      return left === right;
+    }
+    return left === right;
+  }
+
   private applyDataType(
     cell: Cell,
     dataType: string,
@@ -718,11 +936,7 @@ export class Interpreter {
   ): void {
     cell.dataType = dataType;
 
-    if (
-      cell.value &&
-      typeof cell.value === "object" &&
-      cell.value.kind === "array"
-    ) {
+    if (isArrayValue(cell.value)) {
       this.applyArrayLeafType(cell.value, dataType, !settings.forceInitVars);
       cell.initialized = true;
       return;
@@ -758,10 +972,22 @@ export class Interpreter {
     }
   }
 
+  // Uninitialized variables read as the default value of their type.
+  private readCellValue(cell: Cell, name: string, scope: Scope): RuntimeValue {
+    if (cell.initialized || cell.value !== null) {
+      return cell.value;
+    }
+    return (
+      createDefaultValue(cell.dataType) ??
+      defaultForStaticType(scope.staticType(name))
+    );
+  }
+
   private async evaluateExpression(
     expression: ExpressionNode,
     scope: Scope,
-    context: ExecutionContext
+    context: ExecutionContext,
+    asStatement = false
   ): Promise<RuntimeValue> {
     switch (expression.kind) {
       case "literal":
@@ -770,12 +996,15 @@ export class Interpreter {
         return this.evaluateExpression(expression.expression, scope, context);
       case "identifier": {
         const routine = context.routines.get(expression.name.toLowerCase());
-        if (
-          !scope.resolve(expression.name) &&
-          routine &&
-          routine.params.length === 0
-        ) {
-          return this.callRoutine(routine, [], scope, context);
+        if (!scope.resolve(expression.name) && routine) {
+          if (routine.params.length > 0) {
+            this.runtimeError(
+              expression,
+              `Faltan argumentos para "${routine.name}".`,
+              "RUNTIME_ARGUMENT_COUNT"
+            );
+          }
+          return this.callRoutine(routine, [], scope, context, expression, asStatement);
         }
         const cell = this.resolveIdentifierCell(
           expression.name,
@@ -783,7 +1012,7 @@ export class Interpreter {
           expression,
           "read"
         );
-        return cell.value;
+        return this.readCellValue(cell, expression.name, scope);
       }
       case "arrayAccess": {
         const cell = await this.resolveReference(
@@ -792,18 +1021,19 @@ export class Interpreter {
           context,
           "read"
         );
-        return cell.value;
+        return this.readCellValue(cell, this.baseName(expression), scope);
       }
       case "call": {
         const routine = context.routines.get(expression.callee.toLowerCase());
         if (routine) {
-          return this.callRoutine(routine, expression.args, scope, context);
+          return this.callRoutine(routine, expression.args, scope, context, expression, asStatement);
         }
         return this.callBuiltIn(
           expression.callee,
           expression.args,
           scope,
-          context
+          context,
+          expression
         );
       }
       case "unary": {
@@ -886,8 +1116,14 @@ export class Interpreter {
       case "*":
         return toNumber(left) * toNumber(right);
       case "/":
+        if (toNumber(right) === 0) {
+          this.runtimeError(expression, "División por cero.", "RUNTIME_DIVISION_BY_ZERO");
+        }
         return toNumber(left) / toNumber(right);
       case "%":
+        if (toNumber(right) === 0) {
+          this.runtimeError(expression, "División por cero.", "RUNTIME_DIVISION_BY_ZERO");
+        }
         return toNumber(left) % toNumber(right);
       case "^":
         return Math.pow(toNumber(left), toNumber(right));
@@ -931,6 +1167,7 @@ export class Interpreter {
         value: null,
         initialized: false,
         dataType: undefined,
+        origin: "usage",
       });
     }
 
@@ -987,23 +1224,33 @@ export class Interpreter {
     mode: ReferenceMode
   ): Promise<Cell> {
     if (expression.kind === "identifier") {
-      return this.resolveIdentifierCell(
+      const cell = this.resolveIdentifierCell(
         expression.name,
         scope,
         expression,
         mode
       );
+      if (mode !== "read" && isArrayValue(cell.value)) {
+        this.runtimeError(
+          expression,
+          `Faltan subíndices para el arreglo (${expression.name}).`,
+          "RUNTIME_ARRAY_MISSING_INDEX"
+        );
+      }
+      return cell;
     }
 
-    const base = await this.evaluateExpression(
-      expression.target,
-      scope,
-      context
-    );
-    if (!base || typeof base !== "object" || base.kind !== "array") {
+    const baseCell =
+      expression.target.kind === "identifier"
+        ? scope.resolve(expression.target.name)
+        : null;
+    const base = baseCell
+      ? baseCell.value
+      : await this.evaluateExpression(expression.target, scope, context);
+    if (!isArrayValue(base)) {
       this.runtimeError(
         expression,
-        "Expected an array target.",
+        `La variable (${this.baseName(expression)}) no es un arreglo.`,
         "RUNTIME_ARRAY_TARGET"
       );
     }
@@ -1057,6 +1304,14 @@ export class Interpreter {
     indices: number[],
     expression: ArrayAccessExpressionNode
   ): Cell {
+    if (indices.length !== array.dimensions.length) {
+      this.runtimeError(
+        expression,
+        "La cantidad de subíndices no coincide con las dimensiones del arreglo.",
+        "RUNTIME_ARRAY_DIMENSION"
+      );
+    }
+
     let current: ArrayValue | Cell = array;
 
     for (
@@ -1076,7 +1331,7 @@ export class Interpreter {
       const offset = this.settings.baseZeroArrays
         ? requestedIndex
         : requestedIndex - 1;
-      const dimension = "kind" in current ? current.dimensions[0] : 0;
+      const dimension = "kind" in current ? current.items.length : 0;
       if (!("kind" in current) || offset < 0 || offset >= dimension) {
         this.runtimeError(
           expression,
@@ -1119,49 +1374,81 @@ export class Interpreter {
     routine: RoutineNode,
     args: ExpressionNode[],
     callerScope: Scope,
-    context: ExecutionContext
+    context: ExecutionContext,
+    callNode: ExpressionNode,
+    asStatement: boolean
   ): Promise<RuntimeValue> {
-    const scope = new Scope(callerScope);
+    if (args.length !== routine.params.length) {
+      this.runtimeError(
+        callNode,
+        `"${routine.name}" espera ${routine.params.length} argumento(s).`,
+        "RUNTIME_ARGUMENT_COUNT"
+      );
+    }
+    if (!asStatement && !routine.returnTarget) {
+      this.runtimeError(
+        callNode,
+        `"${routine.name}" no devuelve ningún valor.`,
+        "RUNTIME_NO_RETURN_VALUE"
+      );
+    }
+
+    // Each call gets its own variables: routines do not see the caller's.
+    const scope = new Scope(routine.inferredTypes);
 
     for (let index = 0; index < routine.params.length; index += 1) {
       const parameter = routine.params[index]!;
-      const argument = args[index];
+      const argument = args[index]!;
       if (parameter.byReference) {
-        if (
-          !argument ||
-          (argument.kind !== "identifier" && argument.kind !== "arrayAccess")
-        ) {
+        if (argument.kind !== "identifier" && argument.kind !== "arrayAccess") {
           this.runtimeError(
-            argument ?? null,
+            argument,
             "By-reference parameters require an assignable argument.",
             "RUNTIME_BY_REF"
           );
         }
-        scope.bind(
-          parameter.name,
-          await this.resolveReference(argument, callerScope, context, "write")
-        );
-      } else {
-        const value = argument
-          ? cloneValue(
-              await this.evaluateExpression(argument, callerScope, context)
-            )
-          : null;
-        scope.define(parameter.name, {
-          value,
-          initialized: argument !== undefined,
-          dataType: inferDataType(value),
-        });
+        const cell =
+          argument.kind === "identifier"
+            ? this.resolveIdentifierCell(argument.name, callerScope, argument, "write")
+            : await this.resolveReference(argument, callerScope, context, "write");
+        scope.bind(parameter.name, cell);
+        continue;
       }
+
+      const value = await this.evaluateExpression(argument, callerScope, context);
+      if (isArrayValue(value)) {
+        // Arrays are always shared with the caller.
+        if (parameter.explicitByValue) {
+          this.runtimeError(
+            argument,
+            "Los arreglos solo pueden pasarse por referencia.",
+            "RUNTIME_ARRAY_BY_VALUE"
+          );
+        }
+        const cell =
+          argument.kind === "identifier" ? callerScope.resolve(argument.name) : null;
+        if (cell) {
+          scope.bind(parameter.name, cell);
+        } else {
+          scope.define(parameter.name, { value, initialized: true, origin: "param" });
+        }
+        continue;
+      }
+
+      scope.define(parameter.name, {
+        value,
+        initialized: true,
+        dataType: inferDataType(value),
+        origin: "param",
+      });
     }
 
-    const implicitReturnTarget =
-      routine.returnTarget ??
-      (routine.headerKind === "Funcion" ? routine.name : undefined);
+    const implicitReturnTarget = routine.returnTarget;
     if (implicitReturnTarget && !scope.hasLocal(implicitReturnTarget)) {
       scope.define(implicitReturnTarget, {
         value: null,
         initialized: false,
+        origin: "param",
       });
     }
 
@@ -1171,7 +1458,8 @@ export class Interpreter {
     }
 
     if (implicitReturnTarget) {
-      return scope.resolve(implicitReturnTarget)?.value ?? null;
+      const cell = scope.resolve(implicitReturnTarget);
+      return cell ? this.readCellValue(cell, implicitReturnTarget, scope) : null;
     }
 
     return null;
@@ -1181,12 +1469,10 @@ export class Interpreter {
     name: string,
     args: ExpressionNode[],
     scope: Scope,
-    context: ExecutionContext
+    context: ExecutionContext,
+    node: ExpressionNode
   ): Promise<RuntimeValue> {
-    const normalized = name
-      .normalize("NFD")
-      .replace(/\p{Diacritic}/gu, "")
-      .toUpperCase();
+    const normalized = normalizeIdentifier(name);
     const values: RuntimeValue[] = [];
     for (const arg of args) {
       values.push(await this.evaluateExpression(arg, scope, context));
@@ -1196,6 +1482,8 @@ export class Interpreter {
       !context.settings.enableStringFunctions &&
       [
         "CONCATENAR",
+        "CONVERTIRANUMERO",
+        "CONVERTIRATEXTO",
         "LONGITUD",
         "MAYUSCULAS",
         "MINUSCULAS",
@@ -1203,50 +1491,105 @@ export class Interpreter {
       ].includes(normalized)
     ) {
       this.runtimeError(
-        args[0] ?? null,
+        node,
         `String function "${name}" is disabled in the current profile.`,
         "RUNTIME_STRING_FUNCTION_DISABLED"
       );
     }
 
+    const arg = (index: number) => toNumber(values[index] ?? 0);
+    const domainError = (message: string): never =>
+      this.runtimeError(node, message, "RUNTIME_DOMAIN");
+
     switch (normalized) {
       case "ABS":
-        return Math.abs(toNumber(values[0] ?? 0));
+        return Math.abs(arg(0));
       case "ACOS":
-        return Math.acos(toNumber(values[0] ?? 0));
+        if (arg(0) < -1 || arg(0) > 1) {
+          domainError("Argumento inválido para la función ACOS (debe estar en [-1;+1]).");
+        }
+        return Math.acos(arg(0));
       case "ASEN":
-      case "ASIN":
-        return Math.asin(toNumber(values[0] ?? 0));
+        if (arg(0) < -1 || arg(0) > 1) {
+          domainError("Argumento inválido para la función ASEN (debe estar en [-1;+1]).");
+        }
+        return Math.asin(arg(0));
       case "ATAN":
-        return Math.atan(toNumber(values[0] ?? 0));
-      case "AZAR":
-        return Math.floor(this.random() * toNumber(values[0] ?? 0));
+        return Math.atan(arg(0));
+      case "AZAR": {
+        const limit = Math.trunc(arg(0));
+        if (limit <= 0) {
+          domainError("Azar de 0 o negativo.");
+        }
+        return Math.floor(this.random() * limit);
+      }
+      case "ALEATORIO": {
+        let low = Math.trunc(arg(0));
+        let high = Math.trunc(arg(1));
+        if (high < low) {
+          [low, high] = [high, low];
+        }
+        return low + Math.floor(this.random() * (high - low + 1));
+      }
       case "CONCATENAR":
         return values.map((value) => formatRuntimeValue(value)).join("");
-      case "CONVERTIRANUMERO":
-        return Number(values[0] ?? 0);
+      case "CONVERTIRANUMERO": {
+        const text = formatRuntimeValue(values[0] ?? "").trim();
+        if (!numericInputPattern.test(text)) {
+          this.runtimeError(
+            node,
+            `No se puede convertir "${text}" a número.`,
+            "RUNTIME_CONVERSION"
+          );
+        }
+        return Number(text);
+      }
       case "CONVERTIRATEXTO":
         return formatRuntimeValue(values[0] ?? "");
       case "COS":
-        return Math.cos(toNumber(values[0] ?? 0));
+        return Math.cos(arg(0));
+      case "EULER":
+        return Math.E;
       case "EXP":
-        return Math.exp(toNumber(values[0] ?? 0));
+        return Math.exp(arg(0));
+      case "FECHAACTUAL": {
+        const now = new Date();
+        return (
+          now.getUTCFullYear() * 10000 +
+          (now.getUTCMonth() + 1) * 100 +
+          now.getUTCDate()
+        );
+      }
+      case "HORAACTUAL": {
+        const now = new Date();
+        return now.getHours() * 10000 + now.getMinutes() * 100 + now.getSeconds();
+      }
       case "LN":
-        return Math.log(toNumber(values[0] ?? 0));
+        if (arg(0) <= 0) {
+          domainError("Logaritmo de 0 o negativo.");
+        }
+        return Math.log(arg(0));
       case "LONGITUD":
         return formatRuntimeValue(values[0] ?? "").length;
       case "MAYUSCULAS":
         return formatRuntimeValue(values[0] ?? "").toUpperCase();
       case "MINUSCULAS":
         return formatRuntimeValue(values[0] ?? "").toLowerCase();
+      case "PI":
+        return Math.PI;
       case "RAIZ":
       case "RC":
-        return Math.sqrt(toNumber(values[0] ?? 0));
-      case "REDON":
-        return Math.round(toNumber(values[0] ?? 0));
+        if (arg(0) < 0) {
+          domainError("Raíz cuadrada de número negativo.");
+        }
+        return Math.sqrt(arg(0));
+      case "REDON": {
+        // Half away from zero: redon(-2.5) is -3.
+        const value = arg(0);
+        return Math.trunc(value + (value < 0 ? -0.5 : 0.5));
+      }
       case "SEN":
-      case "SIN":
-        return Math.sin(toNumber(values[0] ?? 0));
+        return Math.sin(arg(0));
       case "SUBCADENA": {
         const source = formatRuntimeValue(values[0] ?? "");
         const startIndex = Math.max(
@@ -1262,12 +1605,23 @@ export class Interpreter {
           : source.slice(startIndex - 1, endIndex);
       }
       case "TAN":
-        return Math.tan(toNumber(values[0] ?? 0));
-      case "TRUNC":
-        return Math.trunc(toNumber(values[0] ?? 0));
+        return Math.tan(arg(0));
+      case "TRUNC": {
+        // Values within 1e-11 of the next integer (what the user sees once
+        // output is rounded to 10 decimals) truncate to it: trunc(100*0.57)
+        // is 57, not 56.
+        const value = arg(0);
+        let truncated = Math.trunc(value);
+        if (truncated + 1 - value < 1e-11) {
+          truncated += 1;
+        } else if (truncated - 1 - value > -1e-11) {
+          truncated -= 1;
+        }
+        return truncated;
+      }
       default:
         this.runtimeError(
-          args[0] ?? null,
+          node,
           `Unknown function "${name}".`,
           "RUNTIME_FUNCTION"
         );

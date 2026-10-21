@@ -9,9 +9,11 @@ import { generatedProfiles } from "./school-profiles";
 export const defaultEngineSettings: EngineSettings = {
   forceDefineVars: false,
   forceInitVars: false,
+  forceSemicolon: false,
   baseZeroArrays: false,
   allowConcatenation: true,
   allowDynamicDimensions: true,
+  allowResizeArrays: true,
   overloadEqual: false,
   colloquialConditions: true,
   lazySyntax: true,
@@ -46,12 +48,13 @@ export const engineSettingDefinitions: EngineSettingDefinition[] = [
     status: "implemented",
   },
   {
+    key: "forceSemicolon",
     upstreamName: "force_semicolon",
     label: "Require Semicolons",
     description:
-      "Still missing. The parser does not track line terminators tightly enough yet.",
+      "Requires a ; at the end of every sequential instruction (assignments, Leer, Escribir, Definir, calls...).",
     scope: "parser",
-    status: "missing",
+    status: "implemented",
   },
   {
     key: "baseZeroArrays",
@@ -96,6 +99,15 @@ export const engineSettingDefinitions: EngineSettingDefinition[] = [
     status: "implemented",
   },
   {
+    key: "allowResizeArrays",
+    upstreamName: "allow_resize_arrays",
+    label: "Allow Redimensionar",
+    description:
+      "Enables Redimensionar to change the size of an existing array (and allows dimensions of size 0).",
+    scope: "parser",
+    status: "implemented",
+  },
+  {
     key: "overloadEqual",
     upstreamName: "overload_equal",
     label: "Allow = Assignment",
@@ -117,7 +129,7 @@ export const engineSettingDefinitions: EngineSettingDefinition[] = [
     upstreamName: "lazy_syntax",
     label: "Flexible Syntax",
     description:
-      "Implemented for split Fin ... forms, optional Hacer/Entonces, Mientras Que, and Desde/Con Paso variations. Other desktop shortcuts remain missing.",
+      "Split Fin ... forms, optional Hacer/Entonces (and Hacer after Segun), Mientras Que, Desde/Con Paso variations, Caso/Opcion/Si Es labels, and Escribir/Leer lists separated by spaces.",
     scope: "parser",
     status: "partial",
   },
@@ -301,7 +313,7 @@ export const engineProfiles: EngineProfile[] = [
       overloadEqual: true,
     }
   ),
-  // Merge in all 385 school profiles from PSeInt
+  // Merge in the school profiles shipped with upstream PSeInt
   ...generatedProfiles.map((p) =>
     createProfile(p.id, p.label, p.description, p.settings)
   ),
@@ -342,6 +354,7 @@ const fixtureFlagMap: Record<string, keyof EngineSettings> = {
   allow_dinamyc_dimensions: "allowDynamicDimensions",
   allow_for_each: "allowForEach",
   allow_repeat_while: "allowRepeatWhile",
+  allow_resize_arrays: "allowResizeArrays",
   allow_word_operators: "wordOperators",
   base_zero_arrays: "baseZeroArrays",
   coloquial_conditions: "colloquialConditions",
@@ -350,6 +363,7 @@ const fixtureFlagMap: Record<string, keyof EngineSettings> = {
   enable_user_functions: "enableUserFunctions",
   force_define_vars: "forceDefineVars",
   force_init_vars: "forceInitVars",
+  force_semicolon: "forceSemicolon",
   integer_only_switch: "integerOnlySwitch",
   lazy_syntax: "lazySyntax",
   overload_equal: "overloadEqual",

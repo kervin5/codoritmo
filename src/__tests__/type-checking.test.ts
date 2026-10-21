@@ -10,7 +10,9 @@ FinProceso`;
     const controller = createBrowserRuntime();
     const result = await new Interpreter().run(source, controller.runtime);
 
-    expect(result.state).toBe("runtime_error");
+    // PSeInt reports this before running (SynError 125).
+    expect(result.state).toBe("parse_error");
+    expect(result.diagnostics[0]?.line).toBe(3);
   });
 
   it("should raise error when assigning string to integer array", async () => {
@@ -25,7 +27,9 @@ FinProceso`;
     const controller = createBrowserRuntime();
     const result = await new Interpreter().run(source, controller.runtime);
 
-    expect(result.state).toBe("runtime_error");
+    // PSeInt reports this before running (SynError 125).
+    expect(result.state).toBe("parse_error");
+    expect(result.diagnostics[0]?.line).toBe(6);
   });
 
   it("should allow assigning integer to integer variable", async () => {

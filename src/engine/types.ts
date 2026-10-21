@@ -55,11 +55,10 @@ export function isLogicalType(type: DataType | string): boolean {
   return normalized === DataType.LOGICO;
 }
 
-// Check if a type is integer (ENTERO or NUMERICO, not REAL)
+// Check if a type is integer (only ENTERO; NUMERICO is a real in PSeInt)
 export function isIntegerType(type: DataType | string | undefined): boolean {
   if (!type) return false;
-  const normalized = type.toUpperCase();
-  return normalized === DataType.ENTERO || normalized === DataType.NUMERICO;
+  return type.toUpperCase() === DataType.ENTERO;
 }
 
 // Normalize a data type string to a DataType, or return null if invalid
@@ -70,12 +69,39 @@ export function normalizeDataType(type: string | undefined): DataType | null {
     .replace(/\p{Diacritic}/gu, "")
     .toUpperCase();
 
-  // Check if it's a valid DataType by checking against our enum
-  if (Object.values(DataType).includes(normalized as DataType)) {
-    return normalized as DataType;
-  }
+  return DATA_TYPE_SYNONYMS[normalized] ?? null;
+}
 
-  return null;
+// Type names accepted after Definir ... Como (and Es/Son), singular and
+// plural, as listed in upstream PSeInt's keyword table. Numerico/Numero are
+// reals, not integers.
+const DATA_TYPE_SYNONYMS: Record<string, DataType> = {
+  ENTERO: DataType.ENTERO,
+  ENTERA: DataType.ENTERO,
+  ENTEROS: DataType.ENTERO,
+  ENTERAS: DataType.ENTERO,
+  REAL: DataType.REAL,
+  REALES: DataType.REAL,
+  NUMERO: DataType.REAL,
+  NUMEROS: DataType.REAL,
+  NUMERICO: DataType.REAL,
+  NUMERICOS: DataType.REAL,
+  NUMERICA: DataType.REAL,
+  NUMERICAS: DataType.REAL,
+  LOGICO: DataType.LOGICO,
+  LOGICOS: DataType.LOGICO,
+  LOGICA: DataType.LOGICO,
+  LOGICAS: DataType.LOGICO,
+  CARACTER: DataType.CARACTER,
+  CARACTERES: DataType.CARACTER,
+  CADENA: DataType.CARACTER,
+  CADENAS: DataType.CARACTER,
+  TEXTO: DataType.CARACTER,
+  TEXTOS: DataType.CARACTER,
+};
+
+export function isDataTypeWord(normalizedWord: string): boolean {
+  return normalizedWord in DATA_TYPE_SYNONYMS;
 }
 
 // Get the category of a type
@@ -182,19 +208,28 @@ export interface Token {
   line: number;
   column: number;
   offset: number;
+  /** Whether whitespace (or the start of a line) precedes this token. */
+  spaceBefore?: boolean;
 }
 
 export interface ParameterNode {
   name: string;
   byReference: boolean;
+  /** Declared with Por Valor / Por Copia (arrays cannot be passed this way). */
+  explicitByValue?: boolean;
   span?: SourceSpan;
 }
+
+/** Static type inferred for a variable (or an array's elements). */
+export type StaticType = "num" | "bool" | "str";
 
 export interface MainRoutineNode {
   type: "MainRoutine";
   headerKind: "Proceso" | "Algoritmo";
   name: string;
   body: StatementNode[];
+  /** Filled by the static checker: variable name (lowercase) -> type. */
+  inferredTypes?: Record<string, StaticType>;
   span?: SourceSpan;
 }
 
@@ -205,6 +240,8 @@ export interface RoutineNode {
   returnTarget?: string;
   params: ParameterNode[];
   body: StatementNode[];
+  /** Filled by the static checker: variable name (lowercase) -> type. */
+  inferredTypes?: Record<string, StaticType>;
   span?: SourceSpan;
 }
 
@@ -231,6 +268,8 @@ export interface DimensionItemNode {
 export interface DimensionStatementNode {
   kind: "dimension";
   items: DimensionItemNode[];
+  /** Redimensionar: resize an existing array, keeping overlapping values. */
+  resize?: boolean;
   span?: SourceSpan;
 }
 
@@ -434,9 +473,11 @@ export type JavaScriptExportTarget = "browser" | "node";
 export interface EngineSettings {
   forceDefineVars: boolean;
   forceInitVars: boolean;
+  forceSemicolon: boolean;
   baseZeroArrays: boolean;
   allowConcatenation: boolean;
   allowDynamicDimensions: boolean;
+  allowResizeArrays: boolean;
   overloadEqual: boolean;
   colloquialConditions: boolean;
   lazySyntax: boolean;
