@@ -84,7 +84,7 @@ function PrototypeSwitcher({ index }: { index: number }) {
   }, []);
 
   return (
-    <div className="fixed right-4 bottom-[118px] z-[100] scale-90 opacity-80 hover:opacity-100 flex items-center gap-1 rounded-full bg-[#FF3D7F] p-1 text-white shadow-[0_8px_30px_rgba(255,61,127,0.45)]">
+    <div className="fixed top-[40px] left-1/2 -translate-x-1/2 z-[100] scale-75 opacity-60 hover:opacity-100 flex items-center gap-1 rounded-full bg-[#FF3D7F] p-1 text-white shadow-[0_8px_30px_rgba(255,61,127,0.45)]">
       <button className="rounded-full px-2.5 py-1 hover:bg-white/20" onClick={() => go(-1)} type="button">
         ←
       </button>

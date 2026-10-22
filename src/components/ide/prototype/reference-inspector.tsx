@@ -21,7 +21,7 @@ export interface ReferenceEntry {
 }
 
 const normalize = (word: string) =>
-  word.normalize("NFD").replace(/\p{Diacritic}/gu, "").toUpperCase();
+  word.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 
 // Words that belong to a structure without being its first keyword.
 const ALIASES: Record<string, string> = {
@@ -56,14 +56,16 @@ export function useReferenceCatalog(dictionary: Dictionary, settings: EngineSett
     const byWord = new Map<string, ReferenceEntry>();
     for (const entry of entries) {
       const key = normalize(entry.label);
-      if (!byWord.has(key)) byWord.set(key, entry);
+      if (key && !byWord.has(key)) byWord.set(key, entry);
       const first = normalize(entry.example.split(/[\s(]/)[0] ?? "");
       if (first && !byWord.has(first)) byWord.set(first, entry);
     }
     const lookup = (word: string | null) => {
       if (!word) return null;
       const key = normalize(word);
-      return byWord.get(key) ?? byWord.get(ALIASES[key] ?? "") ?? null;
+      if (!key) return null;
+      const alias = ALIASES[key];
+      return byWord.get(key) ?? (alias ? byWord.get(alias) : undefined) ?? null;
     };
     return { entries, groups: [...new Set(entries.map((e) => e.group))], lookup };
   }, [dictionary, settings]);

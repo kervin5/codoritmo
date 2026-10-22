@@ -100,6 +100,7 @@ interface PrototypeEditorProps {
   onCursorLine?: (line: number) => void;
   highlightLine?: number | null;
   onReady?: (instance: editor.IStandaloneCodeEditor) => void;
+  onMonaco?: (monaco: Monaco) => void;
 }
 
 export default function PrototypeEditor({
@@ -113,6 +114,7 @@ export default function PrototypeEditor({
   onCursorLine,
   highlightLine,
   onReady,
+  onMonaco,
 }: PrototypeEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -165,6 +167,7 @@ export default function PrototypeEditor({
       beforeMount={(monaco) => {
         configureMonaco(monaco);
         defineThemes(monaco);
+        onMonaco?.(monaco);
       }}
       onMount={(instance, monaco) => {
         editorRef.current = instance;
@@ -187,6 +190,11 @@ export default function PrototypeEditor({
         renderLineHighlight: "line",
         scrollBeyondLastLine: false,
         overviewRulerLanes: 0,
+        quickSuggestions: { other: true, comments: false, strings: false },
+        suggestOnTriggerCharacters: true,
+        tabCompletion: "on",
+        hover: { delay: 350 },
+        fixedOverflowWidgets: true,
         hideCursorInOverviewRuler: true,
         scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
         tabSize: 4,

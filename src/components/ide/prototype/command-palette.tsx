@@ -18,7 +18,7 @@ interface PaletteRow {
   run: () => void;
 }
 
-const normalize = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+const normalize = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 function flatten(menus: Menu[]): PaletteRow[] {
   const rows: PaletteRow[] = [];

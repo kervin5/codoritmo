@@ -1,16 +1,33 @@
 "use client";
 
-// PROTOTYPE — Variant E "Nativo": the playback model from D, packaged like a
-// desktop app. Real menu bar with working menus and shortcuts, document tabs,
-// resizable panes, the reference docked and context-aware, ⌘K palette, and a
-// compact transport bar.
+// PROTOTYPE — Variant E "Nativo": the playback model packaged like a desktop
+// IDE that degrades gracefully. The editor always keeps its space; the bottom
+// panel holds Consola / Prueba de escritorio / Problemas; the side panel holds
+// Diagrama / Código / Referencia and docks when wide, slides over when narrow.
+// The editor itself has autocomplete and hover explanations.
 
-import { BookOpen, Pause, Play, Rabbit, Search, SkipBack, SkipForward, Square, Turtle, X } from "lucide-react";
+import {
+  BookOpen,
+  ChevronDown,
+  Code,
+  PanelBottom,
+  Pause,
+  Play,
+  Rabbit,
+  Search,
+  SkipBack,
+  SkipForward,
+  Square,
+  Turtle,
+  Workflow,
+  X,
+} from "lucide-react";
 import type { editor } from "monaco-editor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { examplePrograms, generateExport, Parser, type ExportLanguage } from "@/src/engine";
 import { CommandPalette } from "./command-palette";
+import { registerLanguageServices, type LanguageCatalog } from "./language-services";
 import MellowDiagram from "./mellow-diagram";
 import { MenuBar, type Menu } from "./native-menu";
 import { PlayerConsole, TranslationPane } from "./player-panels";
@@ -21,7 +38,8 @@ import { ReferenceInspector, useReferenceCatalog, type ReferenceEntry } from "./
 import { formatValue } from "./use-prototype-run";
 import { SPEEDS, usePlayer } from "./use-player";
 
-type View = "diagrama" | "traduccion" | "prueba";
+type SideTab = "diagrama" | "traduccion" | "referencia";
+type BottomTab = "consola" | "prueba" | "problemas";
 
 const LANGS: { id: string; name: string; ext: string }[] = [
   { id: "c", name: "C", ext: "c" },
@@ -29,6 +47,10 @@ const LANGS: { id: string; name: string; ext: string }[] = [
   { id: "javascript", name: "JavaScript", ext: "js" },
 ];
 const SOON = ["Java", "Python", "C#", "PHP", "Pascal", "Visual Basic", "QBasic", "MatLab"];
+
+/** Below this workspace width the side panel floats over the editor instead of docking. */
+const DOCK_MIN_WIDTH = 1100;
+const EDITOR_MIN_WIDTH = 460;
 
 const NEW_PROGRAM = `Algoritmo SinTitulo
 
@@ -41,6 +63,18 @@ function useIsMac() {
   return mac;
 }
 
+function useWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(1400);
+  useEffect(() => {
+    if (!ref.current) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
+
 function download(name: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
   const link = document.createElement("a");
@@ -50,7 +84,6 @@ function download(name: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
-/** Drag handle that resizes a neighbouring pane. */
 function Divider({ axis, onDrag }: { axis: "x" | "y"; onDrag: (delta: number) => void }) {
   return (
     <div
@@ -78,6 +111,27 @@ function Divider({ axis, onDrag }: { axis: "x" | "y"; onDrag: (delta: number) =>
   );
 }
 
+/** Pill tabs that never wrap; they scroll horizontally if truly out of room. */
+function Tabs<T extends string>({ tabs, value, onChange }: { tabs: [T, string, number?][]; value: T | null; onChange: (id: T) => void }) {
+  return (
+    <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
+      {tabs.map(([id, label, badge]) => (
+        <button
+          key={id}
+          className={`flex h-[22px] shrink-0 items-center gap-1.5 rounded-[5px] px-2.5 text-[12px] whitespace-nowrap ${
+            value === id ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
+          }`}
+          onClick={() => onChange(id)}
+          type="button"
+        >
+          {label}
+          {!!badge && <span className="rounded-full bg-[#F08A6C]/80 px-1.5 text-[10px] leading-4 text-white">{badge}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function VariantE({ dictionary, source, setSource, settings, profileId, setProfileId }: VariantProps) {
   const mac = useIsMac();
   const k = (key: string, shift = false, alt = false) =>
@@ -85,37 +139,70 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
 
   const player = usePlayer(source, settings);
   const catalog = useReferenceCatalog(dictionary, settings);
+  const catalogRef = useRef<LanguageCatalog>(catalog);
+  catalogRef.current = catalog;
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [workspaceRef, workspaceWidth] = useWidth<HTMLDivElement>();
 
   const [fileName, setFileName] = useState("Promedio.psc");
   const [savedSource, setSavedSource] = useState(source);
-  const [view, setView] = useState<View>("diagrama");
   const [language, setLanguage] = useState<ExportLanguage>("c" as ExportLanguage);
-  const [showReference, setShowReference] = useState(true);
-  const [showConsole, setShowConsole] = useState(true);
+  const [sideTab, setSideTab] = useState<SideTab>("diagrama");
+  // Docked preference survives resizes; the overlay is a separate, temporary state.
+  const [sidePref, setSidePref] = useState(true);
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const [bottomTab, setBottomTab] = useState<BottomTab>("consola");
+  const [bottomOpen, setBottomOpen] = useState(true);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [fontSize, setFontSize] = useState(15);
   const [cursorWord, setCursorWord] = useState<string | null>(null);
   const [linkLine, setLinkLine] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [middleWidth, setMiddleWidth] = useState(440);
-  const [referenceWidth, setReferenceWidth] = useState(300);
-  const [consoleHeight, setConsoleHeight] = useState(230);
+  const [sideWidthPref, setSideWidthPref] = useState(420);
+  const [bottomHeight, setBottomHeight] = useState(220);
+
+  const docked = workspaceWidth >= DOCK_MIN_WIDTH;
+  // Docked side panel never takes space the editor needs.
+  const sideWidth = docked
+    ? Math.max(300, Math.min(sideWidthPref, workspaceWidth - 40 - EDITOR_MIN_WIDTH))
+    : Math.min(460, Math.max(300, workspaceWidth - 120));
+  const narrow = workspaceWidth < 760;
+  const sideOpen = docked ? sidePref : overlayOpen;
+  const setSideOpen = (open: boolean) => (docked ? setSidePref(open) : setOverlayOpen(open));
 
   const dirty = source !== savedSource;
   const showPlayhead = player.live || player.scrubbing;
   const activeLine = showPlayhead ? player.frame?.line ?? null : null;
-  const errorCount = player.parseDiagnostics.filter((d) => d.severity === "error").length;
+  const errors = player.parseDiagnostics.filter((d) => d.severity === "error");
   const diagnostics = player.runtimeError ? [...player.parseDiagnostics, player.runtimeError] : player.parseDiagnostics;
   const sourceLines = useMemo(() => source.split("\n"), [source]);
   const langName = LANGS.find((l) => l.id === language)?.name ?? "C";
+  const asking = player.status === "input" && !player.scrubbing;
 
   const notify = useCallback((message: string) => {
     setToast(message);
     window.setTimeout(() => setToast((t) => (t === message ? null : t)), 1800);
   }, []);
+
+  const openSide = (tab: SideTab) => {
+    setSideTab(tab);
+    setSideOpen(true);
+  };
+  const toggleSide = (tab: SideTab) => (sideOpen && sideTab === tab ? setSideOpen(false) : openSide(tab));
+  const openBottom = (tab: BottomTab) => {
+    setBottomTab(tab);
+    setBottomOpen(true);
+  };
+
+  // The program asking a question always surfaces the console.
+  useEffect(() => {
+    if (asking) {
+      setBottomTab("consola");
+      setBottomOpen(true);
+    }
+  }, [asking]);
 
   const visitedLines = useMemo(() => {
     const set = new Set<number>();
@@ -147,6 +234,12 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
     if (!instance || !selection) return;
     instance.executeEdits("referencia", [{ range: selection, text, forceMoveMarkers: true }]);
     instance.focus();
+  };
+  const reveal = (line: number) => {
+    setLinkLine(line);
+    editorRef.current?.revealLineInCenter(line);
+    editorRef.current?.setPosition({ lineNumber: line, column: 1 });
+    editorRef.current?.focus();
   };
   const loadProgram = (name: string, text: string) => {
     player.stop();
@@ -212,6 +305,7 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
         { label: "Buscar…", shortcut: k("F"), onSelect: () => editorAction("actions.find") },
         { label: "Reemplazar…", shortcut: k("F", false, true), onSelect: () => editorAction("editor.action.startFindReplaceAction") },
         { separator: true },
+        { label: "Sugerencias", shortcut: mac ? "⌃Espacio" : "Ctrl+Espacio", onSelect: () => editorAction("editor.action.triggerSuggest") },
         { label: "Comentar línea", shortcut: k("/"), onSelect: () => editorAction("editor.action.commentLine") },
         { label: "Insertar", submenu: insertItems },
       ],
@@ -250,12 +344,14 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
     {
       label: "Ver",
       items: [
-        { label: "Diagrama de flujo", shortcut: k("1"), checked: view === "diagrama", onSelect: () => setView("diagrama") },
-        { label: `Código ${langName}`, shortcut: k("2"), checked: view === "traduccion", onSelect: () => setView("traduccion") },
-        { label: "Prueba de escritorio", shortcut: k("3"), checked: view === "prueba", onSelect: () => setView("prueba") },
+        { label: "Diagrama de flujo", shortcut: k("1"), checked: sideOpen && sideTab === "diagrama", onSelect: () => toggleSide("diagrama") },
+        { label: `Código ${langName}`, shortcut: k("2"), checked: sideOpen && sideTab === "traduccion", onSelect: () => toggleSide("traduccion") },
+        { label: "Referencia", shortcut: k("3"), checked: sideOpen && sideTab === "referencia", onSelect: () => toggleSide("referencia") },
         { separator: true },
-        { label: "Referencia", shortcut: k("R", true), checked: showReference, onSelect: () => setShowReference((v) => !v) },
-        { label: "Consola", shortcut: k("J"), checked: showConsole, onSelect: () => setShowConsole((v) => !v) },
+        { label: "Panel inferior", shortcut: k("J"), checked: bottomOpen, onSelect: () => setBottomOpen((v) => !v) },
+        { label: "Consola", checked: bottomOpen && bottomTab === "consola", onSelect: () => openBottom("consola") },
+        { label: "Prueba de escritorio", checked: bottomOpen && bottomTab === "prueba", onSelect: () => openBottom("prueba") },
+        { label: "Problemas", checked: bottomOpen && bottomTab === "problemas", onSelect: () => openBottom("problemas") },
         { separator: true },
         {
           label: "Traducir a",
@@ -265,7 +361,7 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
               checked: l.id === language,
               onSelect: () => {
                 setLanguage(l.id as ExportLanguage);
-                setView("traduccion");
+                openSide("traduccion");
               },
             })),
             { separator: true },
@@ -287,6 +383,7 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
       label: "Ayuda",
       items: [
         { label: "Buscar acciones y comandos…", shortcut: k("K"), onSelect: () => setPaletteOpen(true) },
+        { label: "Referencia del lenguaje", shortcut: k("3"), onSelect: () => openSide("referencia") },
         { label: "Atajos de teclado", shortcut: k("?"), onSelect: () => setShortcutsOpen(true) },
         { separator: true },
         { label: "Acerca de Codoritmo", onSelect: () => notify("Codoritmo · prototipo de interfaz") },
@@ -296,14 +393,11 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
   ];
 
   /* ---------- global shortcuts (beat the browser's own) ---------- */
-  const menusRef = useRef(menus);
-  menusRef.current = menus;
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const mod = mac ? event.metaKey : event.ctrlKey;
       const target = (event.target instanceof Element ? event.target : document.body) as HTMLElement;
-      const inEditor = !!target.closest(".monaco-editor");
-      const typing = inEditor || !!target.closest("input, textarea");
+      const typing = !!target.closest(".monaco-editor, input, textarea");
       const key = event.key.toLowerCase();
       const handled = (fn: () => void) => {
         event.preventDefault();
@@ -314,15 +408,15 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
       if (mod && key === "s") return handled(save);
       if (mod && key === "o") return handled(() => fileInputRef.current?.click());
       if (mod && key === "n") return handled(() => loadProgram("SinTitulo.psc", NEW_PROGRAM));
-      if (mod && key === "enter") return handled(() => (player.wantPlay ? player.pause() : player.play()));
-      if (mod && event.shiftKey && key === "r") return handled(() => setShowReference((v) => !v));
-      if (mod && key === "j") return handled(() => setShowConsole((v) => !v));
+      if (mod && key === "enter") return handled(togglePlay);
+      if (mod && key === "j") return handled(() => setBottomOpen((v) => !v));
       if (mod && ["1", "2", "3"].includes(key))
-        return handled(() => setView((["diagrama", "traduccion", "prueba"] as View[])[Number(key) - 1]));
+        return handled(() => toggleSide((["diagrama", "traduccion", "referencia"] as SideTab[])[Number(key) - 1]));
       if (mod && (key === "=" || key === "+")) return handled(() => setFontSize((s) => Math.min(22, s + 1)));
       if (mod && key === "-") return handled(() => setFontSize((s) => Math.max(12, s - 1)));
       if (mod && key === "?") return handled(() => setShortcutsOpen(true));
       if (event.key === "F10") return handled(event.shiftKey ? player.stepBack : player.stepForward);
+      if (event.key === "Escape" && !paletteOpen && !docked && sideOpen && !player.live) return handled(() => setSideOpen(false));
       if (event.key === "Escape" && player.live && !paletteOpen) return handled(player.stop);
       if (typing) return;
       if (event.key === " ") return handled(togglePlay);
@@ -338,6 +432,58 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
     ? `Rebobinado · paso ${player.viewIndex + 1}`
     : { idle: "Listo", playing: "Ejecutando", paused: "En pausa", input: "Esperando tu respuesta", done: "Terminado", error: "Error en ejecución", stopped: "Detenido" }[player.status];
 
+  const sideContent = (
+    <div className="flex h-full flex-col bg-[#161A1C]">
+      <div className="flex h-[32px] shrink-0 items-center gap-2 border-b border-white/[0.06] px-2">
+        <Tabs<SideTab>
+          onChange={setSideTab}
+          tabs={[
+            ["diagrama", "Diagrama"],
+            ["traduccion", `Código ${langName}`],
+            ["referencia", "Referencia"],
+          ]}
+          value={sideTab}
+        />
+        <button className="ml-auto shrink-0 rounded p-1 text-white/35 hover:text-white/80" onClick={() => setSideOpen(false)} title="Cerrar panel" type="button">
+          <X size={13} />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1">
+        {sideTab === "diagrama" && (
+          <MellowDiagram
+            activeLine={activeLine}
+            onPickLine={reveal}
+            routineName={showPlayhead ? player.frame?.routine ?? null : null}
+            settings={settings}
+            source={source}
+            visitedLines={visitedLines}
+          />
+        )}
+        {sideTab === "traduccion" && (
+          <div className="flex h-full flex-col select-text">
+            <div className="flex shrink-0 items-center gap-1 px-3 pt-2 select-none">
+              {LANGS.map((l) => (
+                <button
+                  key={l.id}
+                  className={`h-[22px] rounded-[5px] px-2 text-[11.5px] ${language === l.id ? "bg-white/[0.1] text-white" : "text-white/45 hover:text-white/80"}`}
+                  onClick={() => setLanguage(l.id as ExportLanguage)}
+                  type="button"
+                >
+                  {l.name}
+                </button>
+              ))}
+              <span className="px-1 text-[11.5px] text-white/25">+{SOON.length} pronto · Ver › Traducir a</span>
+            </div>
+            <div className="min-h-0 flex-1">
+              <TranslationPane language={language} settings={settings} source={source} />
+            </div>
+          </div>
+        )}
+        {sideTab === "referencia" && <ReferenceInspector catalog={catalog} cursorWord={cursorWord} onInsert={insert} />}
+      </div>
+    </div>
+  );
+
   return (
     <div
       className="flex h-screen flex-col overflow-hidden bg-[#141719] text-[#E6ECE9] select-none"
@@ -349,6 +495,7 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
         .proto-range { -webkit-appearance: none; appearance: none; height: 3px; border-radius: 999px; outline: none; }
         .proto-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 999px; background: #F2F7F4; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
         .proto-range:disabled { opacity: .45; }
+        .monaco-hover, .suggest-widget { border-radius: 8px !important; }
       `}</style>
       <input
         ref={fileInputRef}
@@ -367,74 +514,78 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
         type="file"
       />
 
-      {/* Menu bar */}
-      <div className="relative flex h-[34px] shrink-0 items-center border-b border-black/40 bg-[#1D2124] px-2 shadow-[inset_0_-1px_0_rgba(255,255,255,0.04)]">
-        <MenuBar
-          leading={
-            <div className="mr-1.5 ml-1 grid h-[18px] w-[18px] place-items-center rounded-[5px] bg-gradient-to-br from-[#7FE0B8] to-[#2F8F6E] text-[10.5px] font-bold text-[#0E1214]">
-              C
-            </div>
-          }
-          menus={menus}
-        />
-        <div className="pointer-events-none absolute inset-x-0 text-center text-[12.5px] text-white/55">
-          {fileName.replace(/\.psc$/i, "")}
-          {dirty && <span className="text-white/35"> — Editado</span>}
+      {/* Menu bar: menus | flexible title | actions — never overlaps */}
+      <div className="flex h-[34px] shrink-0 items-center gap-2 border-b border-black/40 bg-[#1D2124] px-2 shadow-[inset_0_-1px_0_rgba(255,255,255,0.04)]">
+        <div className="shrink-0">
+          <MenuBar
+            leading={
+              <div className="mr-1.5 ml-1 grid h-[18px] w-[18px] place-items-center rounded-[5px] bg-gradient-to-br from-[#7FE0B8] to-[#2F8F6E] text-[10.5px] font-bold text-[#0E1214]">
+                C
+              </div>
+            }
+            menus={menus}
+          />
         </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          <button
-            className="flex h-[24px] items-center gap-2 rounded-[6px] border border-white/[0.07] bg-black/20 px-2 text-[12px] text-white/45 hover:text-white/75"
-            onClick={() => setPaletteOpen(true)}
-            type="button"
-          >
-            <Search size={12} /> Buscar
-            <span className="text-white/30">{k("K")}</span>
-          </button>
-          <button
-            className={`grid h-[24px] w-[26px] place-items-center rounded-[6px] ${showReference ? "bg-white/[0.1] text-white" : "text-white/45 hover:text-white/80"}`}
-            onClick={() => setShowReference((v) => !v)}
-            title={`Referencia (${k("R", true)})`}
-            type="button"
-          >
-            <BookOpen size={14} />
-          </button>
+        <div className="min-w-0 flex-1 truncate text-center text-[12.5px] text-white/50">
+          {!narrow && (
+            <>
+              {fileName.replace(/\.psc$/i, "")}
+              {dirty && <span className="text-white/30"> — Editado</span>}
+            </>
+          )}
         </div>
+        <button
+          className="flex h-[24px] shrink-0 items-center gap-2 rounded-[6px] border border-white/[0.07] bg-black/20 px-2 text-[12px] text-white/45 hover:text-white/75"
+          onClick={() => setPaletteOpen(true)}
+          type="button"
+        >
+          <Search size={12} />
+          {!narrow && "Buscar"}
+          <span className="text-white/30">{k("K")}</span>
+        </button>
       </div>
 
       {/* Workspace */}
-      <div className="flex min-h-0 flex-1">
-        {/* Editor */}
-        <div className="flex min-w-[320px] flex-1 flex-col">
-          <div className="flex h-[32px] shrink-0 items-end gap-px border-b border-white/[0.06] bg-[#181B1D] px-2">
-            <div className="flex h-[28px] items-center gap-2 rounded-t-[7px] border border-b-0 border-white/[0.07] bg-[#141719] pr-2 pl-3 text-[12.5px]">
-              {fileName}
-              {dirty ? (
-                <span className="h-[7px] w-[7px] rounded-full bg-white/50" title="Sin guardar" />
-              ) : (
-                <X className="text-white/30" size={12} />
+      <div ref={workspaceRef} className="relative flex min-h-0 flex-1">
+        {/* Editor column: document + bottom panel */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex h-[32px] shrink-0 items-end gap-2 border-b border-white/[0.06] bg-[#181B1D] px-2">
+            <div className="flex h-[28px] min-w-0 items-center gap-2 rounded-t-[7px] border border-b-0 border-white/[0.07] bg-[#141719] pr-2 pl-3 text-[12.5px] whitespace-nowrap">
+              <span className="truncate">{fileName}</span>
+              {dirty ? <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-white/50" title="Sin guardar" /> : <X className="shrink-0 text-white/30" size={12} />}
+            </div>
+            <div className="ml-auto flex h-full min-w-0 items-center gap-2 overflow-hidden pr-1 text-[11.5px] whitespace-nowrap">
+              <button
+                className={`flex items-center gap-1.5 ${errors.length ? "text-[#F0A48C]" : "text-white/40"}`}
+                onClick={() => errors.length && openBottom("problemas")}
+                type="button"
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${errors.length ? "bg-[#F08A6C]" : "bg-[#7FE0B8]"}`} />
+                {errors.length ? `${errors.length} error${errors.length > 1 ? "es" : ""}` : "Sin errores"}
+              </button>
+              {!narrow && (
+                <>
+                  <span className="text-white/25">·</span>
+                  <span className="truncate text-white/40">
+                    {profileId === "desktop-default" ? "Perfil flexible" : prototypeProfiles.find((p) => p.id === profileId)?.label}
+                  </span>
+                </>
               )}
             </div>
-            <div className="ml-auto flex h-full items-center gap-2 pr-1 text-[11.5px]">
-              <span className={`flex items-center gap-1.5 ${errorCount ? "text-[#F0A48C]" : "text-white/40"}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${errorCount ? "bg-[#F08A6C]" : "bg-[#7FE0B8]"}`} />
-                {errorCount ? `${errorCount} error${errorCount > 1 ? "es" : ""}` : "Sin errores"}
-              </span>
-              <span className="text-white/25">·</span>
-              <span className="text-white/40">{prototypeProfiles.find((p) => p.id === profileId)?.id === "desktop-default" ? "Perfil flexible" : prototypeProfiles.find((p) => p.id === profileId)?.label}</span>
-            </div>
           </div>
-          <div className="min-h-0 flex-1 select-text">
+
+          <div className="min-h-[120px] flex-1 select-text">
             <PrototypeEditor
               currentLine={activeLine}
               diagnostics={diagnostics}
               fontSize={fontSize}
               highlightLine={linkLine}
               onChange={setSource}
+              onMonaco={(monaco) => registerLanguageServices(monaco, () => catalogRef.current)}
               onReady={(instance) => {
                 editorRef.current = instance;
                 instance.onDidChangeCursorPosition((event) => {
-                  const word = instance.getModel()?.getWordAtPosition(event.position)?.word ?? null;
-                  setCursorWord(word);
+                  setCursorWord(instance.getModel()?.getWordAtPosition(event.position)?.word ?? null);
                 });
               }}
               readOnly={player.live}
@@ -442,116 +593,132 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
               value={source}
             />
           </div>
-        </div>
 
-        <Divider axis="x" onDrag={(d) => setMiddleWidth((w) => Math.min(760, Math.max(300, w - d)))} />
-
-        {/* Views + console */}
-        <div className="flex shrink-0 flex-col" style={{ width: middleWidth }}>
-          <div className="flex h-[32px] shrink-0 items-center gap-0.5 border-b border-white/[0.06] bg-[#181B1D] px-2">
-            {(
-              [
-                ["diagrama", "Diagrama"],
-                ["traduccion", `Código ${langName}`],
-                ["prueba", "Prueba de escritorio"],
-              ] as [View, string][]
-            ).map(([id, label]) => (
+          {/* Bottom panel */}
+          {bottomOpen && <Divider axis="y" onDrag={(d) => setBottomHeight((h) => Math.min(560, Math.max(110, h - d)))} />}
+          <div className="flex shrink-0 flex-col bg-[#141719]" style={{ height: bottomOpen ? bottomHeight : 30 }}>
+            <div className="flex h-[30px] shrink-0 items-center gap-2 border-b border-white/[0.05] px-2">
+              <Tabs<BottomTab>
+                onChange={(id) => (bottomOpen && bottomTab === id ? setBottomOpen(false) : openBottom(id))}
+                tabs={[
+                  ["consola", "Consola"],
+                  ["prueba", "Prueba de escritorio"],
+                  ["problemas", "Problemas", errors.length],
+                ]}
+                value={bottomOpen ? bottomTab : null}
+              />
+              {asking && (
+                <span className="shrink-0 truncate rounded-[4px] bg-[#7FE0B8]/15 px-1.5 py-px text-[11px] text-[#A9F0D2]">
+                  Tu programa te pregunta algo
+                </span>
+              )}
               <button
-                key={id}
-                className={`h-[22px] rounded-[5px] px-2.5 text-[12px] ${view === id ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"}`}
-                onClick={() => setView(id)}
+                className="ml-auto shrink-0 rounded p-1 text-white/35 hover:text-white/80"
+                onClick={() => setBottomOpen((v) => !v)}
+                title={`${bottomOpen ? "Ocultar" : "Mostrar"} panel (${k("J")})`}
                 type="button"
               >
-                {label}
+                {bottomOpen ? <ChevronDown size={13} /> : <PanelBottom size={13} />}
               </button>
-            ))}
-          </div>
-          <div className="min-h-0 flex-1 bg-[#121517]">
-            {view === "diagrama" && (
-              <MellowDiagram
-                activeLine={activeLine}
-                onPickLine={(line) => {
-                  setLinkLine(line);
-                  editorRef.current?.revealLineInCenter(line);
-                }}
-                routineName={showPlayhead ? player.frame?.routine ?? null : null}
-                settings={settings}
-                source={source}
-                visitedLines={visitedLines}
-              />
-            )}
-            {view === "traduccion" && (
-              <div className="h-full select-text">
-                <TranslationPane language={language} settings={settings} source={source} />
+            </div>
+            {bottomOpen && (
+              <div className="min-h-0 flex-1 select-text">
+                {bottomTab === "consola" && <PlayerConsole player={player} />}
+                {bottomTab === "prueba" && (
+                  <DeskCheckTable
+                    dark
+                    onPickLine={(line) => {
+                      const index = player.frames.findIndex((f, i) => i <= player.viewIndex && f.line === line);
+                      if (index >= 0) player.seek(index);
+                    }}
+                    trace={trace}
+                  />
+                )}
+                {bottomTab === "problemas" && (
+                  <div className="proto-scroll h-full overflow-auto py-1 select-none">
+                    {diagnostics.length === 0 && <p className="px-4 py-3 text-[12.5px] text-white/40">No hay problemas en tu algoritmo.</p>}
+                    {diagnostics.map((d, i) => (
+                      <button
+                        key={i}
+                        className="flex w-full items-baseline gap-3 px-4 py-1.5 text-left text-[12.5px] hover:bg-white/[0.04]"
+                        onClick={() => reveal(d.line)}
+                        type="button"
+                      >
+                        <span className={d.severity === "error" ? "text-[#F08A6C]" : "text-[#E8C47A]"}>●</span>
+                        <span className="flex-1 text-white/80">{d.message}</span>
+                        <span className="text-white/35">línea {d.line}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
-            {view === "prueba" && (
-              <DeskCheckTable
-                dark
-                onPickLine={(line) => {
-                  const index = player.frames.findIndex((f, i) => i <= player.viewIndex && f.line === line);
-                  if (index >= 0) player.seek(index);
-                }}
-                trace={trace}
-              />
-            )}
           </div>
-          {showConsole && (
-            <>
-              <Divider axis="y" onDrag={(d) => setConsoleHeight((h) => Math.min(520, Math.max(120, h - d)))} />
-              <div className="flex shrink-0 flex-col bg-[#141719]" style={{ height: consoleHeight }}>
-                <div className="flex h-[28px] shrink-0 items-center gap-2 border-b border-white/[0.05] px-3 text-[11px] font-semibold tracking-[0.06em] text-white/40 uppercase">
-                  Consola
-                  {player.status === "input" && !player.scrubbing && (
-                    <span className="rounded-[4px] bg-[#7FE0B8]/15 px-1.5 py-px tracking-normal text-[#A9F0D2] normal-case">
-                      Tu programa te pregunta algo
-                    </span>
-                  )}
-                </div>
-                <div className="min-h-0 flex-1 select-text">
-                  <PlayerConsole player={player} />
-                </div>
-              </div>
-            </>
-          )}
         </div>
 
-        {showReference && (
+        {/* Side panel: docked when there is room, floating otherwise */}
+        {sideOpen && docked && (
           <>
-            <Divider axis="x" onDrag={(d) => setReferenceWidth((w) => Math.min(480, Math.max(240, w - d)))} />
-            <div className="flex shrink-0 flex-col bg-[#181B1D]" style={{ width: referenceWidth }}>
-              <div className="flex h-[32px] shrink-0 items-center justify-between border-b border-white/[0.06] px-3">
-                <span className="text-[12px] font-semibold text-white/80">Referencia</span>
-                <button className="rounded p-0.5 text-white/35 hover:text-white/80" onClick={() => setShowReference(false)} type="button">
-                  <X size={13} />
-                </button>
-              </div>
-              <div className="min-h-0 flex-1">
-                <ReferenceInspector catalog={catalog} cursorWord={cursorWord} onInsert={insert} />
-              </div>
+            <Divider axis="x" onDrag={(d) => setSideWidthPref((w) => Math.min(760, Math.max(300, w - d)))} />
+            <div className="shrink-0" style={{ width: sideWidth }}>
+              {sideContent}
             </div>
           </>
         )}
+        {sideOpen && !docked && (
+          <>
+            <div className="absolute inset-0 right-[40px] z-20 bg-black/25" onMouseDown={() => setSideOpen(false)} />
+            <div
+              className="absolute top-0 right-[40px] bottom-0 z-30 border-l border-white/[0.08] shadow-[-20px_0_50px_rgba(0,0,0,0.45)]"
+              style={{ width: sideWidth }}
+            >
+              {sideContent}
+            </div>
+          </>
+        )}
+
+        {/* Activity strip: the side panel is always one click away */}
+        <div className="z-30 flex w-[40px] shrink-0 flex-col items-center gap-1 border-l border-white/[0.06] bg-[#181B1D] pt-2">
+          {(
+            [
+              ["diagrama", Workflow, "Diagrama", "1"],
+              ["traduccion", Code, `Código ${langName}`, "2"],
+              ["referencia", BookOpen, "Referencia", "3"],
+            ] as const
+          ).map(([id, Icon, label, key]) => (
+            <button
+              key={id}
+              className={`group relative grid h-8 w-8 place-items-center rounded-[7px] ${
+                sideOpen && sideTab === id ? "bg-white/[0.1] text-white" : "text-white/45 hover:bg-white/[0.05] hover:text-white/85"
+              }`}
+              onClick={() => toggleSide(id)}
+              type="button"
+            >
+              <Icon size={16} strokeWidth={1.8} />
+              <span className="pointer-events-none absolute top-1/2 right-[38px] hidden -translate-y-1/2 rounded-[6px] border border-white/10 bg-[#2A3033] px-2 py-1 text-[12px] whitespace-nowrap text-white shadow-lg group-hover:block">
+                {label} <span className="text-white/40">{k(key)}</span>
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Transport bar */}
-      <div className="grid h-[58px] shrink-0 grid-cols-[minmax(0,1fr)_minmax(320px,1.2fr)_minmax(0,1fr)] items-center gap-5 border-t border-black/50 bg-[#1D2124] px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-        <div className="min-w-0">
-          <div className="text-[10.5px] font-semibold tracking-[0.08em] text-white/40 uppercase">{statusLabel}</div>
-          <div className="truncate font-mono text-[13px] text-white/90">
-            {nowText ?? (player.status === "done" ? "Programa terminado" : "Pulsa ▶ para ejecutar")}
-            {activeLine && <span className="ml-2 font-sans text-[11.5px] text-white/35">línea {activeLine}</span>}
+      {/* Transport bar: sheds detail as it narrows */}
+      <div className="flex h-[56px] shrink-0 items-center gap-4 border-t border-black/50 bg-[#1D2124] px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        {!narrow && (
+          <div className="w-[26%] min-w-0">
+            <div className="text-[10.5px] font-semibold tracking-[0.08em] text-white/40 uppercase">{statusLabel}</div>
+            <div className="truncate font-mono text-[13px] text-white/90">
+              {nowText ?? (player.status === "done" ? "Programa terminado" : "Pulsa ▶ para ejecutar")}
+              {activeLine && <span className="ml-2 font-sans text-[11.5px] text-white/35">línea {activeLine}</span>}
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center">
-            {[
-              { icon: <SkipBack fill="currentColor" size={14} />, label: "Paso anterior (⇧F10)", onClick: player.stepBack, disabled: player.frameCount === 0 },
-            ].map((b) => (
-              <button key={b.label} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white disabled:opacity-30" disabled={b.disabled} onClick={b.onClick} title={b.label} type="button">
-                {b.icon}
-              </button>
-            ))}
+        )}
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="flex shrink-0 items-center">
+            <button className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white disabled:opacity-30" disabled={player.frameCount === 0} onClick={player.stepBack} title="Paso anterior (⇧F10)" type="button">
+              <SkipBack fill="currentColor" size={14} />
+            </button>
             <button
               aria-label={player.wantPlay ? "Pausar" : "Ejecutar"}
               className="mx-1 grid h-9 w-9 place-items-center rounded-full bg-[#F2F7F4] text-[#0E1214] shadow-[0_2px_8px_rgba(0,0,0,0.4)] active:scale-95"
@@ -568,9 +735,9 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
               <Square fill="currentColor" size={12} />
             </button>
           </div>
-          <span className="w-8 text-right text-[11px] text-white/40 tabular-nums">{player.frameCount ? player.viewIndex + 1 : 0}</span>
+          <span className="w-8 shrink-0 text-right text-[11px] text-white/40 tabular-nums">{player.frameCount ? player.viewIndex + 1 : 0}</span>
           <input
-            className="proto-range min-w-0 flex-1"
+            className="proto-range min-w-[60px] flex-1"
             disabled={player.frameCount < 2}
             max={Math.max(0, player.frameCount - 1)}
             min={0}
@@ -581,39 +748,39 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
             type="range"
             value={Math.max(0, player.viewIndex)}
           />
-          <span className="w-8 text-[11px] text-white/40 tabular-nums">{player.frameCount}</span>
+          <span className="w-8 shrink-0 text-[11px] text-white/40 tabular-nums">{player.frameCount}</span>
         </div>
-        <div className="flex min-w-0 items-center justify-end gap-4">
-          <div className="flex min-w-0 gap-1.5 overflow-hidden">
+        {workspaceWidth >= 1000 && (
+          <div className="flex w-[22%] min-w-0 justify-end gap-1.5 overflow-hidden">
             {[...player.changed].slice(0, 3).map((name) => {
               const now = player.frame?.variables.find((v) => v.name === name);
               const before = player.previous?.variables.find((v) => v.name === name);
               return (
-                <span key={name} className="shrink-0 rounded-[5px] bg-[#7FE0B8]/10 px-2 py-0.5 font-mono text-[11.5px] text-[#CFF5E4]">
+                <span key={name} className="shrink-0 rounded-[5px] bg-[#7FE0B8]/10 px-2 py-0.5 font-mono text-[11.5px] whitespace-nowrap text-[#CFF5E4]">
                   {name} <span className="text-white/35">{before?.initialized ? formatValue(before.value) : "∅"}→</span>
                   {now ? formatValue(now.value) : ""}
                 </span>
               );
             })}
           </div>
-          <div className="flex shrink-0 items-center gap-1.5 text-white/40" title={`Velocidad: ${SPEEDS[player.speedIndex].label}`}>
-            <Turtle size={13} />
-            {SPEEDS.map((speed, index) => (
-              <button
-                key={speed.id}
-                aria-label={speed.label}
-                className={`rounded-full ${index === player.speedIndex ? "h-2 w-2 bg-[#7FE0B8]" : "h-1.5 w-1.5 bg-white/25 hover:bg-white/50"}`}
-                onClick={() => player.setSpeedIndex(index)}
-                type="button"
-              />
-            ))}
-            <Rabbit size={13} />
-          </div>
+        )}
+        <div className="flex shrink-0 items-center gap-1.5 text-white/40" title={`Velocidad: ${SPEEDS[player.speedIndex].label}`}>
+          <Turtle size={13} />
+          {SPEEDS.map((speed, index) => (
+            <button
+              key={speed.id}
+              aria-label={speed.label}
+              className={`rounded-full ${index === player.speedIndex ? "h-2 w-2 bg-[#7FE0B8]" : "h-1.5 w-1.5 bg-white/25 hover:bg-white/50"}`}
+              onClick={() => player.setSpeedIndex(index)}
+              type="button"
+            />
+          ))}
+          <Rabbit size={13} />
         </div>
       </div>
 
       {toast && (
-        <div className="pointer-events-none fixed bottom-[74px] left-1/2 z-[250] -translate-x-1/2 rounded-[8px] border border-white/10 bg-[#2A3033]/95 px-3.5 py-2 text-[12.5px] text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur">
+        <div className="pointer-events-none fixed bottom-[72px] left-1/2 z-[250] -translate-x-1/2 rounded-[8px] border border-white/10 bg-[#2A3033]/95 px-3.5 py-2 text-[12.5px] text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur">
           {toast}
         </div>
       )}
@@ -622,29 +789,27 @@ export default function VariantE({ dictionary, source, setSource, settings, prof
         <CommandPalette
           menus={menus}
           onClose={() => setPaletteOpen(false)}
-          onPickReference={(entry) => {
-            setShowReference(true);
-            insert(entry.example);
-          }}
+          onPickReference={(entry) => insert(entry.example)}
           reference={catalog.entries}
         />
       )}
 
       {shortcutsOpen && (
         <div className="fixed inset-0 z-[300] grid place-items-center bg-black/40" onMouseDown={() => setShortcutsOpen(false)}>
-          <div className="w-[520px] rounded-[12px] border border-white/10 bg-[#23282B] p-5 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="w-[520px] max-w-[92vw] rounded-[12px] border border-white/10 bg-[#23282B] p-5 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
             <div className="mb-3 text-[15px] font-semibold">Atajos de teclado</div>
             {[
               ["Ejecutar / pausar", k("↵")],
               ["Paso siguiente / anterior", "F10 / ⇧F10"],
               ["Pausar (fuera del editor)", "Espacio"],
               ["Detener", "Esc"],
+              ["Sugerencias en el editor", mac ? "⌃Espacio" : "Ctrl+Espacio"],
               ["Buscar acciones y comandos", k("K")],
-              ["Mostrar referencia", k("R", true)],
-              ["Diagrama · Código · Prueba", `${k("1")} ${k("2")} ${k("3")}`],
+              ["Diagrama · Código · Referencia", `${k("1")} ${k("2")} ${k("3")}`],
+              ["Panel inferior", k("J")],
               ["Guardar / Abrir / Nuevo", `${k("S")} ${k("O")} ${k("N")}`],
             ].map(([label, keys]) => (
-              <div key={label} className="flex justify-between border-b border-white/[0.05] py-2 text-[13px]">
+              <div key={label} className="flex justify-between gap-4 border-b border-white/[0.05] py-2 text-[13px]">
                 <span className="text-white/75">{label}</span>
                 <span className="text-white/45">{keys}</span>
               </div>

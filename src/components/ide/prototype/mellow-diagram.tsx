@@ -17,7 +17,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import { buildFlowDiagram, layoutFlowDiagram, type FlowNodeKind, type PositionedFlowDiagram } from "@/src/diagram";
 import { Parser, type EngineSettings } from "@/src/engine";
@@ -177,10 +177,25 @@ function Canvas({ source, settings, activeLine, visitedLines, routineName, onPic
     }));
   }, [routine]);
 
-  // Fit once per routine; then gently follow the playing block.
+  // Open at a readable zoom: fit the width (never below 55%), anchored at the top.
+  const wrapperRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!nodes.length) return;
-    const frame = requestAnimationFrame(() => void flow.fitView({ padding: 0.18, duration: 300, maxZoom: 1 }));
+    const frame = requestAnimationFrame(() => {
+      const box = wrapperRef.current?.getBoundingClientRect();
+      if (!box) return;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity;
+      for (const n of nodes) {
+        minX = Math.min(minX, n.position.x);
+        minY = Math.min(minY, n.position.y);
+        maxX = Math.max(maxX, n.position.x + Number(n.style?.width ?? 0));
+      }
+      const zoom = Math.min(1, Math.max(0.55, (box.width - 48) / (maxX - minX)));
+      void flow.setViewport(
+        { x: (box.width - (maxX - minX) * zoom) / 2 - minX * zoom, y: 28 - minY * zoom, zoom },
+        { duration: 250 }
+      );
+    });
     return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routine?.id, nodes.length]);
@@ -199,7 +214,7 @@ function Canvas({ source, settings, activeLine, visitedLines, routineName, onPic
   }, [activeLine]);
 
   return (
-    <div className="relative h-full w-full">
+    <div ref={wrapperRef} className="relative h-full w-full">
       {routines.length > 1 && (
         <div className="absolute top-3 left-3 z-10 flex gap-1 rounded-full bg-black/30 p-1 backdrop-blur">
           {routines.map((r) => (
