@@ -728,6 +728,11 @@ export const enDictionary: Dictionary = {
       showHint: "Show hint",
       dismiss: "Got it",
       back: "Back",
+      share: "Share",
+      linkCopied: "Link copied!",
+      copyFailed: "Couldn't copy. Copy the link:",
+      viewPage: "View page",
+      viewPageHint: "Open the example's public page in a new tab",
       complexity: {
         label: "Complexity",
         best: "Best",
@@ -739,6 +744,91 @@ export const enDictionary: Dictionary = {
         inPlace: "In place",
       },
     },
+  },
+  examplePages: {
+    indexTitle: "PSeInt pseudocode examples",
+    indexDescription:
+      "Worked PSeInt-style pseudocode examples with code, flowchart and a sample run: decisions, loops, arrays, sorting, functions and more. Open them in Codoritmo and try them in your browser.",
+    indexKeywords: [
+      "pseudocode examples",
+      "PSeInt examples",
+      "PSeInt exercises",
+      "flowchart examples",
+      "sorting algorithms pseudocode",
+    ],
+    eyebrow: "Example library",
+    heading: "Pseudocode examples for learning to program",
+    intro:
+      "Short, explained programs grouped by topic and level. Each one comes with its code, its flowchart, a sample run and a challenge to keep practising.",
+    forStudentsTitle: "For students",
+    forStudentsBody:
+      "Read the code, see how it looks as a flowchart and compare it with the sample run. Then open it in Codoritmo, change it and solve the challenge.",
+    forTeachersTitle: "For teachers",
+    forTeachersBody:
+      "Every example has its own link to share in class or on your course platform. It opens straight in the editor, with nothing to install.",
+    topicTitle: "{topic}: pseudocode examples",
+    topicDescription:
+      "{count} PSeInt pseudocode examples about {topic}, with code, flowchart and a sample run.",
+    topicIntros: {
+      basics:
+        "Your first algorithms: show messages, read input, keep values in variables and do simple calculations.",
+      decisions:
+        "Programs that choose what to do with Si, SiNo and Segun: compare values, combine conditions and handle each case.",
+      loops:
+        "Repeat instructions with Mientras, Repetir and Para: count, add up, validate input and play until you guess.",
+      arrays:
+        "Store many values under one name: walk through arrays and matrices, search, add up and find the largest.",
+      sorting:
+        "The classic sorting and searching algorithms, with their complexity: bubble, selection, insertion, merge, quick sort and binary search.",
+      text:
+        "Work with strings: measure, cut, join, reverse and count letters with the text functions.",
+      routines:
+        "Split a program into SubProcesos and Funciones: parameters, return values, pass by reference and recursion.",
+      math:
+        "Maths problems solved with algorithms: primes, divisors, greatest common divisor and more.",
+      projects:
+        "Longer programs that combine everything else: games and small complete applications.",
+    },
+    exampleTitle: "{title}: pseudocode example",
+    exampleCount: { one: "{count} example", other: "{count} examples" },
+    viewTopic: "View topic",
+    breadcrumbLabel: "Breadcrumb",
+    level: "Level",
+    topic: "Topic",
+    concepts: "Concepts",
+    code: "Code",
+    lineCount: { one: "{count} line", other: "{count} lines" },
+    copyCode: "Copy code",
+    codeCopied: "Code copied!",
+    copyFailed: "Couldn't copy",
+    flowchart: "Flowchart",
+    flowchartIntro: "Each block in the flowchart matches one instruction in the code.",
+    flowchartLabel: "Flowchart of {name}",
+    sampleRun: "Sample run",
+    sampleRunIntro: "This is what the program shows when it runs. The answers typed by the user are highlighted.",
+    sampleRunNoInput: "This program doesn't ask for input: this is what it shows when it runs.",
+    answer: "User answer:",
+    outputTruncated: "The output goes on. Open it in Codoritmo to see all of it.",
+    complexityIntro: "How much work and memory it needs as the amount of data (n) grows.",
+    complexityCase: "Case",
+    complexityCost: "Cost",
+    traits: "Traits",
+    challenge: "Challenge",
+    showHint: "Show hint",
+    openInCodoritmo: "Open in Codoritmo",
+    openInCodoritmoHint: "Run, change and debug this example in your browser.",
+    share: "Share",
+    linkCopied: "Link copied!",
+    previous: "Previous",
+    next: "Next",
+    exampleNavigation: "Examples in this topic",
+    related: "Related examples",
+    switchLanguage: "View this page in Spanish",
+    otherLanguage: "Español",
+    footerCta: "Write your own algorithm",
+    footerCtaBody: "Codoritmo is free and runs in your browser, with the same pseudocode as PSeInt.",
+    ogTagline: "Pseudocode example",
+    skipToContent: "Skip to content",
   },
   // The engine's own templates are the English source text.
   engineMessages: engineMessageTemplates,

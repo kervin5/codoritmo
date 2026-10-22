@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 
 import type { Locale } from '@/src/i18n/config';
 import type { Dictionary } from '@/src/i18n/types';
-import { workspaceExamplesNewTabHref } from '@/src/lib/workspace-deeplink';
+import { examplesIndexPath } from '@/src/lib/example-urls';
 
 interface AboutShellProps {
   children: ReactNode;
@@ -39,7 +39,7 @@ export default function AboutShell({ children, dictionary, locale }: AboutShellP
         <Link aria-current="page" className="text-[13px] text-white/50 hover:text-white/80" href={`/${locale}/about`}>
           {dictionary.appShell.about}
         </Link>
-        <Link className="ml-auto text-[12px] text-white/55 hover:text-white" href={workspaceExamplesNewTabHref(locale)}>
+        <Link className="ml-auto text-[12px] text-white/55 hover:text-white" href={examplesIndexPath(locale)}>
           {dictionary.appShell.examples}
         </Link>
         <Link

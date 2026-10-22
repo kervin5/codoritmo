@@ -327,6 +327,16 @@ export interface Dictionary {
       showHint: string;
       dismiss: string;
       back: string;
+      /** Share the example's public page (native share sheet or clipboard). */
+      share: string;
+      /** Shown inline after the link is copied. */
+      linkCopied: string;
+      /** Label of the read-only URL field shown when copying is blocked. */
+      copyFailed: string;
+      /** Opens the example's public page in a new tab. */
+      viewPage: string;
+      /** Tooltip/aria for the "view page" link. */
+      viewPageHint: string;
       /** Chips for an example's big-O metadata. */
       complexity: {
         label: string;
@@ -339,6 +349,71 @@ export interface Dictionary {
         inPlace: string;
       };
     };
+  };
+  /** Public, statically generated example pages (/es/ejemplos, /en/examples). */
+  examplePages: {
+    /** Index <title> and description. */
+    indexTitle: string;
+    indexDescription: string;
+    indexKeywords: string[];
+    eyebrow: string;
+    /** Index H1. */
+    heading: string;
+    intro: string;
+    forStudentsTitle: string;
+    forStudentsBody: string;
+    forTeachersTitle: string;
+    forTeachersBody: string;
+    /** Topic <title>; {topic} is filled in. */
+    topicTitle: string;
+    /** Topic meta description; {topic} and {count} are filled in. */
+    topicDescription: string;
+    /** One-paragraph intro for each topic page, keyed by topic id. */
+    topicIntros: Record<"basics" | "decisions" | "loops" | "arrays" | "sorting" | "text" | "routines" | "math" | "projects", string>;
+    /** Example <title>; {title} is filled in. */
+    exampleTitle: string;
+    exampleCount: { one: string; other: string };
+    viewTopic: string;
+    breadcrumbLabel: string;
+    level: string;
+    topic: string;
+    concepts: string;
+    code: string;
+    lineCount: { one: string; other: string };
+    copyCode: string;
+    codeCopied: string;
+    copyFailed: string;
+    flowchart: string;
+    flowchartIntro: string;
+    /** aria-label of each flowchart; {name} is the routine. */
+    flowchartLabel: string;
+    sampleRun: string;
+    sampleRunIntro: string;
+    sampleRunNoInput: string;
+    /** Screen-reader prefix before each typed answer. */
+    answer: string;
+    outputTruncated: string;
+    complexityIntro: string;
+    complexityCase: string;
+    complexityCost: string;
+    traits: string;
+    challenge: string;
+    showHint: string;
+    openInCodoritmo: string;
+    openInCodoritmoHint: string;
+    share: string;
+    linkCopied: string;
+    previous: string;
+    next: string;
+    exampleNavigation: string;
+    related: string;
+    switchLanguage: string;
+    /** Name of the other locale, shown in the language switch. */
+    otherLanguage: string;
+    footerCta: string;
+    footerCtaBody: string;
+    ogTagline: string;
+    skipToContent: string;
   };
   /** Text for every engine diagnostic, keyed by Diagnostic.code. */
   engineMessages: Record<EngineMessageCode, string>;

@@ -39,7 +39,7 @@ describe("SEO surfaces", () => {
       screen.getByRole("link", { name: /visit the official pseint project/i })
     ).toHaveAttribute("href", "http://pseint.sourceforge.net");
     for (const link of screen.getAllByRole("link", { name: /examples/i })) {
-      expect(link).toHaveAttribute("href", "/en?examples=new");
+      expect(link).toHaveAttribute("href", "/en/examples");
     }
     for (const link of screen.getAllByRole("link", { name: /^About$/i })) {
       expect(link).toHaveAttribute("href", "/en/about");

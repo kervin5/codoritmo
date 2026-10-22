@@ -48,6 +48,7 @@ import type { Locale } from "@/src/i18n/config";
 import { formatDiagnostic } from "@/src/i18n/diagnostics";
 import { formatMessage, formatPlural } from "@/src/i18n/format";
 import type { Dictionary } from "@/src/i18n/types";
+import { workspaceExampleFromSearch } from "@/src/lib/example-urls";
 import { isExamplesNewWorkspaceTabIntent } from "@/src/lib/workspace-deeplink";
 import CodeEditor from "./code-editor";
 import { CommandPalette } from "./command-palette";
@@ -169,6 +170,11 @@ function Tabs<T extends string>({ tabs, value, onChange }: { tabs: [T, string, n
   );
 }
 
+/** A new tab holding an example, tagged so its guide shows. */
+function exampleDocument(example: ExampleProgram) {
+  return createDocument(nameFromSource(example.source, `${example.id}.psc`), example.source, example.profileId, example.id);
+}
+
 export default function Workspace({ dictionary, locale }: { dictionary: Dictionary; locale: Locale }) {
   const t = dictionary.studio;
   const router = useRouter();
@@ -271,10 +277,26 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
         notify(t.linkOpened);
       }
       if (hash) history.replaceState(null, "", window.location.pathname + window.location.search);
+      // `?ejemplo=<id>`: open that example with its guide, as the browser does.
+      const linkedId = workspaceExampleFromSearch(window.location.search);
+      const linked = linkedId ? examplePrograms.find((e) => e.id === linkedId) : undefined;
+      if (linked) {
+        const doc = exampleDocument(linked);
+        docs = [...(docs ?? []), doc];
+        setDocuments(docs);
+        setActiveId(doc.id);
+        setHintShown(false);
+      }
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("ejemplo")) {
+        params.delete("ejemplo");
+        const rest = params.toString();
+        history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : ""));
+      }
       if (isExamplesNewWorkspaceTabIntent(window.location.search)) {
         setExamplesOpen(true);
         history.replaceState(null, "", window.location.pathname);
-      } else if (!restored && !shared) {
+      } else if (!restored && !shared && !linked) {
         // First visit: start by showing what Codoritmo can do.
         setExamplesOpen(true);
       }
@@ -365,7 +387,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
   const openExample = (example: ExampleProgram) => {
     setExamplesOpen(false);
     setHintShown(false);
-    openDocument(createDocument(nameFromSource(example.source, `${example.id}.psc`), example.source, example.profileId, example.id));
+    openDocument(exampleDocument(example));
   };
   const switchTo = (id: string) => {
     if (id === activeId) return;
@@ -1066,7 +1088,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
       )}
 
       {examplesOpen && (
-        <ExamplesBrowser dictionary={dictionary} onClose={() => setExamplesOpen(false)} onOpen={openExample} />
+        <ExamplesBrowser dictionary={dictionary} locale={locale} onClose={() => setExamplesOpen(false)} onOpen={openExample} />
       )}
 
       {paletteQuery !== null && (

@@ -728,6 +728,11 @@ export const esDictionary: Dictionary = {
       showHint: "Ver pista",
       dismiss: "Entendido",
       back: "Volver",
+      share: "Compartir",
+      linkCopied: "¡Enlace copiado!",
+      copyFailed: "No se pudo copiar. Copia el enlace:",
+      viewPage: "Ver página",
+      viewPageHint: "Abrir la página pública del ejemplo en una pestaña nueva",
       complexity: {
         label: "Complejidad",
         best: "Mejor",
@@ -739,6 +744,91 @@ export const esDictionary: Dictionary = {
         inPlace: "En el lugar",
       },
     },
+  },
+  examplePages: {
+    indexTitle: "Ejemplos de pseudocódigo PSeInt resueltos",
+    indexDescription:
+      "Ejemplos de pseudocódigo estilo PSeInt con código, diagrama de flujo y ejecución: decisiones, ciclos, arreglos, ordenamiento, funciones y más. Ábrelos en Codoritmo y pruébalos en el navegador.",
+    indexKeywords: [
+      "ejemplos de pseudocódigo",
+      "ejemplos PSeInt",
+      "ejercicios resueltos PSeInt",
+      "diagrama de flujo",
+      "algoritmos de ordenamiento",
+    ],
+    eyebrow: "Biblioteca de ejemplos",
+    heading: "Ejemplos de pseudocódigo para aprender a programar",
+    intro:
+      "Programas cortos y comentados, ordenados por tema y por nivel. Cada uno trae el código, su diagrama de flujo, una ejecución de muestra y un desafío para seguir practicando.",
+    forStudentsTitle: "Para estudiantes",
+    forStudentsBody:
+      "Lee el código, mira cómo se ve en el diagrama y compara con la ejecución. Después ábrelo en Codoritmo, cámbialo y resuelve el desafío.",
+    forTeachersTitle: "Para docentes",
+    forTeachersBody:
+      "Cada ejemplo tiene un enlace propio para compartir en clase o en la plataforma del curso. Se abre directo en el editor, sin instalar nada.",
+    topicTitle: "{topic}: ejemplos de pseudocódigo",
+    topicDescription:
+      "{count} ejemplos de pseudocódigo PSeInt sobre {topic}, con código, diagrama de flujo y ejecución de muestra.",
+    topicIntros: {
+      basics:
+        "Tus primeros algoritmos: mostrar mensajes, leer datos, guardar valores en variables y hacer cálculos sencillos.",
+      decisions:
+        "Programas que eligen qué hacer con Si, SiNo y Segun: comparar valores, combinar condiciones y responder a cada caso.",
+      loops:
+        "Repetir instrucciones con Mientras, Repetir y Para: contar, acumular, validar datos y jugar hasta adivinar.",
+      arrays:
+        "Guardar muchos valores con un solo nombre: recorrer arreglos y matrices, buscar, sumar y encontrar el mayor.",
+      sorting:
+        "Los algoritmos clásicos para ordenar y buscar, con su complejidad: burbuja, selección, inserción, mezcla, rápido y búsqueda binaria.",
+      text:
+        "Trabajar con cadenas: medir, recortar, unir, invertir y contar letras con las funciones de texto.",
+      routines:
+        "Dividir un programa en SubProcesos y Funciones: parámetros, valores de retorno, paso por referencia y recursión.",
+      math:
+        "Problemas de matemáticas resueltos con algoritmos: primos, divisores, máximo común divisor y más.",
+      projects:
+        "Programas más largos que combinan todo lo anterior: juegos y pequeñas aplicaciones completas.",
+    },
+    exampleTitle: "{title}: ejemplo en pseudocódigo",
+    exampleCount: { one: "{count} ejemplo", other: "{count} ejemplos" },
+    viewTopic: "Ver el tema",
+    breadcrumbLabel: "Ruta de navegación",
+    level: "Nivel",
+    topic: "Tema",
+    concepts: "Conceptos",
+    code: "Código",
+    lineCount: { one: "{count} línea", other: "{count} líneas" },
+    copyCode: "Copiar código",
+    codeCopied: "¡Código copiado!",
+    copyFailed: "No se pudo copiar",
+    flowchart: "Diagrama de flujo",
+    flowchartIntro: "Cada bloque del diagrama corresponde a una instrucción del código.",
+    flowchartLabel: "Diagrama de flujo de {name}",
+    sampleRun: "Ejemplo de ejecución",
+    sampleRunIntro: "Esto muestra el programa al ejecutarlo. Las respuestas escritas por el usuario aparecen resaltadas.",
+    sampleRunNoInput: "Este programa no pide datos: esto es lo que muestra al ejecutarlo.",
+    answer: "Respuesta del usuario:",
+    outputTruncated: "La salida continúa. Ábrelo en Codoritmo para verla completa.",
+    complexityIntro: "Cuánto trabajo y memoria necesita según la cantidad de datos (n).",
+    complexityCase: "Caso",
+    complexityCost: "Costo",
+    traits: "Características",
+    challenge: "Desafío",
+    showHint: "Ver pista",
+    openInCodoritmo: "Abrir en Codoritmo",
+    openInCodoritmoHint: "Ejecuta, modifica y depura este ejemplo en el navegador.",
+    share: "Compartir",
+    linkCopied: "¡Enlace copiado!",
+    previous: "Anterior",
+    next: "Siguiente",
+    exampleNavigation: "Ejemplos del mismo tema",
+    related: "Ejemplos relacionados",
+    switchLanguage: "Ver esta página en inglés",
+    otherLanguage: "English",
+    footerCta: "Escribe tu propio algoritmo",
+    footerCtaBody: "Codoritmo es gratis y funciona en el navegador, con el mismo pseudocódigo de PSeInt.",
+    ogTagline: "Ejemplo de pseudocódigo",
+    skipToContent: "Saltar al contenido",
   },
   engineMessages: {
     // Estructura del programa

@@ -2,6 +2,8 @@ import React from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { enDictionary } from "@/src/i18n/en";
+import { esDictionary } from "@/src/i18n/es";
+import { examplePath } from "@/src/lib/example-urls";
 
 import Workspace from "../components/workspace/workspace";
 
@@ -94,6 +96,17 @@ function consoleText() {
 beforeEach(() => {
   window.localStorage.clear();
   window.location.hash = "";
+  window.history.replaceState(null, "", "/");
+});
+
+/** Installs (or removes, with undefined) a navigator property for one test. */
+function stubNavigator<K extends "share" | "clipboard">(key: K, value: unknown) {
+  Object.defineProperty(window.navigator, key, { configurable: true, value });
+}
+
+afterEach(() => {
+  stubNavigator("share", undefined);
+  stubNavigator("clipboard", undefined);
 });
 
 describe("Workspace", () => {
@@ -248,5 +261,75 @@ describe("Workspace", () => {
     const options = within(browser).getAllByRole("option");
     expect(options.length).toBeGreaterThanOrEqual(4);
     expect(within(browser).getByText(t.examples.results.other.replace("{count}", String(options.length)))).toBeInTheDocument();
+  });
+
+  it("copies the example's localized public URL when there is no share sheet", async () => {
+    const writeText = jest.fn(() => Promise.resolve());
+    stubNavigator("clipboard", { writeText });
+    const es = esDictionary.studio.examples;
+    render(<Workspace dictionary={esDictionary} locale="es" />);
+    const browser = await screen.findByRole("dialog", { name: es.title });
+    fireEvent.change(within(browser).getByLabelText(es.search), { target: { value: "ahorcado" } });
+    await act(async () => {
+      fireEvent.click(within(browser).getByRole("button", { name: es.share }));
+    });
+
+    const url = `${window.location.origin}${examplePath("es", "hangman")}`;
+    expect(url).toMatch(/^http:\/\/localhost\/es\/ejemplos\/[a-z-]+$/);
+    expect(writeText).toHaveBeenCalledWith(url);
+    expect(await within(browser).findByText(es.linkCopied)).toBeInTheDocument();
+    // Sharing doesn't open the example.
+    expect(screen.getByRole("dialog", { name: es.title })).toBeInTheDocument();
+    expect(within(browser).getByRole("link", { name: es.viewPageHint })).toHaveAttribute("href", examplePath("es", "hangman"));
+  });
+
+  it("shows the link to copy by hand when the clipboard is blocked", async () => {
+    stubNavigator("clipboard", { writeText: () => Promise.reject(new DOMException("denied", "NotAllowedError")) });
+    renderWorkspace();
+    const browser = await screen.findByRole("dialog", { name: t.examples.title });
+    fireEvent.change(within(browser).getByLabelText(t.examples.search), { target: { value: "ahorcado" } });
+    await act(async () => {
+      fireEvent.click(within(browser).getByRole("button", { name: t.examples.share }));
+    });
+    const field = await within(browser).findByLabelText(t.examples.copyFailed);
+    expect(field).toHaveValue(`${window.location.origin}${examplePath("en", "hangman")}`);
+  });
+
+  it("uses the native share sheet when there is one", async () => {
+    const share = jest.fn(() => Promise.resolve());
+    const writeText = jest.fn(() => Promise.resolve());
+    stubNavigator("share", share);
+    stubNavigator("clipboard", { writeText });
+    renderWorkspace();
+    const browser = await screen.findByRole("dialog", { name: t.examples.title });
+    fireEvent.change(within(browser).getByLabelText(t.examples.search), { target: { value: "ahorcado" } });
+    await act(async () => {
+      fireEvent.click(within(browser).getByRole("button", { name: t.examples.share }));
+    });
+    expect(share).toHaveBeenCalledWith({
+      title: enDictionary.examples["hangman"].label,
+      text: enDictionary.examples["hangman"].description,
+      url: `${window.location.origin}${examplePath("en", "hangman")}`,
+    });
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("opens the example from ?ejemplo= with its guide instead of the browser", async () => {
+    window.history.replaceState(null, "", "/en?ejemplo=quicksort");
+    renderWorkspace();
+    expect(await screen.findByRole("tab", { name: /Quicksort\.psc/ })).toBeInTheDocument();
+    expect(screen.getByText(enDictionary.examples["quicksort"].challenge, { exact: false })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: t.examples.title })).not.toBeInTheDocument();
+    expect(window.location.search).toBe("");
+    expect(window.location.pathname).toBe("/en");
+  });
+
+  it("ignores an unknown ?ejemplo=", async () => {
+    window.history.replaceState(null, "", "/en?ejemplo=does-not-exist");
+    renderWorkspace();
+    // A first visit as usual: the browser opens and no example tab is added.
+    expect(await screen.findByRole("dialog", { name: t.examples.title })).toBeInTheDocument();
+    expect(screen.queryByText(enDictionary.examples["quicksort"].challenge, { exact: false })).not.toBeInTheDocument();
+    expect(window.location.search).toBe("");
   });
 });

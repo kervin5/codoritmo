@@ -6,7 +6,7 @@
 // ↑/↓ to move, Enter to open, Esc to close. On narrow screens it becomes a
 // full-screen list with the preview sliding over it.
 
-import { ArrowLeft, CornerDownLeft, RotateCcw, Search, X } from "lucide-react";
+import { ArrowLeft, Check, CornerDownLeft, ExternalLink, RotateCcw, Search, Share2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -18,8 +18,10 @@ import {
   type ExampleProgram,
   type Runtime,
 } from "@/src/engine";
+import type { Locale } from "@/src/i18n/config";
 import { formatMessage, formatPlural } from "@/src/i18n/format";
 import type { Dictionary } from "@/src/i18n/types";
+import { examplePath } from "@/src/lib/example-urls";
 import CodeEditor from "./code-editor";
 import FlowDiagram from "./flow-diagram";
 
@@ -112,12 +114,103 @@ function ComplexityChips({
   );
 }
 
+type ShareState = "idle" | "copied" | "manual";
+
+/**
+ * Shares the example's public page: the native share sheet where there is one
+ * (phones), otherwise the clipboard. If the clipboard is blocked, the URL is
+ * shown selected in a read-only field so it can be copied by hand.
+ */
+function ShareActions({ locale, example, title, text, labels }: {
+  locale: Locale;
+  example: ExampleProgram;
+  title: string;
+  text: string;
+  labels: Dictionary["studio"]["examples"];
+}) {
+  const [state, setState] = useState<ShareState>("idle");
+  const fieldRef = useRef<HTMLInputElement>(null);
+  const path = examplePath(locale, example.id);
+
+  useEffect(() => {
+    if (state !== "copied") return;
+    const timer = window.setTimeout(() => setState("idle"), 2000);
+    return () => window.clearTimeout(timer);
+  }, [state]);
+
+  useEffect(() => {
+    if (state === "manual") fieldRef.current?.select();
+  }, [state]);
+
+  const share = async () => {
+    const url = window.location.origin + path;
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title, text, url });
+        return;
+      } catch (error) {
+        // The person closed the share sheet: nothing to do.
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        // Otherwise (not allowed, unsupported data…) fall back to copying.
+      }
+    }
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("clipboard unavailable");
+      await navigator.clipboard.writeText(url);
+      setState("copied");
+    } catch {
+      setState("manual");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-1.5" data-preview-actions="">
+      <div className="flex items-center gap-1.5">
+        <a
+          aria-label={labels.viewPageHint}
+          className="flex h-[32px] shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 text-[12.5px] text-white/55 hover:bg-white/[0.06] hover:text-white"
+          href={path}
+          rel="noopener"
+          target="_blank"
+          title={labels.viewPageHint}
+        >
+          <ExternalLink size={13} /> <span className="hidden sm:inline">{labels.viewPage}</span>
+        </a>
+        <button
+          className="flex h-[32px] shrink-0 items-center gap-1.5 rounded-[8px] border border-white/[0.1] px-3 text-[13px] text-white/80 hover:bg-white/[0.06] hover:text-white"
+          onClick={() => void share()}
+          type="button"
+        >
+          {state === "copied" ? <Check size={13} /> : <Share2 size={13} />} {labels.share}
+        </button>
+      </div>
+      <div aria-live="polite" className="text-[11.5px] text-[#A9F0D2]">
+        {state === "copied" && labels.linkCopied}
+      </div>
+      {state === "manual" && (
+        <label className="flex w-[260px] max-w-full flex-col gap-1 text-[11.5px] text-white/55">
+          {labels.copyFailed}
+          <input
+            ref={fieldRef}
+            className="rounded-[6px] border border-white/[0.1] bg-black/25 px-2 py-1 font-mono text-[11.5px] text-white/85 outline-none focus:border-[#4FB892]/70"
+            onFocus={(event) => event.currentTarget.select()}
+            readOnly
+            value={typeof window === "undefined" ? path : window.location.origin + path}
+          />
+        </label>
+      )}
+    </div>
+  );
+}
+
 export function ExamplesBrowser({
   dictionary,
+  locale,
   onOpen,
   onClose,
 }: {
   dictionary: Dictionary;
+  locale: Locale;
   onOpen: (example: ExampleProgram) => void;
   onClose: () => void;
 }) {
@@ -210,7 +303,12 @@ export function ExamplesBrowser({
         } else if (event.key === "ArrowUp") {
           event.preventDefault();
           move(-1);
-        } else if (event.key === "Enter" && active && !(event.target as HTMLElement).closest(".monaco-editor")) {
+        } else if (
+          event.key === "Enter" &&
+          active &&
+          // Enter belongs to the editor and to the share/view-page controls.
+          !(event.target as HTMLElement).closest(".monaco-editor, [data-preview-actions]")
+        ) {
           event.preventDefault();
           onOpen(active);
         }
@@ -377,13 +475,23 @@ export function ExamplesBrowser({
                     </div>
                     {active.complexity && <ComplexityChips complexity={active.complexity} labels={t.complexity} />}
                   </div>
-                  <button
-                    className="flex h-[32px] shrink-0 items-center gap-2 rounded-[8px] bg-[#2F8F6E] px-3.5 text-[13px] font-medium text-white hover:bg-[#35A27C] active:bg-[#287A5E]"
-                    onClick={() => onOpen(active)}
-                    type="button"
-                  >
-                    {t.open} <CornerDownLeft size={13} />
-                  </button>
+                  <div className="flex shrink-0 items-start gap-1.5">
+                    <ShareActions
+                      key={active.id}
+                      example={active}
+                      labels={t}
+                      locale={locale}
+                      text={activeCopy?.description ?? active.description}
+                      title={titleOf(active)}
+                    />
+                    <button
+                      className="flex h-[32px] shrink-0 items-center gap-2 rounded-[8px] bg-[#2F8F6E] px-3.5 text-[13px] font-medium text-white hover:bg-[#35A27C] active:bg-[#287A5E]"
+                      onClick={() => onOpen(active)}
+                      type="button"
+                    >
+                      {t.open} <CornerDownLeft size={13} />
+                    </button>
+                  </div>
                 </div>
                 {activeCopy?.learn && (
                   <p className="mt-3 text-[13px] leading-[20px] text-white/70">
