@@ -24,7 +24,7 @@ interface EditorProps {
 
 let editorConfigured = false;
 
-function configureMonaco(monaco: Monaco): void {
+export function configureMonaco(monaco: Monaco): void {
   if (editorConfigured) {
     return;
   }
