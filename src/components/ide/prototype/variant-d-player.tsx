@@ -70,7 +70,7 @@ export default function VariantD({ dictionary, source, setSource, settings, prof
   // Keyboard: space play/pause, ←/→ step, ⌘↵ play, Esc stop (outside text fields).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
+      const target = (event.target instanceof Element ? event.target : document.body) as HTMLElement;
       const typing = !!target.closest("input, textarea, [contenteditable], .monaco-editor");
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
         event.preventDefault();

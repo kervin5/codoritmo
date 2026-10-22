@@ -15,6 +15,7 @@ import VariantA from "./variant-a-studio";
 import VariantB from "./variant-b-notebook";
 import VariantC from "./variant-c-dual";
 import VariantD from "./variant-d-player";
+import VariantE from "./variant-e-native";
 
 export interface VariantProps {
   dictionary: Dictionary;
@@ -27,6 +28,7 @@ export interface VariantProps {
 }
 
 const variants = [
+  { key: "E", name: "Nativo", Component: VariantE },
   { key: "D", name: "Reproductor", Component: VariantD },
   { key: "A", name: "Estudio", Component: VariantA },
   { key: "B", name: "Cuaderno", Component: VariantB },
@@ -71,7 +73,7 @@ function PrototypeSwitcher({ index }: { index: number }) {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
+      const target = (event.target instanceof Element ? event.target : document.body) as HTMLElement;
       if (target.closest("input, textarea, [contenteditable], .monaco-editor")) return;
       if (!event.altKey) return; // Alt+←/→ so plain arrows stay free for the app
       if (event.key === "ArrowLeft") goRef.current(-1);
