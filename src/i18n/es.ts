@@ -806,6 +806,8 @@ export const esDictionary: Dictionary = {
 
     // Exportación de código
     EXPORT_FOREACH: "Para Cada necesita una variable de tipo arreglo para poder exportarse ({name}).",
+    EXPORT_RESIZE_DIMENSIONS: "Redimensionar solo puede exportarse para arreglos de una o dos dimensiones ({name}).",
+    EXPORT_RESIZE_PARAMETER: "Redimensionar sobre un parámetro no cambia el arreglo original en el código exportado ({name}).",
   },
   engineTypeNames: {
     num: "numérico",

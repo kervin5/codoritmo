@@ -1,3 +1,4 @@
+import { engineMessage } from "../messages";
 import { normalizeEngineSettings } from "../settings";
 import type {
   AssignableExpressionNode,
@@ -417,15 +418,12 @@ export class JavaGenerator {
       const sizes = item.dimensions.map((dimension) => this.integer(dimension).code);
       if (statement.resize) {
         if (sizes.length > 2) {
-          this.warn(statement, `Redimensionar only exports for arrays of one or two dimensions (${item.name}).`);
+          this.warn(statement, "EXPORT_RESIZE_DIMENSIONS", item.name);
           lines.push(`// Redimensionar ${item.name}: no se pudo traducir`);
           continue;
         }
         if (info.param) {
-          this.warn(
-            statement,
-            `Redimensionar on a parameter does not change the caller's array in Java (${item.name}).`
-          );
+          this.warn(statement, "EXPORT_RESIZE_PARAMETER", item.name);
         }
         this.uses.add("redimensionar");
         this.resizers.set(`${base}${sizes.length}`, { type: base, dims: sizes.length });
@@ -454,13 +452,14 @@ export class JavaGenerator {
     return lines;
   }
 
-  private warn(statement: StatementNode, message: string): void {
+  private warn(statement: StatementNode, code: "EXPORT_RESIZE_DIMENSIONS" | "EXPORT_RESIZE_PARAMETER", name: string): void {
     this.diagnostics.push({
-      message,
+      message: engineMessage(code, { name }),
       line: statement.span?.start.line ?? 0,
       column: statement.span?.start.column ?? 0,
       severity: "warning",
-      code: "EXPORT_JAVA",
+      code,
+      params: { name },
     });
   }
 
@@ -581,11 +580,12 @@ export class JavaGenerator {
         : undefined;
     if (!collection?.array) {
       this.diagnostics.push({
-        message: `Para Cada needs an array variable to export (${statement.variable}).`,
+        message: engineMessage("EXPORT_FOREACH", { name: statement.variable }),
         line: statement.span?.start.line ?? 0,
         column: statement.span?.start.column ?? 0,
         severity: "warning",
         code: "EXPORT_FOREACH",
+        params: { name: statement.variable },
       });
       return [`// Para Cada ${statement.variable}: no se pudo traducir`];
     }

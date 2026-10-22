@@ -170,6 +170,8 @@ export const engineMessageTemplates = {
 
   // Code export
   EXPORT_FOREACH: 'Para Cada needs an array variable to be exported ({name}).',
+  EXPORT_RESIZE_DIMENSIONS: "Redimensionar can only be exported for arrays of one or two dimensions ({name}).",
+  EXPORT_RESIZE_PARAMETER: "Redimensionar on a parameter does not resize the caller's array in the exported code ({name}).",
 } as const satisfies Record<string, string>;
 
 export type EngineMessageCode = keyof typeof engineMessageTemplates;

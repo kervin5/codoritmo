@@ -1,3 +1,4 @@
+import { engineMessage } from "../messages";
 import { normalizeEngineSettings } from "../settings";
 import type {
   AssignableExpressionNode,
@@ -612,11 +613,12 @@ export class PythonGenerator {
         : undefined;
     if (!collection?.array) {
       this.diagnostics.push({
-        message: `Para Cada needs an array variable to export (${statement.variable}).`,
+        message: engineMessage("EXPORT_FOREACH", { name: statement.variable }),
         line: statement.span?.start.line ?? 0,
         column: statement.span?.start.column ?? 0,
         severity: "warning",
         code: "EXPORT_FOREACH",
+        params: { name: statement.variable },
       });
       return [`# Para Cada ${statement.variable}: no se pudo traducir`];
     }
