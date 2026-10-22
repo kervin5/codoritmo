@@ -1,4 +1,5 @@
 import { engineMessageTemplates, engineTypeNames } from "../engine/messages";
+import { enExamples } from "./examples-en";
 import type { Dictionary } from "./types";
 
 export const enDictionary: Dictionary = {
@@ -105,26 +106,7 @@ export const enDictionary: Dictionary = {
   editor: {
     loading: "Loading Monaco editor…",
   },
-  examples: {
-    "hello-world": {
-      label: "Hola Mundo",
-      description: "A minimal pseudocode program that writes one line.",
-    },
-    "loops-and-output": {
-      label: "Bucles",
-      description:
-        "While, repeat, and for loops using the canonical browser dialect.",
-    },
-    references: {
-      label: "Por Referencia",
-      description: "SubProceso with by-reference parameters and arrays.",
-    },
-    "runtime-controls": {
-      label: "Esperar y Limpiar",
-      description:
-        "Runtime controls that map cleanly to the browser playground.",
-    },
-  },
+  examples: enExamples,
   library: {
     chooseExample: "Choose example",
     close: "Close",
@@ -644,6 +626,63 @@ export const enDictionary: Dictionary = {
     profiles: { title: "Language Profile", search: "Search school or profile…", builtIn: "General profiles", schools: "Schools", settings: "Profile rules", done: "Done", flexible: "Flexible" },
     hover: { variable: "variable", firstSeen: "First appears on line {n}.", counter: "counter" },
     activity: { diagram: "Flowchart", code: "{lang} Code", reference: "Reference" },
+    examples: {
+      title: "Examples",
+      menu: "Examples…",
+      search: "Search examples: arrays, game, average…",
+      all: "All",
+      levels: { "1": "Beginner", "2": "Intermediate", "3": "Advanced" },
+      topics: {
+        basics: "First steps",
+        decisions: "Decisions",
+        loops: "Loops",
+        arrays: "Arrays",
+        text: "Text",
+        routines: "Subprocesses & functions",
+        math: "Math",
+        projects: "Projects",
+      },
+      concepts: {
+        io: "Input & output",
+        variables: "Variables",
+        si: "Si",
+        segun: "Segun",
+        mientras: "Mientras",
+        repetir: "Repetir",
+        para: "Para",
+        paraCada: "Para Cada",
+        arreglos: "Arrays",
+        matrices: "Matrices",
+        redimensionar: "Redimensionar",
+        texto: "Text",
+        logicos: "Logic",
+        subprocesos: "SubProcesos",
+        funciones: "Functions",
+        referencia: "Por Referencia",
+        recursion: "Recursion",
+        azar: "Randomness",
+        matematicas: "Math",
+        pantalla: "Screen & waiting",
+        coloquial: "Colloquial conditions",
+      },
+      conceptsLabel: "Concepts",
+      clearFilters: "Clear filters",
+      results: { one: "{count} example", other: "{count} examples" },
+      noResults: "No examples match. Try another word or clear the filters.",
+      lines: "{n} lines",
+      tabCode: "Code",
+      tabDiagram: "Flowchart",
+      tabOutput: "Output",
+      sampleInput: "Sample answers:",
+      noInput: "This program doesn't ask for input.",
+      rerun: "Run again",
+      open: "Open",
+      learn: "What you'll learn",
+      challenge: "Challenge",
+      showHint: "Show hint",
+      dismiss: "Got it",
+      back: "Back",
+    },
   },
   // The engine's own templates are the English source text.
   engineMessages: engineMessageTemplates,

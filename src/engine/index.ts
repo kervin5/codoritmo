@@ -54,7 +54,7 @@ export {
   formatRuntimeValue,
   parseInputText,
 } from "./runtime";
-export { examplePrograms } from "./examples";
+export { exampleConcepts, examplePrograms, exampleTopics } from "./examples";
 export type {
   AssignableExpressionNode,
   BrowserRuntimeController,
@@ -63,7 +63,9 @@ export type {
   EngineProfile,
   EngineSettingDefinition,
   EngineSettings,
+  ExampleConcept,
   ExampleProgram,
+  ExampleTopic,
   ExecutionResult,
   ExecutionState,
   ExecutionStatementEvent,

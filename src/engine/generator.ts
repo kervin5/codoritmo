@@ -12,6 +12,11 @@ import {
 import { BUILTIN_SIGNATURES, normalizeIdentifier } from "./checker";
 import { formatNumber } from "./runtime";
 import { normalizeEngineSettings } from "./settings";
+import {
+  normalizeName,
+  TypeInference,
+  type ProgramTypes,
+} from "./generators/type-inference";
 
 // Generated code mirrors the interpreter (interpreter.ts): numbers print with
 // formatNumber, the math built-ins check their domain, arrays are shared with
@@ -473,10 +478,21 @@ function helperLibrary(
     '    if (Array.isArray(value)) fail("Los arreglos solo pueden pasarse por referencia.");',
     "    return value;",
     "  };",
+    "  // Por Referencia: a box whose `value` reads and assigns the caller's variable.",
+    "  const ref = (get, set) => ({",
+    "    get value() { return get(); },",
+    "    set value(newValue) { set(newValue); },",
+    "  });",
+    "  // A box for an array element such as v[2]. The indices are fixed at the call.",
+    "  const elementRef = (array, ...indices) => {",
+    "    const last = indices[indices.length - 1];",
+    "    const row = () => indices.slice(0, -1).reduce((items, index) => items[index], array);",
+    "    return ref(() => row()[last], (newValue) => { row()[last] = newValue; });",
+    "  };",
     "  return {",
     "    RuntimeError, fail, format, toNumber, toBoolean, condition, comparable, add, divide, modulo,",
     "    trunc, round, asin, acos, sqrt, ln, azar, aleatorio, currentDate, currentTime, textToNumber,",
-    "    substring, read, dimensions, array, resize, elements, arrayParameter,",
+    "    substring, read, dimensions, array, resize, elements, arrayParameter, ref, elementRef,",
     "  };",
     `})(${random});`,
   ];
@@ -603,6 +619,10 @@ export class JavaScriptGenerator {
   private types: Record<string, StaticType> = {};
   /** Standalone: lowercase variable name -> JavaScript expression. */
   private names = new Map<string, string>();
+  /** Standalone: by-reference scalar parameters of the current routine (lowercase name -> box name). */
+  private boxes = new Map<string, string>();
+  /** Standalone: which variables are arrays, to keep passing arrays directly. */
+  private programTypes: ProgramTypes | null = null;
 
   constructor(options: { settings?: Partial<EngineSettings> } = {}) {
     this.settings = normalizeEngineSettings(options.settings);
@@ -649,6 +669,7 @@ export class JavaScriptGenerator {
     target: JavaScriptExportTarget
   ): GenerationResult {
     this.initialize(program);
+    this.programTypes = TypeInference.infer(program);
 
     const entryName = readableRoutineName(program.entry.name);
     const lines: string[] = [
@@ -1145,15 +1166,30 @@ export class JavaScriptGenerator {
       readableRoutineName(routine.name),
       routine.params,
       routine.body,
-      routine.returnTarget
+      routine.returnTarget,
+      routine
     );
+  }
+
+  /**
+   * Whether a parameter receives a reference box: a Por Referencia scalar.
+   * Arrays are already shared in JavaScript, so they are passed directly.
+   */
+  private isBoxedParameter(
+    routine: RoutineNode,
+    parameter: RoutineNode["params"][number]
+  ): boolean {
+    if (!parameter.byReference) return false;
+    const scope = this.programTypes?.routines.get(normalizeName(routine.name));
+    return !scope?.vars.get(normalizeName(parameter.name))?.array;
   }
 
   private generateStandaloneRoutineLike(
     jsName: string,
     params: RoutineNode["params"],
     body: StatementNode[],
-    returnTarget?: string
+    returnTarget?: string,
+    routine?: RoutineNode
   ): string[] {
     const locals = collectLocalNames(body, this.routines);
     if (returnTarget) {
@@ -1161,23 +1197,44 @@ export class JavaScriptGenerator {
     }
 
     this.names = new Map();
+    this.boxes = new Map();
     for (const parameter of params) {
-      this.names.set(
-        parameter.name.toLowerCase(),
-        standaloneVariableName(parameter.name)
-      );
-      locals.names.delete(parameter.name.toLowerCase());
+      const key = parameter.name.toLowerCase();
+      const name = standaloneVariableName(parameter.name);
+      if (routine && this.isBoxedParameter(routine, parameter)) {
+        // The body reads and assigns the box's value.
+        this.boxes.set(key, name);
+        this.names.set(key, `${name}.value`);
+      } else {
+        this.names.set(key, name);
+      }
+      locals.names.delete(key);
     }
     for (const [key, spelling] of locals.names) {
       this.names.set(key, standaloneVariableName(spelling));
     }
 
     const lines: string[] = [];
-    const renderedParams = params.map((parameter) =>
-      parameter.byReference
-        ? `${this.names.get(parameter.name.toLowerCase())} /* por referencia */`
-        : this.names.get(parameter.name.toLowerCase())
-    );
+    if (this.boxes.size > 0) {
+      const boxNames = [...this.boxes.values()];
+      const listed =
+        boxNames.length === 1
+          ? `${boxNames[0]} llega como una referencia`
+          : `${boxNames.slice(0, -1).join(", ")} y ${
+              boxNames[boxNames.length - 1]
+            } llegan como referencias`;
+      lines.push(
+        `// Por Referencia: ${listed} (pseint.ref).`,
+        `// Asignar ${boxNames[0]}.value cambia la variable de quien llama.`
+      );
+    }
+    const renderedParams = params.map((parameter) => {
+      const key = parameter.name.toLowerCase();
+      if (this.boxes.has(key)) return this.boxes.get(key)!;
+      return parameter.byReference
+        ? `${this.names.get(key)} /* por referencia */`
+        : this.names.get(key);
+    });
     lines.push(`async function ${jsName}(${renderedParams.join(", ")}) {`);
 
     for (const parameter of params) {
@@ -1517,6 +1574,33 @@ export class JavaScriptGenerator {
     return `${base}${suffix}`;
   }
 
+  /** The reference box passed to a Por Referencia scalar parameter. */
+  private generateStandaloneRefArgument(argument: ExpressionNode): string {
+    if (argument.kind === "identifier") {
+      const key = argument.name.toLowerCase();
+      const box = this.boxes.get(key);
+      // A by-reference parameter passed on: hand over the same box.
+      if (box && this.names.get(key) === `${box}.value`) {
+        return box;
+      }
+      if (!this.routines.has(key) || this.names.has(key)) {
+        const target = this.standaloneName(argument.name);
+        const value = target === "valor" ? "nuevoValor" : "valor";
+        return `pseint.ref(() => ${target}, (${value}) => { ${target} = ${value}; })`;
+      }
+    }
+    if (argument.kind === "arrayAccess") {
+      const indices = argument.indices
+        .map((index) => this.generateStandaloneArrayIndex(index))
+        .join(", ");
+      return `pseint.elementRef(${this.generateStandaloneExpression(
+        argument.target
+      )}, ${indices})`;
+    }
+    // Not a variable: the subprocess gets a box with a copy of the value.
+    return `{ value: ${this.generateStandaloneExpression(argument)} }`;
+  }
+
   private generateStandaloneArrayIndex(expression: ExpressionNode): string {
     const rendered = this.generateStandaloneExpression(expression);
     return this.settings.baseZeroArrays ? rendered : `(${rendered} - 1)`;
@@ -1547,9 +1631,15 @@ export class JavaScriptGenerator {
       case "call": {
         const routine = this.routines.get(expression.callee.toLowerCase());
         if (routine) {
-          return `(await ${readableRoutineName(routine.name)}(${expression.args
-            .map((arg) => this.generateStandaloneExpression(arg))
-            .join(", ")}))`;
+          const args = expression.args.map((arg, index) => {
+            const parameter = routine.params[index];
+            return parameter && this.isBoxedParameter(routine, parameter)
+              ? this.generateStandaloneRefArgument(arg)
+              : this.generateStandaloneExpression(arg);
+          });
+          return `(await ${readableRoutineName(routine.name)}(${args.join(
+            ", "
+          )}))`;
         }
 
         const builtin = this.generateStandaloneBuiltinCall(

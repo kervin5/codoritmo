@@ -95,7 +95,9 @@ async function runStandalone(source: string, options: RunOptions): Promise<Outco
   const modules: Record<string, unknown> = {
     "node:readline/promises": {
       createInterface: () => ({
-        question: async () => {
+        question: async (prompt: string) => {
+          // Esperar Tecla asks with a prompt: it is a key press, not a Leer.
+          if (prompt) return "";
           if (queue.length === 0) throw new Error("no input");
           return queue.shift()!;
         },
@@ -241,11 +243,46 @@ describe("generated JavaScript matches the interpreter", () => {
       program(
         `x <- 1\nDimension v[2]\nv[2] <- 5\nDuplica(x)\nDuplica(v[2])\nEscribir x, " ", v[2]`,
         `SubProceso Duplica(n Por Referencia)\n  n <- n * 2\nFinSubProceso`
-      ),
-      // The standalone export passes scalars by value even with Por Referencia.
-      { skipStandalone: true }
+      )
     );
     expect(outcome.output).toEqual(["2 10"]);
+  });
+
+  it("forwards a by-reference parameter to another subprocess", async () => {
+    const outcome = await expectParity(
+      program(
+        `a <- 9\nb <- 2\nc <- 5\nOrdenarTres(a, b, c)\nEscribir a, " ", b, " ", c`,
+        `SubProceso Intercambiar(a Por Referencia, b Por Referencia)\n  t <- a\n  a <- b\n  b <- t\nFinSubProceso\n` +
+          `SubProceso OrdenarTres(n1 Por Referencia, n2 Por Referencia, n3 Por Referencia)\n` +
+          `  Si n1 > n2 Entonces\n    Intercambiar(n1, n2)\n  FinSi\n` +
+          `  Si n2 > n3 Entonces\n    Intercambiar(n2, n3)\n  FinSi\n` +
+          `  Si n1 > n2 Entonces\n    Intercambiar(n1, n2)\n  FinSi\nFinSubProceso`
+      )
+    );
+    expect(outcome.output).toEqual(["2 5 9"]);
+  });
+
+  it("passes array elements by reference", async () => {
+    const outcome = await expectParity(
+      program(
+        `Dimension v[3], m[2,2]\nPara i <- 1 Hasta 3 Hacer\n  v[i] <- i * 10\nFinPara\n` +
+          `i <- 1\nIntercambiar(v[i], v[3])\nm[2,1] <- 4\nIntercambiar(m[2,1], v[2])\n` +
+          `Escribir v[1], " ", v[2], " ", v[3], " ", m[2,1]`,
+        `SubProceso Intercambiar(a Por Referencia, b Por Referencia)\n  t <- a\n  a <- b\n  b <- t\nFinSubProceso`
+      )
+    );
+    expect(outcome.output).toEqual(["30 4 10 20"]);
+  });
+
+  it("keeps by-reference changes made by a Funcion used in an expression", async () => {
+    const outcome = await expectParity(
+      program(
+        `c <- 0\nx <- Siguiente(c) + Siguiente(c) * 10\nEscribir x, " ", c\n` +
+          `Si Siguiente(c) = 3 Entonces\n  Escribir "tres"\nFinSi`,
+        `Funcion r <- Siguiente(n Por Referencia)\n  n <- n + 1\n  r <- n\nFinFuncion`
+      )
+    );
+    expect(outcome.output).toEqual(["21 2", "tres"]);
   });
 
   it("aliases array elements in Para Cada, across every dimension", async () => {

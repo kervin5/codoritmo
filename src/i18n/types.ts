@@ -1,6 +1,19 @@
 import type { EngineMessageCode } from "../engine/messages";
 import type { StaticType } from "../engine/types";
 
+/** Localized text for one example program (keyed by example id). */
+export interface ExampleCopy {
+  label: string;
+  /** One line shown in lists. */
+  description: string;
+  /** "Lo que aprenderás": 1-3 sentences on the concepts it shows. */
+  learn: string;
+  /** A small change for the student to try. */
+  challenge: string;
+  /** A nudge for the challenge, revealed on demand. */
+  hint: string;
+}
+
 export interface Dictionary {
   metadata: {
     description: string;
@@ -76,13 +89,7 @@ export interface Dictionary {
   editor: {
     loading: string;
   };
-  examples: Record<
-    string,
-    {
-      description: string;
-      label: string;
-    }
-  >;
+  examples: Record<string, ExampleCopy>;
   library: {
     chooseExample: string;
     close: string;
@@ -258,6 +265,32 @@ export interface Dictionary {
     profiles: { title: string; search: string; builtIn: string; schools: string; settings: string; done: string; flexible: string };
     hover: { variable: string; firstSeen: string; counter: string };
     activity: { diagram: string; code: string; reference: string };
+    examples: {
+      title: string;
+      menu: string;
+      search: string;
+      all: string;
+      levels: Record<"1" | "2" | "3", string>;
+      topics: Record<"basics" | "decisions" | "loops" | "arrays" | "text" | "routines" | "math" | "projects", string>;
+      concepts: Record<string, string>;
+      conceptsLabel: string;
+      clearFilters: string;
+      results: { one: string; other: string };
+      noResults: string;
+      lines: string;
+      tabCode: string;
+      tabDiagram: string;
+      tabOutput: string;
+      sampleInput: string;
+      noInput: string;
+      rerun: string;
+      open: string;
+      learn: string;
+      challenge: string;
+      showHint: string;
+      dismiss: string;
+      back: string;
+    };
   };
   /** Text for every engine diagnostic, keyed by Diagnostic.code. */
   engineMessages: Record<EngineMessageCode, string>;

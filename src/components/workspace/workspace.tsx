@@ -22,6 +22,7 @@ import {
   Search,
   SkipBack,
   SkipForward,
+  Sparkles,
   Square,
   Turtle,
   Workflow,
@@ -40,6 +41,7 @@ import {
   Parser,
   settingsEqual,
   type EngineSettings,
+  type ExampleProgram,
   type ExportLanguage,
 } from "@/src/engine";
 import type { Locale } from "@/src/i18n/config";
@@ -67,6 +69,7 @@ import {
 import FlowDiagram from "./flow-diagram";
 import { registerLanguageServices, type LanguageCatalog } from "./language-services";
 import { MenuBar, type Menu, type MenuItem } from "./menu-bar";
+import { ExamplesBrowser } from "./examples-browser";
 import { ConsolePanel, DeskCheckPanel, formatValue, TranslationPanel, type TraceRow } from "./panels";
 import { profileLabel, ProfileDialog } from "./profile-dialog";
 import { ReferencePanel, useReferenceCatalog, type ReferenceEntry } from "./reference-panel";
@@ -216,6 +219,8 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
   const routineRef = useRef<string | null>(null);
 
   const [paletteQuery, setPaletteQuery] = useState<string | null>(null);
+  const [examplesOpen, setExamplesOpen] = useState(false);
+  const [hintShown, setHintShown] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [cursorWord, setCursorWord] = useState<string | null>(null);
@@ -238,6 +243,9 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
     [player.parseDiagnostics, player.runtimeError, dictionary]
   );
   const sourceLines = useMemo(() => source.split("\n"), [source]);
+  const guideExample = doc.exampleId && !doc.guideDismissed ? examplePrograms.find((e) => e.id === doc.exampleId) : undefined;
+  const guideCopy = guideExample ? dictionary.examples[guideExample.id] : undefined;
+  const guide = guideExample && guideCopy?.learn ? { example: guideExample, copy: guideCopy } : null;
   const asking = player.status === "input" && !player.scrubbing;
   const speedLabel = t.run.speeds[SPEEDS[player.speedIndex].id];
 
@@ -262,8 +270,11 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
       }
       if (hash) history.replaceState(null, "", window.location.pathname + window.location.search);
       if (isExamplesNewWorkspaceTabIntent(window.location.search)) {
-        setPaletteQuery(t.file.openExample);
+        setExamplesOpen(true);
         history.replaceState(null, "", window.location.pathname);
+      } else if (!restored && !shared) {
+        // First visit: start by showing what Codoritmo can do.
+        setExamplesOpen(true);
       }
       setHydrated(true);
     });
@@ -348,6 +359,11 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
     player.stop();
     setDocuments((docs) => [...docs, next]);
     setActiveId(next.id);
+  };
+  const openExample = (example: ExampleProgram) => {
+    setExamplesOpen(false);
+    setHintShown(false);
+    openDocument(createDocument(nameFromSource(example.source, `${example.id}.psc`), example.source, example.profileId, example.id));
   };
   const switchTo = (id: string) => {
     if (id === activeId) return;
@@ -434,13 +450,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
       items: [
         { label: t.file.new, shortcut: k("N"), onSelect: () => openDocument(createDocument("SinTitulo.psc", BLANK_PROGRAM)) },
         { label: t.file.open, shortcut: k("O"), onSelect: () => fileInputRef.current?.click() },
-        {
-          label: t.file.openExample,
-          submenu: examplePrograms.map((example) => ({
-            label: dictionary.examples[example.id]?.label ?? example.label,
-            onSelect: () => openDocument(createDocument(nameFromSource(example.source, `${example.id}.psc`), example.source, example.profileId)),
-          })),
-        },
+        { label: t.examples.menu, shortcut: k("E"), onSelect: () => setExamplesOpen(true) },
         { separator: true },
         { label: t.file.save, shortcut: k("S"), onSelect: save },
         { label: t.file.rename, onSelect: rename },
@@ -567,7 +577,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
   /* ---------- global shortcuts (take precedence over the browser's) ---------- */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (profileOpen || paletteQuery !== null) return; // dialogs handle their own keys
+      if (profileOpen || paletteQuery !== null || examplesOpen) return; // dialogs handle their own keys
       const mod = mac ? event.metaKey : event.ctrlKey;
       const target = (event.target instanceof Element ? event.target : document.body) as HTMLElement;
       const typing = !!target.closest(".monaco-editor, input, textarea");
@@ -578,6 +588,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
         fn();
       };
       if (mod && key === "k") return handled(() => setPaletteQuery(""));
+      if (mod && key === "e") return handled(() => setExamplesOpen(true));
       if (mod && key === "s") return handled(save);
       if (mod && key === "o") return handled(() => fileInputRef.current?.click());
       if (mod && key === "n") return handled(() => openDocument(createDocument("SinTitulo.psc", BLANK_PROGRAM)));
@@ -702,6 +713,15 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           )}
         </div>
         <button
+          className="flex h-[24px] shrink-0 items-center gap-1.5 rounded-[6px] px-2 text-[12px] text-white/55 hover:bg-white/[0.06] hover:text-white"
+          onClick={() => setExamplesOpen(true)}
+          title={`${t.examples.menu} (${k("E")})`}
+          type="button"
+        >
+          <Sparkles size={13} />
+          {!phone && t.examples.title}
+        </button>
+        <button
           className="flex h-[24px] shrink-0 items-center gap-2 rounded-[6px] border border-white/[0.07] bg-black/20 px-2 text-[12px] text-white/45 hover:text-white/75"
           onClick={() => setPaletteQuery("")}
           type="button"
@@ -792,6 +812,43 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
             </div>
           </div>
 
+          {guide && (
+            <div className="shrink-0 border-b border-white/[0.06] bg-[#7FE0B8]/[0.05] px-4 py-2.5 text-[12.5px] leading-[19px]">
+              <div className="flex items-start gap-3">
+                <Sparkles className="mt-0.5 shrink-0 text-[#7FE0B8]" size={14} />
+                <div className="min-w-0 flex-1 text-white/70">
+                  <div>
+                    <span className="font-semibold text-white/90">{guide.copy.label}. </span>
+                    {guide.copy.learn}
+                  </div>
+                  <div className="mt-1">
+                    <span className="font-medium text-[#A9F0D2]">{t.examples.challenge}: </span>
+                    {guide.copy.challenge}{" "}
+                    {hintShown ? (
+                      <span className="text-white/50 italic">{guide.copy.hint}</span>
+                    ) : (
+                      <button className="text-[#7FE0B8] hover:underline" onClick={() => setHintShown(true)} type="button">
+                        {t.examples.showHint}
+                      </button>
+                    )}
+                  </div>
+                  {guide.example.input && (
+                    <div className="mt-1 text-white/45">
+                      {t.examples.sampleInput} <span className="font-mono text-white/65">{guide.example.input.split("\n").join(" · ")}</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  aria-label={t.examples.dismiss}
+                  className="shrink-0 rounded px-2 py-0.5 text-[12px] text-white/50 hover:bg-white/[0.06] hover:text-white"
+                  onClick={() => updateDoc(doc.id, { guideDismissed: true })}
+                  type="button"
+                >
+                  {t.examples.dismiss}
+                </button>
+              </div>
+            </div>
+          )}
           <div className="min-h-[120px] flex-1 select-text">
             <CodeEditor
               currentLine={activeLine}
@@ -987,6 +1044,10 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
         <div className="pointer-events-none fixed bottom-[72px] left-1/2 z-[250] max-w-[90vw] -translate-x-1/2 rounded-[8px] border border-white/10 bg-[#2A3033]/95 px-3.5 py-2 text-center text-[12.5px] text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur" role="status">
           {toast}
         </div>
+      )}
+
+      {examplesOpen && (
+        <ExamplesBrowser dictionary={dictionary} onClose={() => setExamplesOpen(false)} onOpen={openExample} />
       )}
 
       {paletteQuery !== null && (

@@ -1,3 +1,4 @@
+import { esExamples } from "./examples-es";
 import type { Dictionary } from "./types";
 
 export const esDictionary: Dictionary = {
@@ -106,26 +107,7 @@ export const esDictionary: Dictionary = {
   editor: {
     loading: "Cargando el editor Monaco…",
   },
-  examples: {
-    "hello-world": {
-      label: "Hola Mundo",
-      description: "Un programa mínimo de pseudocódigo que escribe una línea.",
-    },
-    "loops-and-output": {
-      label: "Bucles",
-      description:
-        "Bucles Mientras, Repetir y Para usando el dialecto canónico del navegador.",
-    },
-    references: {
-      label: "Por Referencia",
-      description: "SubProceso con parámetros por referencia y arreglos.",
-    },
-    "runtime-controls": {
-      label: "Esperar y Limpiar",
-      description:
-        "Controles de ejecución que encajan bien con el entorno del navegador.",
-    },
-  },
+  examples: esExamples,
   library: {
     chooseExample: "Elegir ejemplo",
     close: "Cerrar",
@@ -644,6 +626,63 @@ export const esDictionary: Dictionary = {
     profiles: { title: "Perfil del lenguaje", search: "Buscar institución o perfil…", builtIn: "Perfiles generales", schools: "Instituciones", settings: "Reglas del perfil", done: "Listo", flexible: "Flexible" },
     hover: { variable: "variable", firstSeen: "Aparece por primera vez en la línea {n}.", counter: "contador" },
     activity: { diagram: "Diagrama", code: "Código {lang}", reference: "Referencia" },
+    examples: {
+      title: "Ejemplos",
+      menu: "Ejemplos…",
+      search: "Buscar ejemplos: arreglos, juego, promedio…",
+      all: "Todos",
+      levels: { "1": "Básico", "2": "Intermedio", "3": "Avanzado" },
+      topics: {
+        basics: "Primeros pasos",
+        decisions: "Decisiones",
+        loops: "Repeticiones",
+        arrays: "Arreglos",
+        text: "Texto",
+        routines: "Subprocesos y funciones",
+        math: "Matemáticas",
+        projects: "Proyectos",
+      },
+      concepts: {
+        io: "Entrada y salida",
+        variables: "Variables",
+        si: "Si",
+        segun: "Segun",
+        mientras: "Mientras",
+        repetir: "Repetir",
+        para: "Para",
+        paraCada: "Para Cada",
+        arreglos: "Arreglos",
+        matrices: "Matrices",
+        redimensionar: "Redimensionar",
+        texto: "Texto",
+        logicos: "Lógicos",
+        subprocesos: "SubProcesos",
+        funciones: "Funciones",
+        referencia: "Por Referencia",
+        recursion: "Recursión",
+        azar: "Azar",
+        matematicas: "Matemáticas",
+        pantalla: "Pantalla y espera",
+        coloquial: "Condiciones coloquiales",
+      },
+      conceptsLabel: "Conceptos",
+      clearFilters: "Quitar filtros",
+      results: { one: "{count} ejemplo", other: "{count} ejemplos" },
+      noResults: "Ningún ejemplo coincide. Prueba con otra palabra o quita filtros.",
+      lines: "{n} líneas",
+      tabCode: "Código",
+      tabDiagram: "Diagrama",
+      tabOutput: "Salida",
+      sampleInput: "Respuestas de ejemplo:",
+      noInput: "Este programa no pide datos.",
+      rerun: "Ejecutar de nuevo",
+      open: "Abrir",
+      learn: "Lo que aprenderás",
+      challenge: "Desafío",
+      showHint: "Ver pista",
+      dismiss: "Entendido",
+      back: "Volver",
+    },
   },
   engineMessages: {
     // Estructura del programa

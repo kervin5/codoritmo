@@ -20,6 +20,9 @@ export interface WorkspaceDocument {
   profileId: string;
   /** Effective rules; may differ from the profile's when customised. */
   settings: EngineSettings;
+  /** Set when opened from the example library: shows its guide above the editor. */
+  exampleId?: string;
+  guideDismissed?: boolean;
 }
 
 export interface WorkspacePrefs {
@@ -67,8 +70,13 @@ export function profileSettings(profileId: string): EngineSettings {
   return normalizeEngineSettings((getEngineProfile(profileId) ?? engineProfiles[0]).settings);
 }
 
-export function createDocument(name: string, source: string, profileId = DEFAULT_PROFILE_ID): WorkspaceDocument {
-  return { id: createId(), name, source, savedSource: source, profileId, settings: profileSettings(profileId) };
+export function createDocument(
+  name: string,
+  source: string,
+  profileId = DEFAULT_PROFILE_ID,
+  exampleId?: string
+): WorkspaceDocument {
+  return { id: createId(), name, source, savedSource: source, profileId, settings: profileSettings(profileId), exampleId };
 }
 
 /** "Algoritmo Promedio" → "Promedio.psc"; falls back to the given name. */

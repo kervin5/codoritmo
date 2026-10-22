@@ -585,10 +585,22 @@ export interface BrowserRuntimeController {
   submitInput(value: string): void;
 }
 
+export type ExampleTopic = "basics" | "decisions" | "loops" | "arrays" | "text" | "routines" | "math" | "projects";
+
+export type ExampleConcept =
+  | "io" | "variables" | "si" | "segun" | "mientras" | "repetir" | "para" | "paraCada"
+  | "arreglos" | "matrices" | "redimensionar" | "texto" | "logicos" | "subprocesos"
+  | "funciones" | "referencia" | "recursion" | "azar" | "matematicas" | "pantalla" | "coloquial";
+
 export interface ExampleProgram {
   id: string;
   label: string;
   description: string;
+  topic: ExampleTopic;
+  /** 1 básico, 2 intermedio, 3 avanzado. */
+  level: 1 | 2 | 3;
+  concepts: ExampleConcept[];
+  /** Sample answers for Leer, one per line. */
   input?: string;
   profileId?: string;
   settings?: Partial<EngineSettings>;

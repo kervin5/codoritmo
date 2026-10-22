@@ -221,4 +221,32 @@ describe("Workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: t.activity.code.replace("{lang}", "C") }));
     await waitFor(() => expect(document.body.textContent).toContain("#include"));
   });
+
+  it("opens the example library on a first visit and opens an example with its guide", async () => {
+    renderWorkspace();
+    const browser = await screen.findByRole("dialog", { name: t.examples.title });
+    fireEvent.change(within(browser).getByLabelText(t.examples.search), { target: { value: "ahorcado" } });
+    const options = within(browser).getAllByRole("option");
+    expect(options).toHaveLength(1);
+    expect(options[0]).toHaveTextContent(enDictionary.examples["hangman"].label);
+    fireEvent.click(within(browser).getByRole("button", { name: new RegExp(`^${t.examples.open}`) }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: t.examples.title })).not.toBeInTheDocument());
+    expect(screen.getByRole("tab", { name: /Ahorcado\.psc/ })).toBeInTheDocument();
+    expect(screen.getByText(enDictionary.examples["hangman"].challenge, { exact: false })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t.examples.showHint }));
+    expect(screen.getByText(enDictionary.examples["hangman"].hint)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t.examples.dismiss }));
+    expect(screen.queryByText(enDictionary.examples["hangman"].hint)).not.toBeInTheDocument();
+  });
+
+  it("filters examples by topic and level", async () => {
+    renderWorkspace();
+    const browser = await screen.findByRole("dialog", { name: t.examples.title });
+    fireEvent.click(within(browser).getAllByRole("button", { name: new RegExp(t.examples.topics.projects) })[0]);
+    fireEvent.click(within(browser).getByRole("radio", { name: t.examples.levels["3"] }));
+    const options = within(browser).getAllByRole("option");
+    expect(options.length).toBeGreaterThanOrEqual(4);
+    expect(within(browser).getByText(t.examples.results.other.replace("{count}", String(options.length)))).toBeInTheDocument();
+  });
 });
