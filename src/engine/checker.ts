@@ -9,6 +9,7 @@ import {
   StaticType,
   DataType,
 } from "./types";
+import { engineMessage, type DiagnosticParams, type EngineMessageCode } from "./messages";
 
 // Static checks that PSeInt performs before running a program. Variable
 // types are inferred per routine from Definir, from assignments and from how
@@ -91,12 +92,6 @@ interface Spanned {
   span?: { start: { line: number; column: number } };
 }
 
-const typeNames: Record<StaticType, string> = {
-  num: "numérico",
-  str: "caracter",
-  bool: "lógico",
-};
-
 class RoutineChecker {
   readonly env = new Map<string, StaticType>();
   /** Names dimensioned as arrays in this routine. */
@@ -123,16 +118,17 @@ class RoutineChecker {
     }
   }
 
-  private fail(node: Spanned | null, message: string, code: string): void {
+  private fail(node: Spanned | null, code: EngineMessageCode, params?: DiagnosticParams): void {
     if (!this.report) {
       return;
     }
     throw new CheckError({
-      message,
+      message: engineMessage(code, params),
       line: node?.span?.start.line ?? this.line,
       column: node?.span?.start.column ?? 1,
       severity: "error",
       code,
+      ...(params && { params }),
     });
   }
 
@@ -159,8 +155,8 @@ class RoutineChecker {
     if (this.isRoutineName(name) && !this.isOwnReturnTarget(name)) {
       this.fail(
         node,
-        `"${name}" is the name of a routine and cannot be used as a variable.`,
-        "PARSE_NAME_IS_ROUTINE"
+        "PARSE_NAME_IS_ROUTINE",
+        { name }
       );
     }
   }
@@ -181,7 +177,7 @@ class RoutineChecker {
           this.checkNotRoutineName(item.name, item);
           this.arrays.add(item.name.toLowerCase());
           for (const dimension of item.dimensions) {
-            this.expect(dimension, num, "Array dimensions must be numeric.");
+            this.expect(dimension, num, "PARSE_DIMENSION_TYPE");
           }
         }
         return;
@@ -190,7 +186,7 @@ class RoutineChecker {
         this.checkNotRoutineName(name, statement);
         if (statement.target.kind === "arrayAccess") {
           for (const index of statement.target.indices) {
-            this.expect(index, num, "Array indices must be numeric.");
+            this.expect(index, num, "PARSE_INDEX_TYPE");
           }
         }
         const valueType = this.typeOf(statement.value);
@@ -198,8 +194,8 @@ class RoutineChecker {
         if (targetType && valueType && targetType !== valueType) {
           this.fail(
             statement,
-            `No coinciden los tipos: no se puede asignar un valor ${typeNames[valueType]} a "${name}" (${typeNames[targetType]}).`,
-            "PARSE_TYPE_MISMATCH"
+            "PARSE_TYPE_MISMATCH",
+            { valueType, name, targetType }
           );
         } else if (!targetType && valueType) {
           this.env.set(name.toLowerCase(), valueType);
@@ -218,7 +214,7 @@ class RoutineChecker {
           this.checkNotRoutineName(this.targetName(target), statement);
           if (target.kind === "arrayAccess") {
             for (const index of target.indices) {
-              this.expect(index, num, "Array indices must be numeric.");
+              this.expect(index, num, "PARSE_INDEX_TYPE");
             }
           }
         }
@@ -240,13 +236,13 @@ class RoutineChecker {
       case "for": {
         const counterType = this.env.get(statement.variable.toLowerCase());
         if (counterType && counterType !== num) {
-          this.fail(statement, "The Para counter must be numeric.", "PARSE_TYPE_MISMATCH");
+          this.fail(statement, "PARSE_FOR_COUNTER_TYPE");
         }
         this.env.set(statement.variable.toLowerCase(), num);
-        this.expect(statement.start, num, "The Para start value must be numeric.");
-        this.expect(statement.end, num, "The Para end value must be numeric.");
+        this.expect(statement.start, num, "PARSE_FOR_START_TYPE");
+        this.expect(statement.end, num, "PARSE_FOR_END_TYPE");
         if (statement.step) {
-          this.expect(statement.step, num, "The Para step must be numeric.");
+          this.expect(statement.step, num, "PARSE_FOR_STEP_TYPE");
         }
         this.block(statement.body);
         return;
@@ -285,7 +281,7 @@ class RoutineChecker {
       case "clear":
       case "wait":
         if (statement.kind === "wait" && statement.durationMs) {
-          this.expect(statement.durationMs, num, "Esperar needs a numeric duration.");
+          this.expect(statement.durationMs, num, "PARSE_WAIT_DURATION_TYPE");
         }
         return;
     }
@@ -306,8 +302,8 @@ class RoutineChecker {
     if (type && type !== bool) {
       this.fail(
         { span: { start: { line: this.line, column: 1 } } },
-        `The condition of ${construct} must be a logical expression.`,
-        "PARSE_CONDITION_NOT_LOGICAL"
+        "PARSE_CONDITION_NOT_LOGICAL",
+        { construct }
       );
     }
     if (!type) {
@@ -315,10 +311,15 @@ class RoutineChecker {
     }
   }
 
-  private expect(expression: ExpressionNode, type: StaticType, message: string): void {
+  private expect(
+    expression: ExpressionNode,
+    type: StaticType,
+    code: EngineMessageCode,
+    params?: DiagnosticParams
+  ): void {
     const actual = this.typeOf(expression);
     if (actual && actual !== type) {
-      this.fail(expression, message, "PARSE_TYPE_MISMATCH");
+      this.fail(expression, code, params);
     }
     if (!actual) {
       this.unify(expression, type);
@@ -358,8 +359,8 @@ class RoutineChecker {
           if (routine.params.length > 0) {
             this.fail(
               expression,
-              `The routine "${expression.name}" needs arguments.`,
-              "PARSE_MISSING_ARGUMENTS"
+              "PARSE_MISSING_ARGUMENTS",
+              { name: expression.name }
             );
           }
           return this.callResult(routine, asStatement, expression);
@@ -368,7 +369,7 @@ class RoutineChecker {
       }
       case "arrayAccess":
         for (const index of expression.indices) {
-          this.expect(index, num, "Array indices must be numeric.");
+          this.expect(index, num, "PARSE_INDEX_TYPE");
         }
         return this.env.get(this.targetName(expression).toLowerCase()) ?? null;
       case "call": {
@@ -377,8 +378,8 @@ class RoutineChecker {
           if (expression.args.length !== routine.params.length) {
             this.fail(
               expression,
-              `The routine "${routine.name}" expects ${routine.params.length} argument(s).`,
-              "PARSE_ARGUMENT_COUNT"
+              "PARSE_ARGUMENT_COUNT",
+              { name: routine.name, count: routine.params.length }
             );
           }
           routine.params.forEach((param, index) => {
@@ -389,8 +390,8 @@ class RoutineChecker {
             if (param.byReference && arg.kind !== "identifier" && arg.kind !== "arrayAccess") {
               this.fail(
                 expression,
-                `The argument for "${param.name}" is passed by reference and must be a variable.`,
-                "PARSE_BY_REFERENCE_ARGUMENT"
+                "PARSE_BY_REFERENCE_ARGUMENT",
+                { name: param.name }
               );
             }
             this.typeOf(arg);
@@ -404,21 +405,21 @@ class RoutineChecker {
         if (expression.args.length !== signature.params.length) {
           this.fail(
             expression,
-            `The function "${expression.callee}" expects ${signature.params.length} argument(s).`,
-            "PARSE_ARGUMENT_COUNT"
+            "PARSE_ARGUMENT_COUNT",
+            { name: expression.callee, count: signature.params.length }
           );
         }
         expression.args.forEach((arg, index) => {
           if (arg.kind === "identifier" && this.arrays.has(arg.name.toLowerCase())) {
             this.fail(
               arg,
-              `The function "${expression.callee}" cannot receive a whole array.`,
-              "PARSE_ARRAY_ARGUMENT"
+              "PARSE_ARRAY_ARGUMENT",
+              { name: expression.callee }
             );
           }
           const paramType = signature.params[index];
           if (paramType) {
-            this.expect(arg, paramType, `Wrong argument type for "${expression.callee}".`);
+            this.expect(arg, paramType, "PARSE_ARGUMENT_TYPE", { name: expression.callee });
           } else {
             this.typeOf(arg);
           }
@@ -429,14 +430,14 @@ class RoutineChecker {
         if (expression.operator === "NOT") {
           const type = this.typeOf(expression.operand);
           if (type && type !== bool) {
-            this.fail(expression, "NO can only be applied to logical values.", "PARSE_NOT_OPERAND");
+            this.fail(expression, "PARSE_NOT_OPERAND");
           }
           if (!type) {
             this.unify(expression.operand, bool);
           }
           return bool;
         }
-        this.expect(expression.operand, num, "The sign can only be applied to numbers.");
+        this.expect(expression.operand, num, "PARSE_SIGN_OPERAND");
         return num;
       }
       case "binary":
@@ -447,7 +448,7 @@ class RoutineChecker {
   private callResult(routine: RoutineNode, asStatement: boolean, node: Spanned): MaybeType {
     const returnType = this.returnTypes.get(routine.name.toLowerCase()) ?? null;
     if (!asStatement && !routine.returnTarget) {
-      this.fail(node, `The routine "${routine.name}" does not return a value.`, "PARSE_NO_RETURN_VALUE");
+      this.fail(node, "PARSE_NO_RETURN_VALUE", { name: routine.name });
     }
     return returnType;
   }
@@ -458,7 +459,7 @@ class RoutineChecker {
       for (const side of [left, right]) {
         const type = this.typeOf(side);
         if (type && type !== bool) {
-          this.fail(expression, "Y/O can only be applied to logical values.", "PARSE_LOGICAL_OPERAND");
+          this.fail(expression, "PARSE_LOGICAL_OPERAND");
         }
         if (!type) {
           this.unify(side, bool);
@@ -468,8 +469,8 @@ class RoutineChecker {
     }
 
     if (["-", "*", "/", "%", "^"].includes(operator)) {
-      this.expect(left, num, `The operator ${operator} only applies to numbers.`);
-      this.expect(right, num, `The operator ${operator} only applies to numbers.`);
+      this.expect(left, num, "PARSE_ARITHMETIC_OPERAND", { operator });
+      this.expect(right, num, "PARSE_ARITHMETIC_OPERAND", { operator });
       return num;
     }
 
@@ -478,10 +479,10 @@ class RoutineChecker {
 
     if (operator === "+") {
       if (leftType === bool || rightType === bool) {
-        this.fail(expression, "The operator + does not apply to logical values.", "PARSE_TYPE_MISMATCH");
+        this.fail(expression, "PARSE_PLUS_LOGICAL");
       }
       if (leftType && rightType && leftType !== rightType) {
-        this.fail(expression, "The operands of + must have the same type.", "PARSE_TYPE_MISMATCH");
+        this.fail(expression, "PARSE_PLUS_MIXED_TYPES");
       }
       if (leftType && !rightType) {
         this.unify(right, leftType);

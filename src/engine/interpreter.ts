@@ -26,6 +26,7 @@ import {
   VariableSnapshot,
   VariableSnapshotValue,
 } from "./types";
+import { engineMessage, type DiagnosticParams, type EngineMessageCode } from "./messages";
 import { createOutputBuffer, formatRuntimeValue } from "./runtime";
 
 type ScalarValue = boolean | number | string | null;
@@ -454,8 +455,8 @@ export class Interpreter {
     if (maxSteps !== undefined && context.counter.steps > maxSteps) {
       this.runtimeError(
         context.counter.lastStatement,
-        `Execution stopped after ${maxSteps} steps. The program may contain an infinite loop.`,
-        "RUNTIME_STEP_LIMIT"
+        "RUNTIME_STEP_LIMIT",
+        { steps: maxSteps }
       );
     }
 
@@ -521,7 +522,6 @@ export class Interpreter {
     }
     this.runtimeError(
       expression,
-      "La condición debe ser una expresión lógica.",
       "RUNTIME_CONDITION_NOT_LOGICAL"
     );
   }
@@ -555,8 +555,8 @@ export class Interpreter {
           ) {
             this.runtimeError(
               statement,
-              `La variable "${name}" ya estaba definida o fue utilizada antes de Definir.`,
-              "RUNTIME_ALREADY_DEFINED"
+              "RUNTIME_ALREADY_DEFINED",
+              { name }
             );
           }
 
@@ -575,22 +575,19 @@ export class Interpreter {
             if (typeof value !== "number") {
               this.runtimeError(
                 dimension,
-                "Las dimensiones deben ser numéricas.",
-                "RUNTIME_ARRAY_DIMENSION"
+                "RUNTIME_DIMENSION_TYPE"
               );
             }
             if (!Number.isInteger(value)) {
               this.runtimeError(
                 dimension,
-                "Las dimensiones solo pueden ser números enteros.",
-                "RUNTIME_ARRAY_DIMENSION"
+                "RUNTIME_DIMENSION_NOT_INTEGER"
               );
             }
             if (value < 0 || (value === 0 && !context.settings.allowResizeArrays)) {
               this.runtimeError(
                 dimension,
-                "Array dimensions must evaluate to positive integers.",
-                "RUNTIME_ARRAY_DIMENSION"
+                "RUNTIME_DIMENSION_NOT_POSITIVE"
               );
             }
             dimensions.push(value);
@@ -605,8 +602,8 @@ export class Interpreter {
           if (isArrayValue(existing.value)) {
             this.runtimeError(
               statement,
-              `El arreglo "${item.name}" ya fue dimensionado.`,
-              "RUNTIME_ARRAY_REDIMENSIONED"
+              "RUNTIME_ARRAY_REDIMENSIONED",
+              { name: item.name }
             );
           }
           const leafType = existing.dataType;
@@ -635,7 +632,6 @@ export class Interpreter {
         if (isArrayValue(value)) {
           this.runtimeError(
             statement,
-            "No se puede asignar un arreglo completo.",
             "RUNTIME_ARRAY_ASSIGNMENT"
           );
         }
@@ -646,7 +642,6 @@ export class Interpreter {
           if (valueType && !typesCompatible(target.dataType, valueType)) {
             this.runtimeError(
               statement,
-              "No coinciden los tipos.",
               "RUNTIME_TYPE_MISMATCH"
             );
           }
@@ -659,7 +654,6 @@ export class Interpreter {
           ) {
             this.runtimeError(
               statement,
-              "No coinciden los tipos, el valor a asignar debe ser un entero.",
               "RUNTIME_TYPE_INTEGER"
             );
           }
@@ -680,7 +674,6 @@ export class Interpreter {
           if (isArrayValue(value)) {
             this.runtimeError(
               expression,
-              "Faltan subíndices para el arreglo.",
               "RUNTIME_ARRAY_MISSING_INDEX"
             );
           }
@@ -765,7 +758,6 @@ export class Interpreter {
         if (step === 0) {
           this.runtimeError(
             statement.start,
-            "For loop step cannot be zero.",
             "RUNTIME_FOR_STEP"
           );
         }
@@ -809,7 +801,6 @@ export class Interpreter {
         if (!isArrayValue(collection)) {
           this.runtimeError(
             statement.collection,
-            "Para Cada requires an array collection.",
             "RUNTIME_FOR_EACH"
           );
         }
@@ -846,7 +837,6 @@ export class Interpreter {
         if (typeof value === "boolean" || isArrayValue(value)) {
           this.runtimeError(
             statement.expression,
-            "La expresión de Segun debe ser numérica o de texto.",
             "RUNTIME_SWITCH_TYPE"
           );
         }
@@ -856,7 +846,6 @@ export class Interpreter {
         ) {
           this.runtimeError(
             statement.expression,
-            "Segun only accepts integer control values in the current profile.",
             "RUNTIME_SWITCH_INTEGER_ONLY"
           );
         }
@@ -876,8 +865,7 @@ export class Interpreter {
             ) {
               this.runtimeError(
                 caseValue,
-                "Segun only accepts integer case values in the current profile.",
-                "RUNTIME_SWITCH_INTEGER_ONLY"
+                "RUNTIME_SWITCH_INTEGER_ONLY_CASE"
               );
             }
             if (
@@ -888,8 +876,7 @@ export class Interpreter {
             ) {
               this.runtimeError(
                 caseValue,
-                "El valor de la opción no coincide con el tipo de la expresión de Segun.",
-                "RUNTIME_SWITCH_TYPE"
+                "RUNTIME_SWITCH_CASE_TYPE"
               );
             }
             caseValues.push(resolved);
@@ -954,7 +941,6 @@ export class Interpreter {
     if (isArrayValue(cell.value)) {
       this.runtimeError(
         statement,
-        "Faltan subíndices para el arreglo.",
         "RUNTIME_ARRAY_MISSING_INDEX"
       );
     }
@@ -963,11 +949,10 @@ export class Interpreter {
     try {
       rawInput = await context.runtime.read();
     } catch (error) {
-      this.runtimeError(
-        statement,
-        `Sin entradas disponibles${error instanceof Error && error.message ? ` (${error.message})` : ""}.`,
-        "RUNTIME_NO_INPUT"
-      );
+      if (error instanceof Error && error.message) {
+        this.runtimeError(statement, "RUNTIME_NO_INPUT_DETAIL", { detail: error.message });
+      }
+      this.runtimeError(statement, "RUNTIME_NO_INPUT");
     }
 
     // The type the variable must hold: from Definir, from what the program
@@ -994,8 +979,8 @@ export class Interpreter {
     if (finalType !== "str" && guessed !== finalType) {
       this.runtimeError(
         statement,
-        `No coinciden los tipos (${baseName}).`,
-        "RUNTIME_INPUT_TYPE"
+        "RUNTIME_INPUT_TYPE",
+        { name: baseName }
       );
     }
     if (
@@ -1005,8 +990,8 @@ export class Interpreter {
     ) {
       this.runtimeError(
         statement,
-        `No coinciden los tipos (${baseName}), el valor ingresado debe ser un entero.`,
-        "RUNTIME_INPUT_INTEGER"
+        "RUNTIME_INPUT_INTEGER",
+        { name: baseName }
       );
     }
 
@@ -1036,15 +1021,14 @@ export class Interpreter {
     if (!cell || !isArrayValue(cell.value)) {
       this.runtimeError(
         statement,
-        `"${name}" no es un arreglo.`,
-        "RUNTIME_ARRAY_TARGET"
+        "RUNTIME_ARRAY_TARGET",
+        { name }
       );
     }
     const current = cell.value;
     if (current.dimensions.length !== dimensions.length) {
       this.runtimeError(
         statement,
-        "No se puede cambiar la cantidad de dimensiones de un arreglo.",
         "RUNTIME_RESIZE_DIMENSIONS"
       );
     }
@@ -1151,8 +1135,8 @@ export class Interpreter {
           if (routine.params.length > 0) {
             this.runtimeError(
               expression,
-              `Faltan argumentos para "${routine.name}".`,
-              "RUNTIME_ARGUMENT_COUNT"
+              "RUNTIME_MISSING_ARGUMENTS",
+              { name: routine.name }
             );
           }
           return this.callRoutine(routine, [], scope, context, expression, asStatement);
@@ -1255,7 +1239,6 @@ export class Interpreter {
           if (!context.settings.allowConcatenation) {
             this.runtimeError(
               expression,
-              'String concatenation with "+" is disabled in the current profile.',
               "RUNTIME_CONCAT_DISABLED"
             );
           }
@@ -1268,12 +1251,12 @@ export class Interpreter {
         return toNumber(left) * toNumber(right);
       case "/":
         if (toNumber(right) === 0) {
-          this.runtimeError(expression, "División por cero.", "RUNTIME_DIVISION_BY_ZERO");
+          this.runtimeError(expression, "RUNTIME_DIVISION_BY_ZERO");
         }
         return toNumber(left) / toNumber(right);
       case "%":
         if (toNumber(right) === 0) {
-          this.runtimeError(expression, "División por cero.", "RUNTIME_DIVISION_BY_ZERO");
+          this.runtimeError(expression, "RUNTIME_DIVISION_BY_ZERO");
         }
         return toNumber(left) % toNumber(right);
       case "^":
@@ -1307,11 +1290,11 @@ export class Interpreter {
         this.settings.forceDefineVars ||
         (mode === "read" && this.settings.forceInitVars)
       ) {
-        const message =
-          mode === "read"
-            ? `Variable "${name}" must be defined before use.`
-            : `Variable "${name}" must be defined with Definir before assignment or input.`;
-        this.runtimeError(node, message, "RUNTIME_DEFINE_REQUIRED");
+        this.runtimeError(
+          node,
+          mode === "read" ? "RUNTIME_DEFINE_REQUIRED_READ" : "RUNTIME_DEFINE_REQUIRED",
+          { name }
+        );
       }
 
       cell = scope.define(name, {
@@ -1328,8 +1311,8 @@ export class Interpreter {
     ) {
       this.runtimeError(
         node,
-        `Cannot modify the protected Para counter "${name}".`,
-        "RUNTIME_PROTECTED_COUNTER"
+        "RUNTIME_PROTECTED_COUNTER",
+        { name }
       );
     }
 
@@ -1338,8 +1321,8 @@ export class Interpreter {
     } else if (this.settings.forceDefineVars && !cell.dataType) {
       this.runtimeError(
         node,
-        `Variable "${name}" must be defined with Definir before assignment or input.`,
-        "RUNTIME_DEFINE_REQUIRED"
+        "RUNTIME_DEFINE_REQUIRED",
+        { name }
       );
     }
 
@@ -1354,16 +1337,16 @@ export class Interpreter {
     if (this.settings.forceDefineVars && !cell.dataType) {
       this.runtimeError(
         node,
-        `Variable "${name}" must be defined before use.`,
-        "RUNTIME_DEFINE_REQUIRED"
+        "RUNTIME_DEFINE_REQUIRED_READ",
+        { name }
       );
     }
 
     if (this.settings.forceInitVars && !cell.initialized) {
       this.runtimeError(
         node,
-        `Variable "${name}" is not initialized.`,
-        "RUNTIME_UNINITIALIZED"
+        "RUNTIME_UNINITIALIZED",
+        { name }
       );
     }
   }
@@ -1384,8 +1367,8 @@ export class Interpreter {
       if (mode !== "read" && isArrayValue(cell.value)) {
         this.runtimeError(
           expression,
-          `Faltan subíndices para el arreglo (${expression.name}).`,
-          "RUNTIME_ARRAY_MISSING_INDEX"
+          "RUNTIME_ARRAY_MISSING_INDEX_NAMED",
+          { name: expression.name }
         );
       }
       return cell;
@@ -1401,8 +1384,8 @@ export class Interpreter {
     if (!isArrayValue(base)) {
       this.runtimeError(
         expression,
-        `La variable (${this.baseName(expression)}) no es un arreglo.`,
-        "RUNTIME_ARRAY_TARGET"
+        "RUNTIME_ARRAY_TARGET",
+        { name: this.baseName(expression) }
       );
     }
 
@@ -1422,8 +1405,7 @@ export class Interpreter {
     } else if (this.settings.forceDefineVars && !cell.dataType) {
       this.runtimeError(
         expression,
-        "Array elements must be typed with Definir before assignment or input.",
-        "RUNTIME_DEFINE_REQUIRED"
+        "RUNTIME_ELEMENT_DEFINE_REQUIRED"
       );
     }
     return cell;
@@ -1436,16 +1418,14 @@ export class Interpreter {
     if (this.settings.forceDefineVars && !cell.dataType) {
       this.runtimeError(
         node,
-        "Array elements must be typed with Definir before use.",
-        "RUNTIME_DEFINE_REQUIRED"
+        "RUNTIME_ELEMENT_DEFINE_REQUIRED_READ"
       );
     }
 
     if (this.settings.forceInitVars && !cell.initialized) {
       this.runtimeError(
         node,
-        "Array element is not initialized.",
-        "RUNTIME_UNINITIALIZED"
+        "RUNTIME_ELEMENT_UNINITIALIZED"
       );
     }
   }
@@ -1458,7 +1438,6 @@ export class Interpreter {
     if (indices.length !== array.dimensions.length) {
       this.runtimeError(
         expression,
-        "La cantidad de subíndices no coincide con las dimensiones del arreglo.",
         "RUNTIME_ARRAY_DIMENSION"
       );
     }
@@ -1474,7 +1453,6 @@ export class Interpreter {
       if (!Number.isInteger(requestedIndex)) {
         this.runtimeError(
           expression,
-          "Array indices must be integers.",
           "RUNTIME_ARRAY_INDEX"
         );
       }
@@ -1486,7 +1464,6 @@ export class Interpreter {
       if (!("kind" in current) || offset < 0 || offset >= dimension) {
         this.runtimeError(
           expression,
-          "Array index out of bounds.",
           "RUNTIME_ARRAY_BOUNDS"
         );
       }
@@ -1496,8 +1473,7 @@ export class Interpreter {
         if ("kind" in next) {
           this.runtimeError(
             expression,
-            "Expected an array element, not a nested array.",
-            "RUNTIME_ARRAY_ELEMENT"
+            "RUNTIME_ARRAY_NESTED_ELEMENT"
           );
         }
         return next;
@@ -1506,8 +1482,7 @@ export class Interpreter {
       if (!("kind" in next)) {
         this.runtimeError(
           expression,
-          "Missing nested array dimension.",
-          "RUNTIME_ARRAY_DIMENSION"
+          "RUNTIME_ARRAY_NESTED_DIMENSION"
         );
       }
 
@@ -1516,7 +1491,6 @@ export class Interpreter {
 
     this.runtimeError(
       expression,
-      "Expected an array element.",
       "RUNTIME_ARRAY_ELEMENT"
     );
   }
@@ -1532,15 +1506,15 @@ export class Interpreter {
     if (args.length !== routine.params.length) {
       this.runtimeError(
         callNode,
-        `"${routine.name}" espera ${routine.params.length} argumento(s).`,
-        "RUNTIME_ARGUMENT_COUNT"
+        "RUNTIME_ARGUMENT_COUNT",
+        { name: routine.name, count: routine.params.length }
       );
     }
     if (!asStatement && !routine.returnTarget) {
       this.runtimeError(
         callNode,
-        `"${routine.name}" no devuelve ningún valor.`,
-        "RUNTIME_NO_RETURN_VALUE"
+        "RUNTIME_NO_RETURN_VALUE",
+        { name: routine.name }
       );
     }
 
@@ -1554,7 +1528,6 @@ export class Interpreter {
         if (argument.kind !== "identifier" && argument.kind !== "arrayAccess") {
           this.runtimeError(
             argument,
-            "By-reference parameters require an assignable argument.",
             "RUNTIME_BY_REF"
           );
         }
@@ -1572,7 +1545,6 @@ export class Interpreter {
         if (parameter.explicitByValue) {
           this.runtimeError(
             argument,
-            "Los arreglos solo pueden pasarse por referencia.",
             "RUNTIME_ARRAY_BY_VALUE"
           );
         }
@@ -1647,26 +1619,26 @@ export class Interpreter {
     ) {
       this.runtimeError(
         node,
-        `String function "${name}" is disabled in the current profile.`,
-        "RUNTIME_STRING_FUNCTION_DISABLED"
+        "RUNTIME_STRING_FUNCTION_DISABLED",
+        { name }
       );
     }
 
     const arg = (index: number) => toNumber(values[index] ?? 0);
-    const domainError = (message: string): never =>
-      this.runtimeError(node, message, "RUNTIME_DOMAIN");
+    const domainError = (code: EngineMessageCode): never =>
+      this.runtimeError(node, code);
 
     switch (normalized) {
       case "ABS":
         return Math.abs(arg(0));
       case "ACOS":
         if (arg(0) < -1 || arg(0) > 1) {
-          domainError("Argumento inválido para la función ACOS (debe estar en [-1;+1]).");
+          domainError("RUNTIME_DOMAIN_ACOS");
         }
         return Math.acos(arg(0));
       case "ASEN":
         if (arg(0) < -1 || arg(0) > 1) {
-          domainError("Argumento inválido para la función ASEN (debe estar en [-1;+1]).");
+          domainError("RUNTIME_DOMAIN_ASEN");
         }
         return Math.asin(arg(0));
       case "ATAN":
@@ -1674,7 +1646,7 @@ export class Interpreter {
       case "AZAR": {
         const limit = Math.trunc(arg(0));
         if (limit <= 0) {
-          domainError("Azar de 0 o negativo.");
+          domainError("RUNTIME_DOMAIN_AZAR");
         }
         return Math.floor(this.random() * limit);
       }
@@ -1693,8 +1665,8 @@ export class Interpreter {
         if (!numericInputPattern.test(text)) {
           this.runtimeError(
             node,
-            `No se puede convertir "${text}" a número.`,
-            "RUNTIME_CONVERSION"
+            "RUNTIME_CONVERSION",
+            { text }
           );
         }
         return Number(text);
@@ -1721,7 +1693,7 @@ export class Interpreter {
       }
       case "LN":
         if (arg(0) <= 0) {
-          domainError("Logaritmo de 0 o negativo.");
+          domainError("RUNTIME_DOMAIN_LN");
         }
         return Math.log(arg(0));
       case "LONGITUD":
@@ -1735,7 +1707,7 @@ export class Interpreter {
       case "RAIZ":
       case "RC":
         if (arg(0) < 0) {
-          domainError("Raíz cuadrada de número negativo.");
+          domainError("RUNTIME_DOMAIN_RC");
         }
         return Math.sqrt(arg(0));
       case "REDON": {
@@ -1777,24 +1749,25 @@ export class Interpreter {
       default:
         this.runtimeError(
           node,
-          `Unknown function "${name}".`,
-          "RUNTIME_FUNCTION"
+          "RUNTIME_FUNCTION",
+          { name }
         );
     }
   }
 
   private runtimeError(
     node: { span?: { start: { line: number; column: number } } } | null,
-    message: string,
-    code: string
+    code: EngineMessageCode,
+    params?: DiagnosticParams
   ): never {
     const span = node?.span;
     throw new RuntimeError({
-      message,
+      message: engineMessage(code, params),
       line: span?.start.line ?? 1,
       column: span?.start.column ?? 1,
       severity: "error",
       code,
+      ...(params && { params }),
     });
   }
 }

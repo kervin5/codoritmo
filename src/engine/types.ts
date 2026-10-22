@@ -165,7 +165,10 @@ export interface Diagnostic {
   line: number;
   column: number;
   severity: DiagnosticSeverity;
+  /** Stable id from engineMessageTemplates; the UI translates by it. */
   code?: string;
+  /** Values for the placeholders in the code's message template. */
+  params?: Record<string, number | string>;
 }
 
 export const TokenKind = {

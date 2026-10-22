@@ -15,6 +15,8 @@ export type PlayerStatus = "idle" | "playing" | "paused" | "input" | "done" | "e
 export interface PlayerLine {
   kind: "out" | "in" | "sys" | "err";
   text: string;
+  /** On "err" lines, so the console can show it in the current language. */
+  diagnostic?: Diagnostic;
 }
 
 export interface Frame {
@@ -247,7 +249,7 @@ export function usePlayer(source: string, settings: EngineSettings, text: Player
           setRuntimeError(diagnostic);
           if (diagnostic) {
             const prefix = textRef.current.line.replace("{n}", String(diagnostic.line));
-            pushLine({ kind: "err", text: `${prefix[0].toUpperCase()}${prefix.slice(1)}: ${diagnostic.message}` });
+            pushLine({ kind: "err", text: `${prefix[0].toUpperCase()}${prefix.slice(1)}: ${diagnostic.message}`, diagnostic });
           }
           setStatusBoth("error");
         }

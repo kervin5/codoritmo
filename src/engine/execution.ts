@@ -1,5 +1,6 @@
 import { createInterpreterWorker } from "./create-interpreter-worker";
 import { Interpreter, type InterpreterLimits } from "./interpreter";
+import { engineMessage } from "./messages";
 import { createBrowserRuntime } from "./runtime";
 import type { EngineSettings, ExecutionResult } from "./types";
 import type {
@@ -148,11 +149,12 @@ function startWorkerExecution(
           output: [...output],
           diagnostics: [
             {
-              message: message.message,
+              message: engineMessage("RUNTIME_INTERNAL", { detail: message.message }),
               line: 1,
               column: 1,
               severity: "error",
               code: "RUNTIME_INTERNAL",
+              params: { detail: message.message },
             },
           ],
           state: "runtime_error",
@@ -166,13 +168,22 @@ function startWorkerExecution(
     finish({
       output: [...output],
       diagnostics: [
-        {
-          message: event.message || "The interpreter worker failed.",
-          line: 1,
-          column: 1,
-          severity: "error",
-          code: "RUNTIME_INTERNAL",
-        },
+        event.message
+          ? {
+              message: engineMessage("RUNTIME_INTERNAL", { detail: event.message }),
+              line: 1,
+              column: 1,
+              severity: "error",
+              code: "RUNTIME_INTERNAL",
+              params: { detail: event.message },
+            }
+          : {
+              message: engineMessage("RUNTIME_WORKER_FAILED"),
+              line: 1,
+              column: 1,
+              severity: "error",
+              code: "RUNTIME_WORKER_FAILED",
+            },
       ],
       state: "runtime_error",
     });

@@ -12,6 +12,13 @@ export type {
   ExportOptions,
 } from "./generators";
 export { Lexer } from "./lexer";
+export {
+  engineMessage,
+  engineMessageTemplates,
+  engineTypeNames,
+  fillEngineMessage,
+} from "./messages";
+export type { DiagnosticParams, EngineMessageCode } from "./messages";
 export { Parser } from "./parser";
 export { Interpreter } from "./interpreter";
 export type {

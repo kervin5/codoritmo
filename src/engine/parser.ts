@@ -1,5 +1,6 @@
 import { BUILTIN_SIGNATURES, checkProgram } from './checker';
 import { Lexer } from './lexer';
+import { engineMessage, type DiagnosticParams, type EngineMessageCode } from './messages';
 import { normalizeEngineSettings } from './settings';
 import {
   AssignableExpressionNode,
@@ -259,7 +260,7 @@ export class Parser {
       this.statementStart = this.position;
       if (this.matchAnyWord(...MAIN_OPENERS)) {
         if (entry) {
-          this.fail(this.peek(), 'Only one Proceso or Algoritmo entry point is allowed.', 'PARSE_DUPLICATE_ENTRY');
+          this.fail(this.peek(), 'PARSE_DUPLICATE_ENTRY');
         }
         entry = this.parseMainRoutine();
         continue;
@@ -267,25 +268,25 @@ export class Parser {
 
       if (this.matchAnyWord(...ROUTINE_OPENERS)) {
         if (!this.settings.enableUserFunctions) {
-          this.fail(this.peek(), 'User routines are disabled in the current profile.', 'PARSE_USER_ROUTINES_DISABLED');
+          this.fail(this.peek(), 'PARSE_USER_ROUTINES_DISABLED');
         }
         const routine = this.parseRoutine();
         if (routines.some((other) => other.name.toLowerCase() === routine.name.toLowerCase())) {
           this.failAtLine(
             routine.span?.start.line ?? this.previous().line,
-            `The routine "${routine.name}" is already defined.`,
-            'PARSE_DUPLICATE_ROUTINE'
+            'PARSE_DUPLICATE_ROUTINE',
+            { name: routine.name }
           );
         }
         routines.push(routine);
         continue;
       }
 
-      this.fail(this.peek(), `Unexpected token "${this.peek().lexeme}" at the top level.`, 'PARSE_TOP_LEVEL');
+      this.fail(this.peek(), 'PARSE_TOP_LEVEL', { token: this.peek().lexeme });
     }
 
     if (!entry) {
-      this.fail(this.peek(), 'Expected a Proceso or Algoritmo entry point.', 'PARSE_MISSING_ENTRY');
+      this.fail(this.peek(), 'PARSE_MISSING_ENTRY');
     }
 
     return {
@@ -297,7 +298,7 @@ export class Parser {
 
   private parseMainRoutine(): MainRoutineNode {
     const start = this.advance();
-    const name = this.consumeHeaderName(start, 'Expected a name after Proceso/Algoritmo.');
+    const name = this.consumeHeaderName(start, 'PARSE_MISSING_ENTRY_NAME', { keyword: start.lexeme });
     this.consumeOptional(TokenKind.COLON);
     this.expectEndOfHeader(start);
 
@@ -305,9 +306,7 @@ export class Parser {
     const end = this.consumeCloser(
       start,
       MAIN_CLOSERS,
-      start.normalized === 'PROCESO'
-        ? 'Expected FinProceso to close the process.'
-        : 'Expected FinAlgoritmo to close the algorithm.'
+      start.normalized === 'PROCESO' ? 'FinProceso' : 'FinAlgoritmo'
     );
 
     return {
@@ -327,13 +326,13 @@ export class Parser {
         ? 'Funcion'
         : 'SubProceso';
 
-    let firstName = this.consumeHeaderName(start, 'Expected a routine name.');
+    let firstName = this.consumeHeaderName(start, 'PARSE_MISSING_ROUTINE_NAME', { keyword: start.lexeme });
     let returnTarget: string | undefined;
 
     if (!this.atNewLine() && (this.match(TokenKind.ARROW) || this.match(TokenKind.EQ))) {
       returnTarget = firstName;
       this.advance();
-      firstName = this.consumeHeaderName(start, 'Expected a routine name after the return target.');
+      firstName = this.consumeHeaderName(start, 'PARSE_MISSING_ROUTINE_NAME_AFTER_RETURN');
     }
 
     const params: ParameterNode[] = [];
@@ -343,7 +342,7 @@ export class Parser {
           params.push(this.parseParameter());
         } while (this.consumeOptional(TokenKind.COMMA));
       }
-      this.consume(TokenKind.RPAREN, 'Expected ")" after the parameter list.');
+      this.consume(TokenKind.RPAREN, 'PARSE_MISSING_PARAMS_RPAREN');
     }
     this.expectEndOfHeader(start);
 
@@ -351,9 +350,7 @@ export class Parser {
     const end = this.consumeCloser(
       start,
       ROUTINE_CLOSERS,
-      headerKind === 'Funcion'
-        ? 'Expected FinFuncion to close the function.'
-        : 'Expected FinSubProceso or FinSubAlgoritmo to close the routine.'
+      headerKind === 'Funcion' ? 'FinFuncion' : `Fin${headerKind}`
     );
 
     return {
@@ -369,7 +366,7 @@ export class Parser {
 
   private parseParameter(): ParameterNode {
     const start = this.peek();
-    const name = this.consumeName('Expected a parameter name.');
+    const name = this.consumeName('PARSE_MISSING_PARAM_NAME');
     let byReference = false;
     let explicitByValue = false;
 
@@ -379,7 +376,7 @@ export class Parser {
       } else if (this.consumeOptionalWord('VALOR') || this.consumeOptionalWord('COPIA')) {
         explicitByValue = true;
       } else {
-        this.failExpected('Expected Referencia, Valor or Copia after Por.', 'PARSE_WORD');
+        this.failExpected('PARSE_PARAM_PASSING_MODE');
       }
     }
 
@@ -463,27 +460,27 @@ export class Parser {
   private finishSimple(statement: StatementNode): StatementNode {
     if (this.settings.forceSemicolon) {
       if (!this.match(TokenKind.SEMICOLON)) {
-        this.failExpected('Expected ";" at the end of the instruction.', 'PARSE_MISSING_SEMICOLON');
+        this.failExpected('PARSE_MISSING_SEMICOLON');
       }
       return statement;
     }
 
     if (!this.isStatementBoundary()) {
-      this.fail(this.peek(), `Unexpected token "${this.peek().lexeme}" after the instruction.`, 'PARSE_TRAILING_TOKENS');
+      this.fail(this.peek(), 'PARSE_TRAILING_TOKENS', { token: this.peek().lexeme });
     }
     return statement;
   }
 
   private parseDefine(): StatementNode {
     const start = this.advance();
-    const names = [this.consumeName('Expected a variable name after Definir.')];
+    const names = [this.consumeName('PARSE_DEFINE_MISSING_NAME')];
 
     while (this.consumeOptional(TokenKind.COMMA)) {
-      names.push(this.consumeName('Expected a variable name after ",".'));
+      names.push(this.consumeName('PARSE_DEFINE_MISSING_NAME_AFTER_COMMA'));
     }
 
-    this.consumeWord('COMO', 'Expected Como after the variable list.');
-    const dataType = this.consumeDataType('Expected a data type after Como.');
+    this.consumeWord('COMO', 'PARSE_DEFINE_MISSING_COMO');
+    const dataType = this.consumeDataType('PARSE_DEFINE_MISSING_TYPE');
     return {
       kind: 'define',
       dataType,
@@ -530,16 +527,16 @@ export class Parser {
   private parseDimension(resize: boolean): StatementNode {
     const start = this.advance();
     if (resize && !this.settings.allowResizeArrays) {
-      this.fail(start, 'Redimensionar is disabled in the current profile.', 'PARSE_RESIZE_DISABLED');
+      this.fail(start, 'PARSE_RESIZE_DISABLED');
     }
     const items: DimensionItemNode[] = [];
 
     do {
       const itemStart = this.peek();
-      const name = this.consumeName('Expected an array name after Dimension.');
+      const name = this.consumeName('PARSE_DIMENSION_MISSING_NAME', { keyword: start.lexeme });
       const usesParens = !this.atNewLine() && this.match(TokenKind.LPAREN);
       if (!usesParens && (this.atNewLine() || !this.match(TokenKind.LBRACKET))) {
-        this.failExpected('Expected "[" after the array name.', 'PARSE_TOKEN');
+        this.failExpected('PARSE_DIMENSION_MISSING_LBRACKET');
       }
       this.advance();
       const dimensions = [this.parseExpression()];
@@ -556,7 +553,6 @@ export class Parser {
           if (!this.isStaticNumericExpression(dimension)) {
             this.fail(
               this.peekAtSpanStart(dimension),
-              'Dimension only accepts constant numeric expressions in the current profile.',
               'PARSE_DYNAMIC_DIMENSION_DISABLED'
             );
           }
@@ -565,7 +561,8 @@ export class Parser {
 
       const endBracket = this.consume(
         usesParens ? TokenKind.RPAREN : TokenKind.RBRACKET,
-        usesParens ? 'Expected ")" after the dimensions.' : 'Expected "]" after the dimensions.'
+        'PARSE_DIMENSION_MISSING_CLOSE',
+        { bracket: usesParens ? ')' : ']' }
       );
       items.push({
         name,
@@ -589,10 +586,10 @@ export class Parser {
       return;
     }
     if (!Number.isInteger(value)) {
-      this.fail(this.peekAtSpanStart(dimension), 'Array dimensions must be integers.', 'PARSE_DIMENSION_NOT_INTEGER');
+      this.fail(this.peekAtSpanStart(dimension), 'PARSE_DIMENSION_NOT_INTEGER');
     }
     if (value < 0 || (value === 0 && !this.settings.allowResizeArrays)) {
-      this.fail(this.peekAtSpanStart(dimension), 'Array dimensions must be positive.', 'PARSE_DIMENSION_NOT_POSITIVE');
+      this.fail(this.peekAtSpanStart(dimension), 'PARSE_DIMENSION_NOT_POSITIVE');
     }
   }
 
@@ -638,7 +635,7 @@ export class Parser {
     }
 
     if (this.isStatementBoundary()) {
-      this.failExpected('Escribir requires at least one expression.', 'PARSE_WRITE_EMPTY');
+      this.failExpected('PARSE_WRITE_EMPTY', { keyword: start.lexeme });
     }
 
     const expressions: ExpressionNode[] = [this.parseIoExpression()];
@@ -680,7 +677,7 @@ export class Parser {
   private parseRead(): StatementNode {
     const start = this.advance();
     if (this.isStatementBoundary()) {
-      this.failExpected('Leer requires at least one variable.', 'PARSE_READ_EMPTY');
+      this.failExpected('PARSE_READ_EMPTY', { keyword: start.lexeme });
     }
     const targets = [this.parseIoAssignable()];
 
@@ -712,18 +709,18 @@ export class Parser {
     }
   }
 
-  private parseCondition(opener: Token, missingMessage: string): ExpressionNode {
+  private parseCondition(opener: Token, keyword: string): ExpressionNode {
     if (this.isStatementBoundary() || this.matchAnyWord('ENTONCES', 'HACER')) {
-      this.failAtLine(opener.line, missingMessage, 'PARSE_MISSING_CONDITION');
+      this.failAtLine(opener.line, 'PARSE_MISSING_CONDITION', { keyword });
     }
     return this.parseExpression();
   }
 
   private parseIf(): StatementNode {
     const start = this.advance();
-    const condition = this.parseCondition(start, 'Expected a condition after Si.');
+    const condition = this.parseCondition(start, start.lexeme);
     if (!this.settings.lazySyntax) {
-      this.consumeWord('ENTONCES', 'Expected Entonces after the condition.');
+      this.consumeWord('ENTONCES', 'PARSE_MISSING_ENTONCES');
     } else {
       this.consumeOptionalWord('ENTONCES');
     }
@@ -731,7 +728,7 @@ export class Parser {
     const elseBranch = this.consumeOptionalWord('SINO')
       ? this.parseStatements(() => this.matchesTerminatorWord('FINSI'))
       : [];
-    const end = this.consumeCloser(start, [{ canonical: 'FINSI', words: ['FIN', 'SI'] }], 'Expected FinSi to close the conditional.');
+    const end = this.consumeCloser(start, [{ canonical: 'FINSI', words: ['FIN', 'SI'] }], 'FinSi');
 
     return {
       kind: 'if',
@@ -747,14 +744,14 @@ export class Parser {
     if (this.settings.lazySyntax) {
       this.consumeOptionalWord('QUE');
     }
-    const condition = this.parseCondition(start, 'Expected a condition after Mientras.');
+    const condition = this.parseCondition(start, start.lexeme);
     if (!this.settings.lazySyntax) {
-      this.consumeWord('HACER', 'Expected Hacer after the loop condition.');
+      this.consumeWord('HACER', 'PARSE_MISSING_HACER_WHILE');
     } else {
       this.consumeOptionalWord('HACER');
     }
     const body = this.parseStatements(() => this.matchesTerminatorWord('FINMIENTRAS'));
-    const end = this.consumeCloser(start, [{ canonical: 'FINMIENTRAS', words: ['FIN', 'MIENTRAS'] }], 'Expected FinMientras to close the loop.');
+    const end = this.consumeCloser(start, [{ canonical: 'FINMIENTRAS', words: ['FIN', 'MIENTRAS'] }], 'FinMientras');
 
     return {
       kind: 'while',
@@ -782,17 +779,17 @@ export class Parser {
     } else if (this.matchesRepeatWhile()) {
       mode = 'while';
       if (!this.settings.allowRepeatWhile) {
-        this.fail(this.peek(), 'Repetir ... Mientras Que is disabled in the current profile.', 'PARSE_REPEAT_WHILE_DISABLED');
+        this.fail(this.peek(), 'PARSE_REPEAT_WHILE_DISABLED');
       }
     } else {
-      this.failAtLine(start.line, 'Expected Hasta Que to close Repetir.', 'PARSE_MISSING_CLOSER');
+      this.failAtLine(start.line, 'PARSE_MISSING_CLOSER', { closer: 'Hasta Que', opener: start.lexeme });
     }
     const closer = this.advance();
     if (closer.normalized === 'HASTA' || closer.normalized === 'MIENTRAS') {
       this.advance();
     }
 
-    const condition = this.parseCondition(closer, 'Expected a condition after Hasta Que.');
+    const condition = this.parseCondition(closer, mode === 'until' ? 'Hasta Que' : 'Mientras Que');
     return {
       kind: 'repeat',
       mode,
@@ -807,20 +804,20 @@ export class Parser {
 
     if (start.normalized === 'PARACADA' || this.consumeOptionalWord('CADA')) {
       if (!this.settings.allowForEach) {
-        this.fail(this.previous(), 'Para Cada is disabled in the current profile.', 'PARSE_FOR_EACH_DISABLED');
+        this.fail(this.previous(), 'PARSE_FOR_EACH_DISABLED');
       }
-      const variable = this.consumeName('Expected the iteration variable after "Para Cada".');
+      const variable = this.consumeName('PARSE_FOR_EACH_MISSING_VARIABLE');
       if (!this.consumeOptionalWord('DE') && !this.consumeOptionalWord('EN')) {
-        this.failExpected('Expected De after the iteration variable.', 'PARSE_WORD');
+        this.failExpected('PARSE_FOR_EACH_MISSING_DE');
       }
       const collection = this.parseExpression();
       if (!this.settings.lazySyntax) {
-        this.consumeWord('HACER', 'Expected Hacer after the collection expression.');
+        this.consumeWord('HACER', 'PARSE_FOR_EACH_MISSING_HACER');
       } else {
         this.consumeOptionalWord('HACER');
       }
       const body = this.parseStatements(() => this.matchesTerminatorWord('FINPARA'));
-      const end = this.consumeCloser(start, [{ canonical: 'FINPARA', words: ['FIN', 'PARA'] }], 'Expected FinPara to close the foreach loop.');
+      const end = this.consumeCloser(start, [{ canonical: 'FINPARA', words: ['FIN', 'PARA'] }], 'FinPara');
 
       return {
         kind: 'forEach',
@@ -831,33 +828,33 @@ export class Parser {
       };
     }
 
-    const variable = this.consumeName('Expected the for-loop variable.');
+    const variable = this.consumeName('PARSE_FOR_MISSING_VARIABLE');
 
     let startExpression: ExpressionNode;
     if (this.consumeOptional(TokenKind.ARROW)) {
       startExpression = this.parseExpression();
     } else if (this.consumeOptional(TokenKind.EQ)) {
       if (!this.settings.overloadEqual) {
-        this.fail(this.previous(), 'Assignment with "=" is disabled in the current profile.', 'PARSE_EQUAL_ASSIGNMENT_DISABLED');
+        this.fail(this.previous(), 'PARSE_EQUAL_ASSIGNMENT_DISABLED');
       }
       startExpression = this.parseExpression();
     } else {
       if (!this.settings.lazySyntax) {
-        this.fail(this.peek(), 'Expected "<-" after the for-loop variable.', 'PARSE_FOR_LAZY_SYNTAX_DISABLED');
+        this.fail(this.peek(), 'PARSE_FOR_LAZY_SYNTAX_DISABLED');
       }
-      this.consumeWord('DESDE', 'Expected Desde, <-, or = after the loop variable.');
+      this.consumeWord('DESDE', 'PARSE_FOR_MISSING_START');
       startExpression = this.parseExpression();
     }
 
     let step: ExpressionNode | undefined;
     if (this.matchStepKeyword()) {
       if (!this.settings.lazySyntax) {
-        this.fail(this.peek(), 'Con Paso before Hasta is disabled in the current profile.', 'PARSE_FOR_LAZY_SYNTAX_DISABLED');
+        this.fail(this.peek(), 'PARSE_FOR_STEP_ORDER_DISABLED');
       }
       step = this.parseStep();
     }
 
-    this.consumeWord('HASTA', 'Expected Hasta in the for-loop header.');
+    this.consumeWord('HASTA', 'PARSE_FOR_MISSING_HASTA');
     const endExpression = this.parseExpression();
 
     if (!step && this.matchStepKeyword()) {
@@ -865,12 +862,12 @@ export class Parser {
     }
 
     if (!this.settings.lazySyntax) {
-      this.consumeWord('HACER', 'Expected Hacer after the for-loop header.');
+      this.consumeWord('HACER', 'PARSE_FOR_MISSING_HACER');
     } else {
       this.consumeOptionalWord('HACER');
     }
     const body = this.parseStatements(() => this.matchesTerminatorWord('FINPARA'));
-    const end = this.consumeCloser(start, [{ canonical: 'FINPARA', words: ['FIN', 'PARA'] }], 'Expected FinPara to close the loop.');
+    const end = this.consumeCloser(start, [{ canonical: 'FINPARA', words: ['FIN', 'PARA'] }], 'FinPara');
 
     return {
       kind: 'for',
@@ -892,7 +889,7 @@ export class Parser {
       this.advance();
     }
     if (this.isStatementBoundary() || this.matchWord('HACER')) {
-      this.failExpected('Expected the step value after Con Paso.', 'PARSE_FOR_STEP');
+      this.failExpected('PARSE_FOR_STEP');
     }
     return this.parseExpression();
   }
@@ -900,11 +897,11 @@ export class Parser {
   private parseSwitch(): StatementNode {
     const start = this.advance();
     if (this.isStatementBoundary() || this.matchWord('HACER')) {
-      this.failAtLine(start.line, 'Expected an expression after Segun.', 'PARSE_MISSING_CONDITION');
+      this.failAtLine(start.line, 'PARSE_SWITCH_MISSING_EXPRESSION');
     }
     const expression = this.parseExpression();
     if (!this.settings.lazySyntax) {
-      this.consumeWord('HACER', 'Expected Hacer after the switch expression.');
+      this.consumeWord('HACER', 'PARSE_SWITCH_MISSING_HACER');
     } else {
       this.consumeOptionalWord('HACER');
     }
@@ -912,8 +909,7 @@ export class Parser {
     if (this.settings.integerOnlySwitch && this.isObviouslyNonNumericSwitchExpression(expression)) {
       this.fail(
         this.peekAtSpanStart(expression),
-        'Segun only accepts numeric control expressions in the current profile.',
-        'PARSE_SWITCH_INTEGER_ONLY'
+        'PARSE_SWITCH_INTEGER_ONLY_CONTROL'
       );
     }
 
@@ -931,7 +927,7 @@ export class Parser {
           this.advance();
           this.advance();
         }
-        this.consume(TokenKind.COLON, 'Expected ":" after "De Otro Modo".');
+        this.consume(TokenKind.COLON, 'PARSE_SWITCH_DEFAULT_COLON');
         defaultCase = this.parseStatements(() => this.isSwitchBoundary());
         continue;
       }
@@ -952,14 +948,13 @@ export class Parser {
           if (this.isObviouslyNonNumericSwitchExpression(value)) {
             this.fail(
               this.peekAtSpanStart(value),
-              'Segun only accepts numeric case values in the current profile.',
               'PARSE_SWITCH_INTEGER_ONLY'
             );
           }
         }
       }
 
-      const caseColon = this.consume(TokenKind.COLON, 'Expected ":" after the case value.');
+      const caseColon = this.consume(TokenKind.COLON, 'PARSE_SWITCH_CASE_COLON');
       const body = this.parseStatements(() => this.isSwitchBoundary());
       cases.push({
         values,
@@ -968,7 +963,7 @@ export class Parser {
       });
     }
 
-    const end = this.consumeCloser(start, [{ canonical: 'FINSEGUN', words: ['FIN', 'SEGUN'] }], 'Expected FinSegun to close the switch.');
+    const end = this.consumeCloser(start, [{ canonical: 'FINSEGUN', words: ['FIN', 'SEGUN'] }], 'FinSegun');
     return {
       kind: 'switch',
       expression,
@@ -996,7 +991,7 @@ export class Parser {
   private parseClear(): StatementNode {
     const start = this.advance();
     if (start.normalized === 'LIMPIAR' || start.normalized === 'BORRAR') {
-      this.consumeWord('PANTALLA', `Expected Pantalla after ${start.lexeme}.`);
+      this.consumeWord('PANTALLA', 'PARSE_CLEAR_MISSING_PANTALLA', { keyword: start.lexeme });
     }
     return {
       kind: 'clear',
@@ -1016,7 +1011,7 @@ export class Parser {
     }
 
     if (this.consumeOptionalWord('UNA')) {
-      this.consumeWord('TECLA', 'Expected Tecla after "Esperar Una".');
+      this.consumeWord('TECLA', 'PARSE_WAIT_MISSING_TECLA');
       return {
         kind: 'wait',
         mode: 'key',
@@ -1033,7 +1028,7 @@ export class Parser {
     }
 
     if (this.isStatementBoundary()) {
-      this.failExpected('Expected a duration or Tecla after Esperar.', 'PARSE_WAIT_UNIT');
+      this.failExpected('PARSE_WAIT_MISSING_DURATION');
     }
     const duration = this.parseExpression();
     let multiplier = 1;
@@ -1045,7 +1040,7 @@ export class Parser {
     } else if (this.consumeOptionalWord('SEGUNDO') || this.consumeOptionalWord('SEGUNDOS')) {
       multiplier = 1000;
     } else {
-      this.failExpected('Expected a time unit after Esperar.', 'PARSE_WAIT_UNIT');
+      this.failExpected('PARSE_WAIT_UNIT');
     }
 
     return {
@@ -1100,7 +1095,7 @@ export class Parser {
       if (this.match(TokenKind.EQ)) {
         const operator = this.advance();
         if (!this.settings.overloadEqual) {
-          this.fail(operator, 'Assignment with "=" is disabled in the current profile.', 'PARSE_EQUAL_ASSIGNMENT_DISABLED');
+          this.fail(operator, 'PARSE_EQUAL_ASSIGNMENT_DISABLED');
         }
         const value = this.parseAssignedValue(operator);
         return {
@@ -1120,8 +1115,8 @@ export class Parser {
     if (!isRoutineCall) {
       this.fail(
         this.tokens[checkpoint]!,
-        `"${this.tokens[checkpoint]!.lexeme}" is not a valid instruction.`,
-        'PARSE_INVALID_INSTRUCTION'
+        'PARSE_INVALID_INSTRUCTION',
+        { token: this.tokens[checkpoint]!.lexeme }
       );
     }
     return {
@@ -1133,7 +1128,7 @@ export class Parser {
 
   private parseAssignedValue(operator: Token): ExpressionNode {
     if (this.isStatementBoundary()) {
-      this.fail(operator, 'Expected an expression after the assignment.', 'PARSE_EXPRESSION');
+      this.fail(operator, 'PARSE_ASSIGNMENT_MISSING_VALUE');
     }
     return this.parseExpression();
   }
@@ -1224,7 +1219,7 @@ export class Parser {
         span: left.span,
       };
     } else if (this.consumeOptionalWord('DIVISIBLE')) {
-      this.consumeWord('POR', 'Expected Por after "Es Divisible".');
+      this.consumeWord('POR', 'PARSE_DIVISIBLE_MISSING_POR');
       const right = this.parseComparison();
       expression = this.binary(
         this.binary(left, '%', right, this.previous()),
@@ -1233,7 +1228,7 @@ export class Parser {
         this.previous()
       );
     } else if (this.consumeOptionalWord('MULTIPLO')) {
-      this.consumeWord('DE', 'Expected De after "Es Multiplo".');
+      this.consumeWord('DE', 'PARSE_MULTIPLE_MISSING_DE');
       const right = this.parseComparison();
       expression = this.binary(
         this.binary(left, '%', right, this.previous()),
@@ -1311,7 +1306,7 @@ export class Parser {
       }
     } else if (this.consumeOptionalWord('MAYOR')) {
       if (this.consumeOptionalOrWord()) {
-        this.consumeWord('IGUAL', 'Expected Igual after "Mayor O".');
+        this.consumeWord('IGUAL', 'PARSE_GREATER_MISSING_IGUAL');
         operator = '>=';
       } else {
         operator = '>';
@@ -1321,7 +1316,7 @@ export class Parser {
       }
     } else if (this.consumeOptionalWord('MENOR')) {
       if (this.consumeOptionalOrWord()) {
-        this.consumeWord('IGUAL', 'Expected Igual after "Menor O".');
+        this.consumeWord('IGUAL', 'PARSE_LESS_MISSING_IGUAL');
         operator = '<=';
       } else {
         operator = '<';
@@ -1422,7 +1417,7 @@ export class Parser {
   // needs parentheses: `3+(-2)`.
   private rejectSignAfterOperator(): void {
     if (this.match(TokenKind.PLUS) || this.match(TokenKind.MINUS)) {
-      this.fail(this.peek(), 'Two consecutive operators.', 'PARSE_CONSECUTIVE_OPERATORS');
+      this.fail(this.peek(), 'PARSE_CONSECUTIVE_OPERATORS');
     }
   }
 
@@ -1482,7 +1477,7 @@ export class Parser {
           } while (this.consumeOptional(TokenKind.COMMA));
         }
 
-        const end = this.consume(TokenKind.RPAREN, 'Expected ")" after the argument list.');
+        const end = this.consume(TokenKind.RPAREN, 'PARSE_CALL_MISSING_RPAREN');
         if (isFunction) {
           expression = {
             kind: 'call',
@@ -1495,7 +1490,7 @@ export class Parser {
 
         // Not a function: parentheses index an array, as in `a(1)`.
         if (args.length === 0) {
-          this.fail(end, 'Expected array indices.', 'PARSE_ARRAY_INDEX');
+          this.fail(end, 'PARSE_ARRAY_INDEX');
         }
         expression = {
           kind: 'arrayAccess',
@@ -1512,7 +1507,7 @@ export class Parser {
         while (this.consumeOptional(TokenKind.COMMA)) {
           indices.push(this.parseExpression());
         }
-        const end = this.consume(TokenKind.RBRACKET, 'Expected "]" after the array indices.');
+        const end = this.consume(TokenKind.RBRACKET, 'PARSE_INDEX_MISSING_RBRACKET');
         expression = {
           kind: 'arrayAccess',
           target: expression,
@@ -1528,7 +1523,7 @@ export class Parser {
 
   private parsePrimary(): ExpressionNode {
     if (this.isStatementBoundaryForOperand()) {
-      this.failExpected('Expected an expression.', 'PARSE_EXPRESSION');
+      this.failExpected('PARSE_EXPRESSION');
     }
 
     if (this.match(TokenKind.NUMBER)) {
@@ -1567,7 +1562,7 @@ export class Parser {
       this.ioList = false;
       const expression = this.parseExpression();
       this.ioList = previousIoList;
-      const end = this.consume(TokenKind.RPAREN, 'Expected ")" to close the grouped expression.');
+      const end = this.consume(TokenKind.RPAREN, 'PARSE_GROUP_MISSING_RPAREN');
       return {
         kind: 'group',
         expression,
@@ -1576,7 +1571,7 @@ export class Parser {
     }
 
     if (this.peek().kind === TokenKind.WORD && !this.settings.allowAccents && nonAsciiPattern.test(this.peek().lexeme)) {
-      this.fail(this.peek(), 'Accented identifiers are disabled in the current profile.', 'PARSE_IDENTIFIER_ACCENTS_DISABLED');
+      this.fail(this.peek(), 'PARSE_IDENTIFIER_ACCENTS_DISABLED');
     }
 
     if (this.isIdentifierToken(this.peek())) {
@@ -1601,7 +1596,7 @@ export class Parser {
       };
     }
 
-    this.fail(this.peek(), `Unexpected token "${this.peek().lexeme}" in the expression.`, 'PARSE_EXPRESSION');
+    this.fail(this.peek(), 'PARSE_UNEXPECTED_TOKEN', { token: this.peek().lexeme });
   }
 
   private isStatementBoundaryForOperand(): boolean {
@@ -1626,7 +1621,7 @@ export class Parser {
       };
     }
 
-    this.fail(this.peek(), 'Expected an assignable target.', 'PARSE_ASSIGNABLE');
+    this.fail(this.peek(), 'PARSE_ASSIGNABLE');
   }
 
   private binary(
@@ -1757,36 +1752,36 @@ export class Parser {
     );
   }
 
-  private consumeName(message: string): string {
+  private consumeName(code: EngineMessageCode, params?: DiagnosticParams): string {
     const token = this.peek();
     if (!this.settings.allowAccents && token.kind === TokenKind.WORD && nonAsciiPattern.test(token.lexeme)) {
-      this.fail(token, 'Accented identifiers are disabled in the current profile.', 'PARSE_IDENTIFIER_ACCENTS_DISABLED');
+      this.fail(token, 'PARSE_IDENTIFIER_ACCENTS_DISABLED');
     }
     if (this.atNewLine() || !this.isIdentifierToken(token)) {
-      this.failExpected(message, 'PARSE_NAME');
+      this.failExpected(code, params);
     }
 
     this.advance();
     return token.lexeme;
   }
 
-  private consumeHeaderName(header: Token, message: string): string {
+  private consumeHeaderName(header: Token, code: EngineMessageCode, params?: DiagnosticParams): string {
     if (this.atNewLine() || this.isAtEnd()) {
-      this.failAtLine(header.line, message, 'PARSE_NAME');
+      this.failAtLine(header.line, code, params);
     }
-    return this.consumeName(message);
+    return this.consumeName(code, params);
   }
 
   private expectEndOfHeader(header: Token): void {
     if (!this.isStatementBoundary()) {
-      this.failAtLine(header.line, `Unexpected token "${this.peek().lexeme}" after the header.`, 'PARSE_TRAILING_TOKENS');
+      this.failAtLine(header.line, 'PARSE_TRAILING_TOKENS_HEADER', { token: this.peek().lexeme });
     }
   }
 
-  private consumeDataType(message: string): string {
+  private consumeDataType(code: EngineMessageCode): string {
     const token = this.peek();
     if (this.atNewLine() || token.kind !== TokenKind.WORD || !isDataTypeWord(token.normalized)) {
-      this.failExpected(message, 'PARSE_TYPE');
+      this.failExpected(code);
     }
 
     this.advance();
@@ -1799,9 +1794,9 @@ export class Parser {
       (this.settings.allowAccents || !nonAsciiPattern.test(token.lexeme));
   }
 
-  private consume(expected: TokenKind, message: string): Token {
+  private consume(expected: TokenKind, code: EngineMessageCode, params?: DiagnosticParams): Token {
     if (!this.match(expected) || this.atNewLine()) {
-      this.failExpected(message, 'PARSE_TOKEN');
+      this.failExpected(code, params);
     }
     return this.advance();
   }
@@ -1814,9 +1809,9 @@ export class Parser {
     return true;
   }
 
-  private consumeWord(word: string, message: string): Token {
+  private consumeWord(word: string, code: EngineMessageCode, params?: DiagnosticParams): Token {
     if (!this.matchWord(word)) {
-      this.failExpected(message, 'PARSE_WORD');
+      this.failExpected(code, params);
     }
     return this.advance();
   }
@@ -1850,10 +1845,10 @@ export class Parser {
   private consumeCloser(
     opener: Token,
     options: Array<{ canonical: string; words: string[] }>,
-    message: string
+    closer: string
   ): Token {
     if (this.matchWord('SINO') || this.matchesDefaultCase()) {
-      this.fail(this.peek(), `"${this.peek().lexeme}" is not valid here.`, 'PARSE_MISPLACED_KEYWORD');
+      this.fail(this.peek(), 'PARSE_MISPLACED_KEYWORD', { token: this.peek().lexeme });
     }
     for (const option of options) {
       if (this.matchWord(option.canonical)) {
@@ -1865,7 +1860,7 @@ export class Parser {
       }
     }
 
-    this.failAtLine(opener.line, message, 'PARSE_MISSING_CLOSER');
+    this.failAtLine(opener.line, 'PARSE_MISSING_CLOSER', { closer, opener: opener.lexeme });
   }
 
   /** An operator token that continues the expression on the same line. */
@@ -1917,32 +1912,27 @@ export class Parser {
   // Something expected is missing. When the offending token already belongs
   // to the next line, the error is reported on the line of the instruction
   // being parsed, as PSeInt does.
-  private failExpected(message: string, code: string): never {
+  private failExpected(code: EngineMessageCode, params?: DiagnosticParams): never {
     const token = this.peek();
     if (this.position > this.statementStart && (token.line > this.previous().line || token.kind === TokenKind.EOF)) {
-      this.failAtLine(this.previous().line, message, code);
+      this.failAtLine(this.previous().line, code, params);
     }
-    this.fail(token, message, code);
+    this.fail(token, code, params);
   }
 
-  private failAtLine(line: number, message: string, code: string): never {
+  private failAtLine(line: number, code: EngineMessageCode, params?: DiagnosticParams, column = 1): never {
     throw new ParserError({
-      message,
+      message: engineMessage(code, params),
       line,
-      column: 1,
+      column,
       severity: 'error',
       code,
+      ...(params && { params }),
     });
   }
 
-  private fail(token: Token, message: string, code: string): never {
-    throw new ParserError({
-      message,
-      line: token.line,
-      column: token.column,
-      severity: 'error',
-      code,
-    });
+  private fail(token: Token, code: EngineMessageCode, params?: DiagnosticParams): never {
+    this.failAtLine(token.line, code, params, token.column);
   }
 
   private createSpan(start: Token, end: Token): SourceSpan {

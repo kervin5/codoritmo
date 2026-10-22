@@ -1,3 +1,6 @@
+import type { EngineMessageCode } from "../engine/messages";
+import type { StaticType } from "../engine/types";
+
 export interface Dictionary {
   metadata: {
     description: string;
@@ -256,4 +259,8 @@ export interface Dictionary {
     hover: { variable: string; firstSeen: string; counter: string };
     activity: { diagram: string; code: string; reference: string };
   };
+  /** Text for every engine diagnostic, keyed by Diagnostic.code. */
+  engineMessages: Record<EngineMessageCode, string>;
+  /** Type names filled into `*Type` params of engine messages. */
+  engineTypeNames: Record<StaticType, string>;
 }

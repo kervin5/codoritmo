@@ -1,4 +1,5 @@
 import type { Diagnostic, EngineSettings } from '@/src/engine';
+import { formatDiagnostic } from '@/src/i18n/diagnostics';
 import { formatMessage } from '@/src/i18n/format';
 import type { Dictionary } from '@/src/i18n/types';
 
@@ -76,7 +77,7 @@ export function createDiagnosticHelp(
       line: diagnostic.line,
       column: diagnostic.column,
     }),
-    diagnostic.message,
+    formatDiagnostic(diagnostic, dictionary),
   );
 }
 

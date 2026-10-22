@@ -6,7 +6,8 @@ import { Check, Copy, CornerDownLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { generateExport, Parser, type EngineSettings, type ExportLanguage } from "@/src/engine";
-import type { VariableSnapshot } from "@/src/engine/types";
+import type { Diagnostic, VariableSnapshot } from "@/src/engine/types";
+import { formatDiagnostic } from "@/src/i18n/diagnostics";
 import type { Dictionary } from "@/src/i18n/types";
 import type { Player } from "./use-player";
 
@@ -19,6 +20,12 @@ export function formatValue(value: VariableSnapshot["value"]): string {
 }
 
 /* ---------------- Console ---------------- */
+
+/** "Línea 3: División por cero." in the dictionary's language. */
+function runtimeErrorText(diagnostic: Diagnostic, dictionary: Dictionary): string {
+  const prefix = dictionary.studio.line.replace("{n}", String(diagnostic.line));
+  return `${prefix[0].toUpperCase()}${prefix.slice(1)}: ${formatDiagnostic(diagnostic, dictionary)}`;
+}
 
 export function ConsolePanel({ player, dictionary }: { player: Player; dictionary: Dictionary }) {
   const t = dictionary.studio;
@@ -46,7 +53,7 @@ export function ConsolePanel({ player, dictionary }: { player: Player; dictionar
           </div>
         ) : line.kind === "err" ? (
           <div key={index} className="mt-2 rounded-lg bg-[#F08A6C]/10 px-3 py-2 font-sans text-[13px] text-[#F5A68E]">
-            {line.text}
+            {line.diagnostic ? runtimeErrorText(line.diagnostic, dictionary) : line.text}
           </div>
         ) : (
           <div key={index} className="whitespace-pre-wrap">

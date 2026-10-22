@@ -1,3 +1,4 @@
+import { engineMessageTemplates, engineTypeNames } from "../engine/messages";
 import type { Dictionary } from "./types";
 
 export const enDictionary: Dictionary = {
@@ -644,4 +645,7 @@ export const enDictionary: Dictionary = {
     hover: { variable: "variable", firstSeen: "First appears on line {n}.", counter: "counter" },
     activity: { diagram: "Flowchart", code: "{lang} Code", reference: "Reference" },
   },
+  // The engine's own templates are the English source text.
+  engineMessages: engineMessageTemplates,
+  engineTypeNames,
 };

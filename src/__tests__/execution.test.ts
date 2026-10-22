@@ -76,7 +76,7 @@ describe("interpreter step budget and hooks", () => {
 
     expect(result.state).toBe("runtime_error");
     expect(result.diagnostics[0]?.code).toBe("RUNTIME_STEP_LIMIT");
-    expect(result.diagnostics[0]?.message).toContain("10000 steps");
+    expect(result.diagnostics[0]?.params).toEqual({ steps: 10_000 });
     // Points at the loop, since its empty body has no statement of its own.
     expect(result.diagnostics[0]?.line).toBe(2);
   });

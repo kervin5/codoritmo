@@ -43,6 +43,7 @@ import {
   type ExportLanguage,
 } from "@/src/engine";
 import type { Locale } from "@/src/i18n/config";
+import { formatDiagnostic } from "@/src/i18n/diagnostics";
 import { formatMessage, formatPlural } from "@/src/i18n/format";
 import type { Dictionary } from "@/src/i18n/types";
 import { isExamplesNewWorkspaceTabIntent } from "@/src/lib/workspace-deeplink";
@@ -227,7 +228,15 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
   const showPlayhead = player.live || player.scrubbing;
   const activeLine = showPlayhead ? player.frame?.line ?? null : null;
   const errors = player.parseDiagnostics.filter((d) => d.severity === "error");
-  const diagnostics = player.runtimeError ? [...player.parseDiagnostics, player.runtimeError] : player.parseDiagnostics;
+  // Messages in the page's language, for the Problems panel and editor markers.
+  const diagnostics = useMemo(
+    () =>
+      (player.runtimeError ? [...player.parseDiagnostics, player.runtimeError] : player.parseDiagnostics).map((d) => ({
+        ...d,
+        message: formatDiagnostic(d, dictionary),
+      })),
+    [player.parseDiagnostics, player.runtimeError, dictionary]
+  );
   const sourceLines = useMemo(() => source.split("\n"), [source]);
   const asking = player.status === "input" && !player.scrubbing;
   const speedLabel = t.run.speeds[SPEEDS[player.speedIndex].id];
