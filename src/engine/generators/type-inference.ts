@@ -1,3 +1,4 @@
+import { DataType, normalizeDataType } from "../types";
 import type {
   AssignableExpressionNode,
   ExpressionNode,
@@ -31,8 +32,20 @@ export type InferredType =
   | "bool";
 
 export interface ArrayShape {
-  /** Size of each dimension when it is a compile-time constant, else null. */
+  /**
+   * Size of each dimension when it is a compile-time constant, else null.
+   * For a dynamic array this is the largest constant size it ever takes.
+   */
   dims: (number | null)[];
+  /**
+   * The logical size is only known at run time: the array is resized with
+   * Redimensionar, dimensioned with a non-constant size, or shares storage
+   * (through subprocess calls) with such an array. Generators keep its
+   * current size in a companion variable.
+   */
+  dynamic?: boolean;
+  /** Dimensions given a non-constant size somewhere (capacity unknown). */
+  unbounded?: boolean[];
 }
 
 export interface VariableInfo {
@@ -73,6 +86,8 @@ const STRING_BUILTINS = new Set([
 const INTEGER_BUILTINS = new Set([
   "ALEATORIO",
   "AZAR",
+  "FECHAACTUAL",
+  "HORAACTUAL",
   "LONGITUD",
   "REDON",
   "TRUNC",
@@ -85,8 +100,10 @@ const REAL_BUILTINS = new Set([
   "ATAN",
   "CONVERTIRANUMERO",
   "COS",
+  "EULER",
   "EXP",
   "LN",
+  "PI",
   "RAIZ",
   "RC",
   "SEN",
@@ -136,24 +153,28 @@ export function resolveType(type: InferredType): InferredType {
 }
 
 export function mapDeclaredType(dataType: string): InferredType {
-  switch (normalizeBuiltinName(dataType)) {
-    case "ENTERO":
+  switch (normalizeDataType(dataType)) {
+    case DataType.ENTERO:
       return "int";
-    case "REAL":
-    case "NUMERO":
-    case "NUMERICO":
-    case "NUMERICA":
+    case DataType.REAL:
+    case DataType.NUMERICO:
       return "double";
-    case "LOGICO":
-    case "LOGICA":
+    case DataType.LOGICO:
       return "bool";
-    case "CARACTER":
-    case "TEXTO":
-    case "CADENA":
+    case DataType.CARACTER:
+    case DataType.CADENA:
+    case DataType.TEXTO:
       return "string";
     default:
       return "unknown";
   }
+}
+
+/** Zero-argument builtins the parser accepts without parentheses. */
+const CONSTANT_BUILTINS = new Set(["PI", "EULER"]);
+
+export function isConstantBuiltin(name: string): boolean {
+  return CONSTANT_BUILTINS.has(normalizeBuiltinName(name));
 }
 
 /** Evaluates constant integer expressions such as `10` or `2*5`. */
@@ -275,17 +296,32 @@ export class TypeInference {
   }
 
   private setArray(info: VariableInfo, shape: ArrayShape): void {
-    if (info.array) {
-      if (info.array.dims.length !== shape.dims.length) return;
-      const dims = info.array.dims.map((dim, index) => dim ?? shape.dims[index]);
-      if (dims.some((dim, index) => dim !== info.array!.dims[index])) {
-        info.array = { dims };
-        this.changed = true;
-      }
+    const current = info.array;
+    if (!current) {
+      info.array = { ...shape, dims: [...shape.dims] };
+      this.changed = true;
       return;
     }
-    info.array = { dims: [...shape.dims] };
-    this.changed = true;
+    if (current.dims.length !== shape.dims.length) return;
+    const dynamic = Boolean(current.dynamic || shape.dynamic);
+    const unbounded = current.dims.map(
+      (_, index) => Boolean(current.unbounded?.[index] || shape.unbounded?.[index])
+    );
+    const dims = current.dims.map((dim, index) => {
+      const other = shape.dims[index];
+      if (unbounded[index]) return null;
+      // A dynamic array needs room for the largest size it ever takes.
+      if (dynamic && dim !== null && other !== null) return Math.max(dim, other);
+      return dim ?? other;
+    });
+    if (
+      dynamic !== Boolean(current.dynamic) ||
+      dims.some((dim, index) => dim !== current.dims[index]) ||
+      unbounded.some((value, index) => value !== Boolean(current.unbounded?.[index]))
+    ) {
+      info.array = { dims, dynamic, unbounded };
+      this.changed = true;
+    }
   }
 
   routineReturnType(routine: RoutineNode): InferredType {
@@ -309,7 +345,7 @@ export class TypeInference {
         if (info) return info.type;
         const routine = this.findRoutine(expression.name);
         if (routine) return this.routineReturnType(routine);
-        if (normalizeBuiltinName(expression.name) === "PI") return "double";
+        if (isConstantBuiltin(expression.name)) return "double";
         return "unknown";
       }
       case "arrayAccess":
@@ -375,7 +411,7 @@ export class TypeInference {
           this.merge(info, type);
         } else if (
           !this.findRoutine(expression.name) &&
-          normalizeBuiltinName(expression.name) !== "PI"
+          !isConstantBuiltin(expression.name)
         ) {
           this.merge(this.variable(scope, expression.name), type);
         }
@@ -442,7 +478,7 @@ export class TypeInference {
       case "identifier": {
         if (
           !this.findRoutine(expression.name) &&
-          normalizeBuiltinName(expression.name) !== "PI"
+          !isConstantBuiltin(expression.name)
         ) {
           this.variable(scope, expression.name);
         }
@@ -581,11 +617,17 @@ export class TypeInference {
               ? value
               : null;
           });
+          const unbounded = dims.map((dim) => dim === null);
+          const shape: ArrayShape = {
+            dims,
+            dynamic: Boolean(statement.resize) || unbounded.some(Boolean),
+            unbounded,
+          };
           if (!info.array || info.array.dims.length !== dims.length) {
-            info.array = { dims };
+            info.array = shape;
             this.changed = true;
           } else {
-            this.setArray(info, { dims });
+            this.setArray(info, shape);
           }
         }
         break;

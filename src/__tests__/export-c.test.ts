@@ -88,7 +88,7 @@ function compile(code: string, language: "c" | "cpp", outputFile?: string) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codoritmo-export-"));
   const file = path.join(directory, `programa.${language}`);
   fs.writeFileSync(file, code);
-  const args = [...flags, "-Wall", "-Wno-unused", "-Wno-unused-but-set-variable"];
+  const args = [...flags, "-Wall", "-Werror"];
   const result = spawnSync(
     command,
     outputFile ? [...args, file, "-o", outputFile, "-lm"] : [...args, "-fsyntax-only", file],
@@ -308,7 +308,7 @@ FinProceso`);
     expect(typeOf("n")).toBe("int");
     expect(typeOf("i")).toBe("int");
     expect(typeOf("v")).toBe("string");
-    expect(types.get("v")?.array).toEqual({ dims: [null] });
+    expect(types.get("v")?.array).toEqual({ dims: [null], dynamic: true, unbounded: [true] });
     expect(typeOf("p")).toBe("unknown");
   });
 
@@ -336,9 +336,9 @@ FinProceso`);
     const settings = { baseZeroArrays: true };
     const c = new CGenerator({ settings, comments: false }).generate(program).code!;
     expect(c).toContain("a[0] = 1;");
-    expect(c).toContain('printf("%g\\n", a[2]);');
+    expect(c).toContain('printf("%s\\n", convertiratexto(a[2]));');
     const cpp = new CppGenerator({ settings, comments: false }).generate(program).code!;
-    expect(cpp).toContain("cout << a[2] << endl;");
+    expect(cpp).toContain("cout << convertiratexto(a[2]) << endl;");
   });
 
   test("translates by-reference parameters", () => {

@@ -7,6 +7,7 @@ import {
   toIdentifier,
   wrap,
 } from "./c-family";
+import { LETTER_CASES } from "./c";
 import { InferredType, resolveType, VariableInfo } from "./type-inference";
 
 /**
@@ -26,6 +27,18 @@ export class CppGenerator extends CFamilyGenerator {
       return `${typeName} &${name}`;
     }
     return `${typeName} ${name}${this.arraySuffix(info, asParameter)}`;
+  }
+
+  protected initializer(info: VariableInfo): string {
+    if (info.array) return " = {}";
+    const type = this.variableType(info);
+    if (type === "string" || type === "unknown") return "";
+    return type === "bool" ? " = false" : " = 0";
+  }
+
+  protected zeroValue(type: InferredType): string {
+    if (type === "string" || type === "unknown") return '""';
+    return type === "bool" ? "false" : "0";
   }
 
   protected returnTypeName(type: InferredType): string {
@@ -50,8 +63,13 @@ export class CppGenerator extends CFamilyGenerator {
     let line = "cout";
     for (const arg of args) {
       const rendered = this.expression(arg);
-      if (resolveType(this.typeOf(arg)) === "bool") {
+      const type = resolveType(this.typeOf(arg));
+      if (type === "bool") {
         line += ` << (${wrap(rendered, PREC.or)} ? "VERDADERO" : "FALSO")`;
+      } else if (type !== "unknown" && this.printsAsReal(arg)) {
+        // Reals print rounded to 10 decimals, like PSeInt.
+        this.uses.add("convertiratexto");
+        line += ` << convertiratexto(${rendered.code})`;
       } else {
         line += ` << ${wrap(rendered, PREC.shift + 1)}`;
       }
@@ -73,7 +91,12 @@ export class CppGenerator extends CFamilyGenerator {
     return `${this.expression(target).code} = ${this.expression(value).code};`;
   }
 
-  protected forEachLoop(alias: VariableInfo, collection: VariableInfo, dims: string[]) {
+  protected forEachLoop(
+    alias: VariableInfo,
+    collection: VariableInfo,
+    dims: string[],
+    aliasRead: boolean
+  ) {
     const name = toIdentifier(collection.name);
     const pointer = `aux_ptr_${this.forEachDepth}`;
     const first = `${name}${dims.map(() => "[0]").join("")}`;
@@ -85,6 +108,7 @@ export class CppGenerator extends CFamilyGenerator {
       open: [
         `for (auto ${pointer}=&(${first}); ${pointer}<=&(${last}); ++${pointer}) {`,
         `\tauto &${aliasName} = *${pointer};`,
+        ...(aliasRead ? [] : [`\t(void)${aliasName};`]),
       ],
       aliasExpression: aliasName,
     };
@@ -165,11 +189,6 @@ export class CppGenerator extends CFamilyGenerator {
         return call("acos");
       case "ATAN":
         return call("atan");
-      case "REDON":
-        this.uses.add("math");
-        return { code: `int(floor(${arg(0)}+0.5))`, prec: PREC.primary };
-      case "TRUNC":
-        return this.castToInt(this.expression(args[0]));
       case "AZAR":
         this.uses.add("stdlib");
         return { code: `(rand()%${wrap(this.integer(args[0]), PREC.unary)})`, prec: PREC.primary };
@@ -220,6 +239,7 @@ export class CppGenerator extends CFamilyGenerator {
     const uses = this.uses;
     if (uses.has("mayusculas") || uses.has("minusculas")) uses.add("ctype");
     if (uses.has("convertiratexto") || uses.has("sin_tipo")) uses.add("string");
+    if (uses.has("convertiratexto")) uses.add("math");
 
     const lines: string[] = [];
     if (this.comments) {
@@ -232,16 +252,14 @@ export class CppGenerator extends CFamilyGenerator {
     lines.push("#include<iostream>");
     if (uses.has("math")) lines.push("#include<cmath>");
     if (uses.has("stdlib")) lines.push("#include<cstdlib>");
-    if (uses.has("esperar")) lines.push("#include<ctime>");
+    if (uses.has("esperar") || uses.has("time")) lines.push("#include<ctime>");
     if (uses.has("ctype")) lines.push("#include<cctype>");
-    if (uses.has("convertiratexto")) lines.push("#include<sstream>");
+    if (uses.has("convertiratexto")) lines.push("#include<cstdio>", "#include<cstring>");
     if (uses.has("string")) lines.push("#include<string>");
     lines.push("using namespace std;");
     if (this.comments) lines.push("");
 
-    if (uses.has("pi")) {
-      lines.push("#ifndef M_PI", "#define M_PI 3.14159265358979323846", "#endif");
-    }
+    lines.push(...this.constantDefinitions());
     if (uses.has("arreglo_max")) {
       if (this.comments) {
         lines.push(
@@ -266,7 +284,7 @@ export class CppGenerator extends CFamilyGenerator {
       );
     }
 
-    const prototypes: string[] = [];
+    const prototypes: string[] = this.sharedPrototypes();
     if (uses.has("esperar")) prototypes.push("void esperar(double milisegundos);");
     if (uses.has("convertiratexto")) prototypes.push("string convertiratexto(double valor);");
     if (uses.has("mayusculas")) prototypes.push("string mayusculas(string s);");
@@ -293,27 +311,47 @@ export class CppGenerator extends CFamilyGenerator {
     }
     if (uses.has("convertiratexto")) {
       blocks.push([
+        ...(this.comments
+          ? [
+              "// Escribe un número como PSeInt: redondeado a 10 decimales, sin ceros",
+              "// finales y sin notación exponencial.",
+            ]
+          : []),
         "string convertiratexto(double valor) {",
-        "\tostringstream salida;",
-        "\tsalida << valor;",
-        "\treturn salida.str();",
+        "\tchar buffer[400];",
+        "\tif (valor==floor(valor)) {",
+        "\t\tsnprintf(buffer, sizeof buffer, \"%.0f\", valor);",
+        "\t} else {",
+        "\t\tsnprintf(buffer, sizeof buffer, \"%.10f\", valor);",
+        "\t\tsize_t largo = strlen(buffer);",
+        "\t\twhile (buffer[largo-1]=='0') buffer[--largo] = '\\0';",
+        "\t\tif (buffer[largo-1]=='.') buffer[--largo] = '\\0';",
+        "\t}",
+        "\tif (strcmp(buffer, \"-0\")==0) return \"0\";",
+        "\treturn buffer;",
         "}",
       ]);
     }
-    for (const [name, fn] of [
-      ["mayusculas", "toupper"],
-      ["minusculas", "tolower"],
-    ]) {
+    for (const [name, fn, accent] of LETTER_CASES) {
       if (!uses.has(name)) continue;
       blocks.push([
+        ...(this.comments && name === "mayusculas"
+          ? ["// Las letras acentuadas y la ñ (UTF-8) también cambian."]
+          : []),
         `string ${name}(string s) {`,
         "\tfor (size_t i=0; i<s.size(); ++i) {",
         `\t\ts[i] = char(${fn}((unsigned char)s[i]));`,
+        "\t\tif ((unsigned char)s[i]==0xC3 && i+1<s.size()) {",
+        "\t\t\tunsigned char c = (unsigned char)s[++i];",
+        `\t\t\t${accent}`,
+        "\t\t\ts[i] = char(c);",
+        "\t\t}",
         "\t}",
         "\treturn s;",
         "}",
       ]);
     }
+    blocks.push(...this.sharedHelpers());
     return blocks.flatMap((block, index) =>
       index > 0 && this.comments ? ["", ...block] : block
     );

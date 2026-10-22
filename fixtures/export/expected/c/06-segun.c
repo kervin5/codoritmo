@@ -4,7 +4,7 @@
 #include<stdio.h>
 
 int main() {
-	int c;
+	int c = 0;
 	scanf("%d", &c);
 	switch (c) {
 	case 3:

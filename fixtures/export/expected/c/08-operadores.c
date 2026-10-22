@@ -11,27 +11,28 @@
 #define MAX_STRLEN 256
 #define MAX_BUFFERS 10
 /* Funciones auxiliares, definidas al final */
+char *convertiratexto(double valor);
 char *get_aux_buffer(void);
 
 int main() {
-	double a;
-	double b;
-	bool c;
-	bool d;
-	char e[MAX_STRLEN];
-	char f[MAX_STRLEN];
+	double a = 0;
+	double b = 0;
+	bool c = false;
+	bool d = false;
+	char e[MAX_STRLEN] = "";
+	char f[MAX_STRLEN] = "";
 	a = 11;
 	b = 2;
 	c = true;
 	d = false;
 	strcpy(e, "Hola");
 	strcpy(f, "Mundo");
-	printf("%g\n", a+b);
-	printf("%g\n", a*b);
-	printf("%g\n", a/b);
-	printf("%g\n", a-b);
-	printf("%g\n", pow(a, b));
-	printf("%g\n", fmod(a, b));
+	printf("%s\n", convertiratexto(a+b));
+	printf("%s\n", convertiratexto(a*b));
+	printf("%s\n", convertiratexto(a/b));
+	printf("%s\n", convertiratexto(a-b));
+	printf("%s\n", convertiratexto(pow(a, b)));
+	printf("%s\n", convertiratexto(fmod(a, b)));
 	printf("%s\n", a==b ? "VERDADERO" : "FALSO");
 	printf("%s\n", a!=b ? "VERDADERO" : "FALSO");
 	printf("%s\n", a<b ? "VERDADERO" : "FALSO");
@@ -59,4 +60,21 @@ char *get_aux_buffer(void) {
 	actual = (actual+1)%MAX_BUFFERS;
 	buffers[actual][0] = '\0';
 	return buffers[actual];
+}
+
+/* Escribe un número como PSeInt: redondeado a 10 decimales, sin ceros
+   finales y sin notación exponencial. */
+char *convertiratexto(double valor) {
+	char *buffer = get_aux_buffer();
+	int largo;
+	if (valor==floor(valor)) {
+		snprintf(buffer, MAX_STRLEN, "%.0f", valor);
+	} else {
+		snprintf(buffer, MAX_STRLEN, "%.10f", valor);
+		largo = (int)strlen(buffer);
+		while (buffer[largo-1]=='0') buffer[--largo] = '\0';
+		if (buffer[largo-1]=='.') buffer[--largo] = '\0';
+	}
+	if (strcmp(buffer, "-0")==0) strcpy(buffer, "0");
+	return buffer;
 }

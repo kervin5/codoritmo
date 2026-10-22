@@ -13,6 +13,7 @@ import { normalizeEngineSettings } from "../settings";
 import {
   evaluateConstant,
   InferredType,
+  isConstantBuiltin,
   isNumericType,
   normalizeBuiltinName,
   normalizeName,
@@ -99,7 +100,8 @@ const RESERVED_WORDS = new Set(
   pow sqrt fabs abs log exp sin cos tan asin acos atan floor fmod round
   cout cin endl string std clock toupper tolower
   esperar mayusculas minusculas subcadena convertiratexto get_aux_buffer leer_logico
-  ARREGLO_MAX MAX_STRLEN MAX_BUFFERS SIN_TIPO M_PI`.split(/\s+/)
+  redondear truncar fecha_actual hora_actual time localtime
+  ARREGLO_MAX MAX_STRLEN MAX_BUFFERS SIN_TIPO M_PI M_E`.split(/\s+/)
 );
 
 export function toIdentifier(name: string): string {
@@ -176,6 +178,7 @@ export abstract class CFamilyGenerator {
     this.uses = new Set();
     this.diagnostics = [];
     this.forEachDepth = 0;
+    this.aliasExpressions = new Map();
 
     const body: string[] = [];
     const prototypes: string[] = [];
@@ -233,8 +236,9 @@ export abstract class CFamilyGenerator {
   protected abstract forEachLoop(
     alias: VariableInfo,
     collection: VariableInfo,
-    dims: string[]
-  ): { open: string[]; aliasExpression: string };
+    dims: string[],
+    aliasRead: boolean
+  ): { open: string[]; aliasExpression: string; depth?: number };
   protected abstract clearScreen(): string;
   protected abstract waitKey(): string;
   protected abstract stringBinary(
@@ -249,11 +253,115 @@ export abstract class CFamilyGenerator {
   protected abstract referenceArgument(arg: Rendered): string;
   protected abstract castToInt(rendered: Rendered): Rendered;
 
+  /** Initializer appended to a local declaration (` = 0`), or "". */
+  protected abstract initializer(info: VariableInfo): string;
+  /** Value that resets an element of the given type (Redimensionar). */
+  protected abstract zeroValue(type: InferredType): string;
+
   /** Parameter list of a subprocess without parameters. */
   protected emptyParameterList(): string {
     return "";
   }
   protected abstract castToDouble(rendered: Rendered): Rendered;
+
+  /** Prototypes of the numeric and time helpers both languages share. */
+  protected sharedPrototypes(): string[] {
+    const prototypes: string[] = [];
+    if (this.uses.has("redondear")) prototypes.push("int redondear(double x);");
+    if (this.uses.has("truncar")) prototypes.push("int truncar(double x);");
+    if (this.uses.has("fecha_actual")) prototypes.push(`int fecha_actual(${this.emptyParameterList()});`);
+    if (this.uses.has("hora_actual")) prototypes.push(`int hora_actual(${this.emptyParameterList()});`);
+    return prototypes;
+  }
+
+  /** Definitions of the shared helpers, in the same C for both languages. */
+  protected sharedHelpers(): string[][] {
+    const blocks: string[][] = [];
+    const comment = (...text: string[]) =>
+      this.comments ? text.map((line) => this.comment(line)) : [];
+    if (this.uses.has("redondear")) {
+      blocks.push([
+        ...comment("Como redon() de PSeInt: redondea alejándose de cero (-2.5 da -3)."),
+        "int redondear(double x) {",
+        "\treturn (int)(x<0 ? x-0.5 : x+0.5);",
+        "}",
+      ]);
+    }
+    if (this.uses.has("truncar")) {
+      blocks.push([
+        ...comment(
+          "Como trunc() de PSeInt: un valor a menos de 1e-11 del entero siguiente",
+          "se trunca a ese entero, así trunc(100*0.57) da 57 y no 56."
+        ),
+        "int truncar(double x) {",
+        "\tint t = (int)x;",
+        "\tif (t+1-x<1e-11) return t+1;",
+        "\tif (t-1-x>-1e-11) return t-1;",
+        "\treturn t;",
+        "}",
+      ]);
+    }
+    if (this.uses.has("fecha_actual")) {
+      blocks.push([
+        ...comment("Fecha actual como el número AAAAMMDD."),
+        `int fecha_actual(${this.emptyParameterList()}) {`,
+        "\ttime_t ahora = time(NULL);",
+        "\tstruct tm *t = localtime(&ahora);",
+        "\treturn (t->tm_year+1900)*10000+(t->tm_mon+1)*100+t->tm_mday;",
+        "}",
+      ]);
+    }
+    if (this.uses.has("hora_actual")) {
+      blocks.push([
+        ...comment("Hora actual como el número HHMMSS."),
+        `int hora_actual(${this.emptyParameterList()}) {`,
+        "\ttime_t ahora = time(NULL);",
+        "\tstruct tm *t = localtime(&ahora);",
+        "\treturn t->tm_hour*10000+t->tm_min*100+t->tm_sec;",
+        "}",
+      ]);
+    }
+    return blocks;
+  }
+
+  /** Shared builtins: rounding and the current date and time. */
+  protected sharedBuiltin(name: string, args: ExpressionNode[]): Rendered | null {
+    switch (name) {
+      case "REDON":
+      case "TRUNC": {
+        const helper = name === "REDON" ? "redondear" : "truncar";
+        this.uses.add(helper);
+        return { code: `${helper}(${this.expression(args[0]).code})`, prec: PREC.primary };
+      }
+      case "FECHAACTUAL":
+      case "HORAACTUAL": {
+        const helper = name === "FECHAACTUAL" ? "fecha_actual" : "hora_actual";
+        this.uses.add(helper);
+        this.uses.add("time");
+        return { code: `${helper}()`, prec: PREC.primary };
+      }
+      default:
+        return null;
+    }
+  }
+
+  /** Defines M_PI and M_E, which strict C/C++ modes leave out of math.h. */
+  protected constantDefinitions(): string[] {
+    const lines: string[] = [];
+    if (this.uses.has("pi")) {
+      lines.push("#ifndef M_PI", "#define M_PI 3.14159265358979323846", "#endif");
+    }
+    if (this.uses.has("euler")) {
+      lines.push("#ifndef M_E", "#define M_E 2.71828182845904523536", "#endif");
+    }
+    return lines;
+  }
+
+  /** Whether a value prints through convertiratexto (reals, 10 decimals). */
+  protected printsAsReal(expression: ExpressionNode): boolean {
+    const type = resolveType(this.typeOf(expression));
+    return type !== "string" && type !== "bool" && !this.isCInt(expression);
+  }
 
   // ---------------------------------------------------------------------------
   // Routines and declarations
@@ -274,9 +382,13 @@ export abstract class CFamilyGenerator {
         : scope.returnType !== "unknown"
         ? this.returnTypeName(resolveType(scope.returnType))
         : "void";
-      const params = routine.params.map((param) =>
-        this.declaration(scope.vars.get(normalizeName(param.name))!, true)
-      );
+      const params = routine.params.flatMap((param) => {
+        const info = scope.vars.get(normalizeName(param.name))!;
+        const declaration = this.declaration(info, true);
+        return info.array?.dynamic
+          ? [declaration, `int ${sizeName(info.name)}[]`]
+          : [declaration];
+      });
       lines.push(
         `${returnType} ${toIdentifier(routine.name)}(${
           params.length > 0 ? params.join(", ") : this.emptyParameterList()
@@ -288,7 +400,20 @@ export abstract class CFamilyGenerator {
       .filter((info) => !info.param && !info.forEachAlias)
       .sort((a, b) => toIdentifier(a.name).localeCompare(toIdentifier(b.name)));
     for (const info of locals) {
-      lines.push(`\t${this.declaration(info, false)};`);
+      lines.push(`\t${this.declaration(info, false)}${this.initializer(info)};`);
+      if (info.array?.dynamic) {
+        // Current size of each dimension (the storage has room for the largest).
+        const zeros = info.array.dims.map(() => "0").join(", ");
+        lines.push(`\tint ${sizeName(info.name)}[${info.array.dims.length}] = {${zeros}};`);
+      }
+    }
+    // Scalars count as used when read; arrays when they appear at all.
+    const read = readVariables(statements, scope);
+    const mentioned = readVariables(statements, scope, true);
+    const unread = locals.filter((info) => !(info.array ? mentioned : read).has(info.key));
+    if (unread.length > 0) {
+      if (this.comments) lines.push(`\t${this.comment("Variables que se asignan pero no se leen")}`);
+      for (const info of unread) lines.push(`\t(void)${toIdentifier(info.name)};`);
     }
 
     lines.push(...this.statements(statements, 1));
@@ -307,16 +432,21 @@ export abstract class CFamilyGenerator {
   /** Array suffix (`[10][ARREGLO_MAX]`) for a declaration. */
   protected arraySuffix(info: VariableInfo, asParameter: boolean): string {
     if (!info.array) return "";
-    return info.array.dims
-      .map((dim, index) => {
-        if (asParameter && index === 0) return "[]";
+    return this.capacities(info)
+      .map((dim, index) => (asParameter && index === 0 ? "[]" : `[${dim}]`))
+      .join("");
+  }
+
+  /** Storage size of each dimension of an array. */
+  protected capacities(info: VariableInfo): string[] {
+    return info.array!.dims
+      .map((dim) => {
         if (dim === null) {
           this.uses.add("arreglo_max");
-          return "[ARREGLO_MAX]";
+          return "ARREGLO_MAX";
         }
-        return `[${dim}]`;
-      })
-      .join("");
+        return String(dim);
+      });
   }
 
   protected variableType(info: VariableInfo): InferredType {
@@ -361,8 +491,9 @@ export abstract class CFamilyGenerator {
 
     switch (statement.kind) {
       case "define":
-      case "dimension":
         return [];
+      case "dimension":
+        return this.dimension(statement);
       case "assignment":
         return [this.assign(statement.target, statement.value)];
       case "write":
@@ -503,12 +634,10 @@ export abstract class CFamilyGenerator {
       return [this.comment(`Para Cada ${statement.variable}: no se pudo traducir`)];
     }
 
-    const dims = collection.array.dims.map((dim) => {
-      if (dim !== null) return String(dim);
-      this.uses.add("arreglo_max");
-      return "ARREGLO_MAX";
-    });
-    const loop = this.forEachLoop(alias, collection, dims);
+    const dims = this.capacities(collection);
+    const loop = collection.array.dynamic
+      ? this.dynamicForEachLoop(collection)
+      : this.forEachLoop(alias, collection, dims, readVariables(statement.body).has(alias.key));
     const previous = this.aliasExpressions.get(alias.key);
     this.aliasExpressions.set(alias.key, loop.aliasExpression);
     this.forEachDepth += 1;
@@ -516,7 +645,74 @@ export abstract class CFamilyGenerator {
     this.forEachDepth -= 1;
     if (previous === undefined) this.aliasExpressions.delete(alias.key);
     else this.aliasExpressions.set(alias.key, previous);
-    return [...loop.open, ...body, "}"];
+    const depth = loop.depth ?? 1;
+    const indent = "\t".repeat(depth - 1);
+    const close = Array.from({ length: depth }, (_, index) => `${"\t".repeat(depth - 1 - index)}}`);
+    return [...loop.open, ...body.map((line) => indent + line), ...close];
+  }
+
+  /** Para Cada over a dynamic array: one loop per dimension up to its current size. */
+  private dynamicForEachLoop(collection: VariableInfo): {
+    open: string[];
+    aliasExpression: string;
+    depth: number;
+  } {
+    const name = toIdentifier(collection.name);
+    const sizes = sizeName(collection.name);
+    const counters = collection.array!.dims.map(
+      (_, index) => `${name}_i${this.forEachDepth}_${index}`
+    );
+    return {
+      open: counters.map(
+        (counter, index) =>
+          `${"\t".repeat(index)}for (int ${counter}=0; ${counter}<${sizes}[${index}]; ++${counter}) {`
+      ),
+      aliasExpression: `${name}${counters.map((counter) => `[${counter}]`).join("")}`,
+      depth: counters.length,
+    };
+  }
+
+  /**
+   * Dimension of a dynamic array records its size; Redimensionar also clears
+   * the elements outside the new size, so growing it again shows zeros like
+   * PSeInt (the values that remain in range are kept).
+   */
+  private dimension(statement: Extract<StatementNode, { kind: "dimension" }>): string[] {
+    const lines: string[] = [];
+    for (const item of statement.items) {
+      const info = this.context.scope.vars.get(normalizeName(item.name));
+      if (!info?.array?.dynamic) continue;
+      const name = toIdentifier(item.name);
+      const sizes = sizeName(item.name);
+      item.dimensions.forEach((dimension, index) => {
+        lines.push(`${sizes}[${index}] = ${this.integer(dimension).code};`);
+      });
+      if (!statement.resize) continue;
+      const capacities = this.capacities(info);
+      const counters = capacities.map((_, index) => `${name}_r${index}`);
+      if (this.comments) {
+        lines.push(this.comment(`Redimensionar ${item.name}: lo que queda fuera del nuevo tamaño vuelve a cero`));
+      }
+      counters.forEach((counter, index) => {
+        lines.push(
+          `${"\t".repeat(index)}for (int ${counter}=0; ${counter}<${capacities[index]}; ++${counter}) {`
+        );
+      });
+      const outside = counters.map((counter, index) => `${counter}>=${sizes}[${index}]`);
+      const element = `${name}${counters.map((counter) => `[${counter}]`).join("")}`;
+      lines.push(
+        `${"\t".repeat(counters.length)}if (${outside.join(" || ")}) ${this.zeroElement(element, this.variableType(info))}`
+      );
+      counters.forEach((_, index) => {
+        lines.push(`${"\t".repeat(counters.length - 1 - index)}}`);
+      });
+    }
+    return lines;
+  }
+
+  /** Statement that resets one element (`x = 0;`). */
+  protected zeroElement(element: string, type: InferredType): string {
+    return `${element} = ${this.zeroValue(type)};`;
   }
 
   /** Expressions that stand for Para Cada aliases while inside their loop. */
@@ -529,7 +725,13 @@ export abstract class CFamilyGenerator {
     nested: (body: StatementNode[]) => string[]
   ): string[] {
     const type = resolveType(this.typeOf(statement.expression));
-    if (type === "string") {
+    const constantCases = statement.cases.every((switchCase) =>
+      switchCase.values.every((value) => {
+        const constant = evaluateConstant(value);
+        return constant !== null && Number.isInteger(constant);
+      })
+    );
+    if (type === "string" || !constantCases) {
       // switch only works on integers: fall back to an if/else chain.
       const lines: string[] = [];
       statement.cases.forEach((switchCase, index) => {
@@ -687,11 +889,7 @@ export abstract class CFamilyGenerator {
     const info = this.context.scope.vars.get(key);
     if (!info) {
       if (this.inference.findRoutine(name)) return this.call(name, []);
-      if (normalizeBuiltinName(name) === "PI") {
-        this.uses.add("math");
-        this.uses.add("pi");
-        return { code: "M_PI", prec: PREC.primary };
-      }
+      if (isConstantBuiltin(name)) return this.constant(name);
     }
     if (info?.param?.byReference && !info.array && !this.passesByPointer(info)) {
       return { code: this.referenceParameter(toIdentifier(name)), prec: PREC.primary };
@@ -706,13 +904,10 @@ export abstract class CFamilyGenerator {
   }
 
   private call(callee: string, args: ExpressionNode[]): Rendered {
-    // The parser turns a bare PI into a zero-argument call.
-    if (args.length === 0 && normalizeBuiltinName(callee) === "PI") {
-      this.uses.add("math");
-      this.uses.add("pi");
-      return { code: "M_PI", prec: PREC.primary };
-    }
-    const builtin = this.builtin(normalizeBuiltinName(callee), args);
+    // The parser turns a bare PI or EULER into a zero-argument call.
+    if (args.length === 0 && isConstantBuiltin(callee)) return this.constant(callee);
+    const name = normalizeBuiltinName(callee);
+    const builtin = this.sharedBuiltin(name, args) ?? this.builtin(name, args);
     if (builtin) return builtin;
 
     const routine = this.inference.findRoutine(callee);
@@ -724,18 +919,31 @@ export abstract class CFamilyGenerator {
     }
 
     const calleeScope = this.calleeScope(routine);
-    const rendered = args.map((arg, index) => {
+    const rendered = args.flatMap((arg, index) => {
       const param = routine.params[index];
       const value = this.expression(arg);
-      if (!param?.byReference) return value.code;
-      const info = calleeScope?.vars.get(normalizeName(param.name));
-      if (!info || info.array || this.passesByPointer(info)) return value.code;
-      return this.referenceArgument(value);
+      const info = param ? calleeScope?.vars.get(normalizeName(param.name)) : undefined;
+      if (info?.array?.dynamic && arg.kind === "identifier") {
+        return [value.code, sizeName(arg.name)];
+      }
+      if (!param?.byReference) return [value.code];
+      if (!info || info.array || this.passesByPointer(info)) return [value.code];
+      return [this.referenceArgument(value)];
     });
     return {
       code: `${toIdentifier(routine.name)}(${rendered.join(", ")})`,
       prec: PREC.primary,
     };
+  }
+
+  private constant(name: string): Rendered {
+    this.uses.add("math");
+    if (normalizeBuiltinName(name) === "PI") {
+      this.uses.add("pi");
+      return { code: "M_PI", prec: PREC.primary };
+    }
+    this.uses.add("euler");
+    return { code: "M_E", prec: PREC.primary };
   }
 
   protected calleeScope(routine: RoutineNode): ScopeTypes | undefined {
@@ -772,14 +980,21 @@ export abstract class CFamilyGenerator {
     }
 
     const prec = BINARY_PRECEDENCE[operator] ?? PREC.primary;
-    let leftCode = this.expression(left);
+    // Parentheses the compiler asks for (-Wparentheses): `a && b` inside
+    // `||`, and `!a` compared with something.
+    const clarify = (rendered: Rendered): Rendered =>
+      (operator === "OR" && rendered.prec === PREC.and) ||
+      ((prec === PREC.equality || prec === PREC.relational) && rendered.code.startsWith("!"))
+        ? { code: `(${rendered.code})`, prec: PREC.primary }
+        : rendered;
+    let leftCode = clarify(this.expression(left));
     if (operator === "/" && this.isCInt(left) && this.isCInt(right)) {
       // PSeInt division is always real, C's integer division is not.
       leftCode = isIntegerLiteral(left)
         ? { code: `${leftCode.code}.0`, prec: PREC.primary }
         : this.castToDouble(leftCode);
     }
-    const rightCode = this.expression(right);
+    const rightCode = clarify(this.expression(right));
     return {
       code: `${wrap(leftCode, prec)}${C_OPERATORS[operator] ?? operator}${wrap(rightCode, prec + 1)}`,
       prec,
@@ -832,4 +1047,57 @@ export function substringLength(
   const toCode = generator.expression(to);
   const fromCode = generator.expression(from);
   return `${wrap(toCode, PREC.additive)}-${wrap(fromCode, PREC.additive + 1)}+1`;
+}
+
+/** Companion variable holding the current size of a dynamic array. */
+export function sizeName(name: string): string {
+  return `${toIdentifier(name)}_tam`;
+}
+
+/**
+ * Normalized names of the variables whose value is read somewhere in the
+ * statements (anything but being assigned or read with Leer), or, with
+ * `includeAssigned`, that appear in them at all.
+ */
+export function readVariables(
+  statements: StatementNode[],
+  scope?: ScopeTypes,
+  includeAssigned = false
+): Set<string> {
+  const read = new Set<string>();
+  if (scope?.returnKey) read.add(scope.returnKey);
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    const value = node as Record<string, unknown> & { kind?: string };
+    switch (value.kind) {
+      case "identifier":
+        read.add(normalizeName(value.name as string));
+        return;
+      case "assignment": {
+        if (includeAssigned) break;
+        const statement = node as Extract<StatementNode, { kind: "assignment" }>;
+        if (statement.target.kind === "arrayAccess") visit(statement.target.indices);
+        visit(statement.value);
+        return;
+      }
+      case "read":
+        if (includeAssigned) break;
+        for (const target of (node as Extract<StatementNode, { kind: "read" }>).targets) {
+          if (target.kind === "arrayAccess") visit(target.indices);
+        }
+        return;
+      case "for":
+        read.add(normalizeName(value.variable as string));
+        break;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key !== "span") visit(child);
+    }
+  };
+  visit(statements);
+  return read;
 }
