@@ -13,13 +13,19 @@ using namespace std;
 #define SIN_TIPO string
 
 int main() {
-	SIN_TIPO a[10];
-	SIN_TIPO b[20][30];
-	SIN_TIPO c[40];
-	SIN_TIPO d[50][5];
-	SIN_TIPO e[ARREGLO_MAX];
-	int n;
+	SIN_TIPO a[10] = {};
+	SIN_TIPO b[20][30] = {};
+	SIN_TIPO c[40] = {};
+	SIN_TIPO d[50][5] = {};
+	SIN_TIPO e[ARREGLO_MAX] = {};
+	int e_tam[1] = {0};
+	int n = 0;
+	// Variables que se asignan pero no se leen
+	(void)c;
+	(void)d;
+	(void)e;
 	cin >> n;
+	e_tam[0] = n;
 	cin >> a[0];
 	a[9] = a[0];
 	cout << b[9][9] << endl;

@@ -46,6 +46,20 @@ export class CGenerator extends CFamilyGenerator {
     return `${typeName} ${name}${dims}`;
   }
 
+  protected initializer(info: VariableInfo): string {
+    if (info.array) return " = {0}";
+    const type = this.variableType(info);
+    return type === "string" ? ' = ""' : type === "bool" ? " = false" : " = 0";
+  }
+
+  protected zeroValue(type: InferredType): string {
+    return type === "bool" ? "false" : "0";
+  }
+
+  protected zeroElement(element: string, type: InferredType): string {
+    return type === "string" ? `${element}[0] = '\\0';` : super.zeroElement(element, type);
+  }
+
   protected passesByPointer(info: VariableInfo): boolean {
     return resolveType(info.type) === "string";
   }
@@ -79,11 +93,13 @@ export class CGenerator extends CFamilyGenerator {
       } else if (type === "bool") {
         format += "%s";
         values.push(`${wrap(rendered, PREC.or)} ? "VERDADERO" : "FALSO"`);
-      } else if (this.isCInt(arg)) {
-        format += "%i";
-        values.push(rendered.code);
+      } else if (this.printsAsReal(arg)) {
+        // Reals print rounded to 10 decimals, like PSeInt.
+        this.uses.add("convertiratexto");
+        format += "%s";
+        values.push(`convertiratexto(${rendered.code})`);
       } else {
-        format += "%g";
+        format += "%i";
         values.push(rendered.code);
       }
     }
@@ -224,11 +240,6 @@ export class CGenerator extends CFamilyGenerator {
         return call("acos");
       case "ATAN":
         return call("atan");
-      case "REDON":
-        this.uses.add("math");
-        return { code: `(int)floor(${arg(0)}+0.5)`, prec: PREC.unary };
-      case "TRUNC":
-        return this.castToInt(this.expression(args[0]));
       case "AZAR":
         this.uses.add("stdlib");
         return { code: `(rand()%${wrap(this.integer(args[0]), PREC.unary)})`, prec: PREC.primary };
@@ -279,6 +290,7 @@ export class CGenerator extends CFamilyGenerator {
     }
     if (uses.has("aux_buffer") || uses.has("leer_logico")) uses.add("string");
     if (uses.has("leer_logico")) uses.add("bool");
+    if (uses.has("convertiratexto")) uses.add("math");
     if (uses.has("esperar")) uses.add("time");
   }
 
@@ -301,9 +313,7 @@ export class CGenerator extends CFamilyGenerator {
     if (uses.has("string")) lines.push("#include<string.h>");
     if (this.comments) lines.push("");
 
-    if (uses.has("pi")) {
-      lines.push("#ifndef M_PI", "#define M_PI 3.14159265358979323846", "#endif");
-    }
+    lines.push(...this.constantDefinitions());
     if (uses.has("arreglo_max")) {
       if (this.comments) {
         lines.push(
@@ -339,7 +349,7 @@ export class CGenerator extends CFamilyGenerator {
       );
     }
 
-    const prototypes: string[] = [];
+    const prototypes: string[] = this.sharedPrototypes();
     if (uses.has("esperar")) prototypes.push("void esperar(double milisegundos);");
     if (uses.has("leer_logico")) prototypes.push("bool leer_logico(void);");
     if (uses.has("convertiratexto")) prototypes.push("char *convertiratexto(double valor);");
@@ -398,24 +408,44 @@ export class CGenerator extends CFamilyGenerator {
     }
     if (uses.has("convertiratexto")) {
       blocks.push([
+        ...(this.comments
+          ? [
+              "/* Escribe un número como PSeInt: redondeado a 10 decimales, sin ceros",
+              "   finales y sin notación exponencial. */",
+            ]
+          : []),
         "char *convertiratexto(double valor) {",
         "\tchar *buffer = get_aux_buffer();",
-        "\tsprintf(buffer, \"%g\", valor);",
+        "\tint largo;",
+        "\tif (valor==floor(valor)) {",
+        "\t\tsnprintf(buffer, MAX_STRLEN, \"%.0f\", valor);",
+        "\t} else {",
+        "\t\tsnprintf(buffer, MAX_STRLEN, \"%.10f\", valor);",
+        "\t\tlargo = (int)strlen(buffer);",
+        "\t\twhile (buffer[largo-1]=='0') buffer[--largo] = '\\0';",
+        "\t\tif (buffer[largo-1]=='.') buffer[--largo] = '\\0';",
+        "\t}",
+        "\tif (strcmp(buffer, \"-0\")==0) strcpy(buffer, \"0\");",
         "\treturn buffer;",
         "}",
       ]);
     }
-    for (const [name, fn] of [
-      ["mayusculas", "toupper"],
-      ["minusculas", "tolower"],
-    ]) {
+    for (const [name, fn, accent] of LETTER_CASES) {
       if (!uses.has(name)) continue;
       blocks.push([
+        ...(this.comments && name === "mayusculas"
+          ? ["/* Las letras acentuadas y la ñ (UTF-8) también cambian. */"]
+          : []),
         `char *${name}(const char *s) {`,
         "\tchar *buffer = get_aux_buffer();",
         "\tint i;",
         "\tfor (i=0; s[i]!='\\0' && i<MAX_STRLEN-1; ++i) {",
         `\t\tbuffer[i] = (char)${fn}((unsigned char)s[i]);`,
+        "\t\tif ((unsigned char)s[i]==0xC3 && s[i+1]!='\\0' && i<MAX_STRLEN-2) {",
+        "\t\t\tunsigned char c = (unsigned char)s[++i];",
+        `\t\t\t${accent}`,
+        "\t\t\tbuffer[i] = (char)c;",
+        "\t\t}",
         "\t}",
         "\tbuffer[i] = '\\0';",
         "\treturn buffer;",
@@ -437,11 +467,18 @@ export class CGenerator extends CFamilyGenerator {
         "}",
       ]);
     }
+    blocks.push(...this.sharedHelpers());
     return blocks.flatMap((block, index) =>
       index > 0 && this.comments ? ["", ...block] : block
     );
   }
 }
+
+/** Helper name, ASCII function and UTF-8 Latin-1 letter adjustment. */
+export const LETTER_CASES = [
+  ["mayusculas", "toupper", "if (c>=0xA0 && c<=0xBE && c!=0xB7) c -= 0x20;"],
+  ["minusculas", "tolower", "if (c>=0x80 && c<=0x9E && c!=0x97) c += 0x20;"],
+] as const;
 
 function lastIndex(dim: string): string {
   return /^\d+$/.test(dim) ? String(Number(dim) - 1) : `${dim}-1`;

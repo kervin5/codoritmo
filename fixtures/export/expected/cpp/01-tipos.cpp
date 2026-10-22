@@ -10,13 +10,20 @@ using namespace std;
 #define SIN_TIPO string
 
 int main() {
-	int a;
-	double b;
-	bool c;
-	bool d;
+	int a = 0;
+	double b = 0;
+	bool c = false;
+	bool d = false;
 	string e;
 	string f;
 	SIN_TIPO p;
+	// Variables que se asignan pero no se leen
+	(void)a;
+	(void)b;
+	(void)c;
+	(void)d;
+	(void)e;
+	(void)f;
 	a = 1;
 	b = 2.5;
 	c = true;
