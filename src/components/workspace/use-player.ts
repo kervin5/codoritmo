@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Interpreter, Parser, type Diagnostic, type EngineSettings, type Runtime } from "@/src/engine";
-import type { VariableSnapshot } from "@/src/engine/types";
+import type { ExecutionMetrics, VariableSnapshot } from "@/src/engine/types";
 
 export type PlayerStatus = "idle" | "playing" | "paused" | "input" | "done" | "error" | "stopped";
 
@@ -25,6 +25,8 @@ export interface Frame {
   /** How many console lines existed when this statement was about to run. */
   consoleLength: number;
   routine: string | null;
+  /** Work counters when this statement was about to run. */
+  metrics: ExecutionMetrics;
 }
 
 /** ms between steps; 0 = instant (a normal run). */
@@ -225,6 +227,7 @@ export function usePlayer(source: string, settings: EngineSettings, text: Player
                 variables: instant && framesRef.current.length % 25 !== 0 ? [] : event.variables(),
                 consoleLength: linesRef.current.length,
                 routine: event.routine,
+                metrics: event.metrics,
               });
             }
             scheduleFlush();

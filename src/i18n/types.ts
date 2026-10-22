@@ -265,13 +265,50 @@ export interface Dictionary {
     profiles: { title: string; search: string; builtIn: string; schools: string; settings: string; done: string; flexible: string };
     hover: { variable: string; firstSeen: string; counter: string };
     activity: { diagram: string; code: string; reference: string };
+    visualizer: {
+      arraysTab: string;
+      complexityTab: string;
+      steps: string;
+      comparisons: string;
+      reads: string;
+      writes: string;
+      memory: string;
+      legendActive: string;
+      legendChanged: string;
+      empty: string;
+      noArrays: string;
+      truncated: string;
+      measure: string;
+      measureAgain: string;
+      stop: string;
+      time: string;
+      space: string;
+      compareWith: string;
+      progress: string;
+      intro: string;
+      needsInput: string;
+      failed: string;
+      tooSlow: string;
+      stale: string;
+      yTime: string;
+      ySpace: string;
+      thisProgram: string;
+      confidence: string;
+      notEnough: string;
+      explain: Record<string, string>;
+      theory: string;
+      best: string;
+      average: string;
+      worst: string;
+      theoryNote: string;
+    };
     examples: {
       title: string;
       menu: string;
       search: string;
       all: string;
       levels: Record<"1" | "2" | "3", string>;
-      topics: Record<"basics" | "decisions" | "loops" | "arrays" | "text" | "routines" | "math" | "projects", string>;
+      topics: Record<"basics" | "decisions" | "loops" | "arrays" | "sorting" | "text" | "routines" | "math" | "projects", string>;
       concepts: Record<string, string>;
       conceptsLabel: string;
       clearFilters: string;
@@ -290,6 +327,17 @@ export interface Dictionary {
       showHint: string;
       dismiss: string;
       back: string;
+      /** Chips for an example's big-O metadata. */
+      complexity: {
+        label: string;
+        best: string;
+        average: string;
+        worst: string;
+        space: string;
+        stable: string;
+        unstable: string;
+        inPlace: string;
+      };
     };
   };
   /** Text for every engine diagnostic, keyed by Diagnostic.code. */

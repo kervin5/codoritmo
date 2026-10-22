@@ -465,10 +465,29 @@ export type ExecutionState =
   | "paused"
   | "stopped";
 
+/**
+ * Work done by a run, for teaching complexity. Counted by the interpreter,
+ * so they reflect what the program actually did.
+ */
+export interface ExecutionMetrics {
+  /** Statements executed. */
+  steps: number;
+  /** Relational comparisons evaluated (=, <>, <, >, <=, >=). */
+  comparisons: number;
+  arrayReads: number;
+  arrayWrites: number;
+  /** Array cells alive right now, and the most alive at once. */
+  arrayCells: number;
+  peakArrayCells: number;
+  /** Deepest SubProceso/Funcion nesting reached (recursion uses memory too). */
+  peakCallDepth: number;
+}
+
 export interface ExecutionResult {
   output: string[];
   diagnostics: Diagnostic[];
   state: ExecutionState;
+  metrics?: ExecutionMetrics;
 }
 
 export type VariableSnapshotValue =
@@ -497,6 +516,8 @@ export interface ExecutionStatementEvent {
   callDepth: number;
   routine: string | null;
   step: number;
+  /** Counters so far (a copy). */
+  metrics: ExecutionMetrics;
   /** Computed lazily, since walking scopes on every statement is costly. */
   variables(): VariableSnapshot[];
 }
@@ -585,12 +606,25 @@ export interface BrowserRuntimeController {
   submitInput(value: string): void;
 }
 
-export type ExampleTopic = "basics" | "decisions" | "loops" | "arrays" | "text" | "routines" | "math" | "projects";
+export type ExampleTopic =
+  | "basics" | "decisions" | "loops" | "arrays" | "sorting" | "text" | "routines" | "math" | "projects";
 
 export type ExampleConcept =
   | "io" | "variables" | "si" | "segun" | "mientras" | "repetir" | "para" | "paraCada"
   | "arreglos" | "matrices" | "redimensionar" | "texto" | "logicos" | "subprocesos"
   | "funciones" | "referencia" | "recursion" | "azar" | "matematicas" | "pantalla" | "coloquial";
+
+export interface ExampleComplexity {
+  best: string;
+  average: string;
+  worst: string;
+  /** Extra memory beyond the input. */
+  space: string;
+  /** Equal values keep their original order (sorting only). */
+  stable?: boolean;
+  /** Sorts inside the same array, without a copy (sorting only). */
+  inPlace?: boolean;
+}
 
 export interface ExampleProgram {
   id: string;
@@ -602,6 +636,11 @@ export interface ExampleProgram {
   concepts: ExampleConcept[];
   /** Sample answers for Leer, one per line. */
   input?: string;
+  /**
+   * Time and memory cost of the algorithm the example shows, in big-O
+   * notation ("O(n log n)"), with n the size read by its first `Leer n`.
+   */
+  complexity?: ExampleComplexity;
   profileId?: string;
   settings?: Partial<EngineSettings>;
   source: string;

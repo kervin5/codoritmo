@@ -31,7 +31,7 @@ export interface WorkspacePrefs {
   sidePanelOpen: boolean;
   sideTab: "diagrama" | "traduccion" | "referencia";
   bottomOpen: boolean;
-  bottomTab: "consola" | "prueba" | "problemas";
+  bottomTab: "consola" | "prueba" | "arreglos" | "complejidad" | "problemas";
   bottomHeight: number;
   sideWidth: number;
   speedIndex: number;

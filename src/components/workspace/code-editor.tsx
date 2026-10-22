@@ -41,7 +41,8 @@ function configure(monaco: Monaco) {
         [/<-|:=|<=|>=|<>|==|!=|&&|\|\|/, "operator"],
         [/[+\-*/^%=<>&|~←≤≥≠]/, "operator"],
         [/[;:,()[\]]/, "delimiter"],
-        [/[\p{L}_][\p{L}\p{N}_]*/u, { cases: { "@keywords": "keyword", "@types": "type.identifier", "@default": "identifier" } }],
+        // Monarch drops the regex "u" flag, so \p{L} can't be used: list the letters.
+        [/[A-Za-z_\u00C0-\u024F][\w\u00C0-\u024F]*/, { cases: { "@keywords": "keyword", "@types": "type.identifier", "@default": "identifier" } }],
       ],
     },
   });
@@ -74,6 +75,11 @@ function configure(monaco: Monaco) {
       "editorSuggestWidget.selectedBackground": "#2F8F6E",
       "editorHoverWidget.background": "#202528",
       "editorHoverWidget.border": "#FFFFFF18",
+      // The editor itself is transparent; the pinned "sticky scroll" header
+      // needs its own (glassy, see globals.css) surface or code shows through.
+      "editorStickyScroll.background": "#161A1CEB",
+      "editorStickyScrollHover.background": "#1F2528E6",
+      "editorStickyScroll.shadow": "#00000066",
     },
   });
 }

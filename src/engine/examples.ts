@@ -9,6 +9,7 @@ export const exampleTopics = [
   "decisions",
   "loops",
   "arrays",
+  "sorting",
   "text",
   "routines",
   "math",
@@ -38,6 +39,23 @@ export const exampleConcepts = [
   "pantalla",
   "coloquial",
 ] as const satisfies readonly ExampleConcept[];
+
+// Shared by the sorting and searching examples: prints the whole array only
+// when it is short, so big inputs keep the output small.
+const SHOW_ARRAY = `// Muestra el arreglo completo solo si es corto (30 o menos)
+SubProceso MostrarDatos(titulo, datos, n)
+	Definir i Como Entero
+	Si n <= 30 Entonces
+		Escribir Sin Saltar titulo
+		Para i <- 1 Hasta n Hacer
+			Escribir Sin Saltar datos[i], " "
+		FinPara
+		Escribir ""
+	SiNo
+		Escribir titulo, n, " números (el primero es ", datos[1], " y el último ", datos[n], ")"
+	FinSi
+FinSubProceso
+`;
 
 export const examplePrograms: ExampleProgram[] = [
   /* ---------------- Primeros pasos ---------------- */
@@ -483,6 +501,7 @@ FinProceso
     level: 2,
     concepts: ["io", "arreglos", "mientras", "texto"],
     input: "luis",
+    complexity: { best: "O(1)", average: "O(n)", worst: "O(n)", space: "O(1)" },
     source: `Algoritmo BusquedaLineal
 	Definir nombres, buscado Como Caracter
 	Definir i, posicion Como Entero
@@ -509,42 +528,6 @@ FinProceso
 	SiNo
 		Escribir buscado, " no está en la lista."
 	FinSi
-FinAlgoritmo
-`,
-  },
-  {
-    id: "bubble-sort",
-    label: "Ordenamiento burbuja",
-    description: "Sort random numbers by swapping neighbours.",
-    topic: "arrays",
-    level: 2,
-    concepts: ["arreglos", "para", "si", "azar"],
-    source: `Algoritmo OrdenamientoBurbuja
-	Definir datos, i, j, aux Como Entero
-	Dimension datos[8]
-	Para i <- 1 Hasta 8 Hacer
-		datos[i] <- Aleatorio(1, 99)
-	FinPara
-	Escribir Sin Saltar "Antes:   "
-	Para i <- 1 Hasta 8 Hacer
-		Escribir Sin Saltar datos[i], " "
-	FinPara
-	Escribir ""
-	// En cada pasada, el mayor "sube" hasta su lugar
-	Para i <- 1 Hasta 7 Hacer
-		Para j <- 1 Hasta 8 - i Hacer
-			Si datos[j] > datos[j + 1] Entonces
-				aux <- datos[j]
-				datos[j] <- datos[j + 1]
-				datos[j + 1] <- aux
-			FinSi
-		FinPara
-	FinPara
-	Escribir Sin Saltar "Después: "
-	Para i <- 1 Hasta 8 Hacer
-		Escribir Sin Saltar datos[i], " "
-	FinPara
-	Escribir ""
 FinAlgoritmo
 `,
   },
@@ -652,6 +635,547 @@ FinAlgoritmo
 			Escribir "- ", item
 		FinPara
 	FinSi
+FinAlgoritmo
+`,
+  },
+
+  /* ---------------- Ordenamiento y búsqueda ---------------- */
+  // Convención para el analizador de complejidad: cada programa lee primero
+  // el tamaño con `Leer n` y genera sus datos a partir de n (1 a 512), sin
+  // pedir nada más. Muestra el arreglo solo si n <= 30.
+  {
+    id: "bubble-sort",
+    label: "Ordenamiento burbuja",
+    description: "Sort random numbers by swapping neighbours, stopping early when sorted.",
+    topic: "sorting",
+    level: 2,
+    concepts: ["io", "arreglos", "para", "mientras", "si", "logicos", "azar", "subprocesos"],
+    input: "12",
+    complexity: { best: "O(n)", average: "O(n²)", worst: "O(n²)", space: "O(1)", stable: true, inPlace: true },
+    source: `${SHOW_ARRAY}
+Algoritmo OrdenamientoBurbuja
+	Definir datos, n, i, j, aux, pasadas Como Entero
+	Definir huboCambios Como Logico
+	Escribir "¿Cuántos números quieres ordenar? (1 a 512)"
+	Leer n
+	Dimension datos[n]
+	Para i <- 1 Hasta n Hacer
+		datos[i] <- Aleatorio(1, 99)
+	FinPara
+	MostrarDatos("Antes:   ", datos, n)
+	// En cada pasada, el mayor "sube" hasta su lugar al final
+	pasadas <- 0
+	huboCambios <- Verdadero
+	Mientras huboCambios Y pasadas < n - 1 Hacer
+		pasadas <- pasadas + 1
+		huboCambios <- Falso
+		Para j <- 1 Hasta n - pasadas Hacer
+			Si datos[j] > datos[j + 1] Entonces
+				aux <- datos[j]
+				datos[j] <- datos[j + 1]
+				datos[j + 1] <- aux
+				huboCambios <- Verdadero
+			FinSi
+		FinPara
+		// Si una pasada no cambió nada, el arreglo ya está ordenado
+	FinMientras
+	MostrarDatos("Después: ", datos, n)
+	Escribir "Pasadas necesarias: ", pasadas
+FinAlgoritmo
+`,
+  },
+  {
+    id: "selection-sort",
+    label: "Ordenamiento por selección",
+    description: "Find the smallest remaining number and put it in its place.",
+    topic: "sorting",
+    level: 2,
+    concepts: ["io", "arreglos", "para", "si", "azar", "subprocesos"],
+    input: "12",
+    complexity: { best: "O(n²)", average: "O(n²)", worst: "O(n²)", space: "O(1)", stable: false, inPlace: true },
+    source: `${SHOW_ARRAY}
+Algoritmo OrdenamientoSeleccion
+	Definir datos, n, i, j, minimo, aux, intercambios Como Entero
+	Escribir "¿Cuántos números quieres ordenar? (1 a 512)"
+	Leer n
+	Dimension datos[n]
+	Para i <- 1 Hasta n Hacer
+		datos[i] <- Aleatorio(1, 99)
+	FinPara
+	MostrarDatos("Antes:   ", datos, n)
+	intercambios <- 0
+	// "Con Paso 1" evita que el Para cuente hacia atrás cuando n = 1
+	Para i <- 1 Hasta n - 1 Con Paso 1 Hacer
+		// Buscamos el menor entre las posiciones i y n
+		minimo <- i
+		Para j <- i + 1 Hasta n Hacer
+			Si datos[j] < datos[minimo] Entonces
+				minimo <- j
+			FinSi
+		FinPara
+		// Y lo llevamos a la posición i con un solo intercambio
+		Si minimo <> i Entonces
+			aux <- datos[i]
+			datos[i] <- datos[minimo]
+			datos[minimo] <- aux
+			intercambios <- intercambios + 1
+		FinSi
+	FinPara
+	MostrarDatos("Después: ", datos, n)
+	Escribir "Intercambios realizados: ", intercambios
+FinAlgoritmo
+`,
+  },
+  {
+    id: "insertion-sort",
+    label: "Ordenamiento por inserción",
+    description: "Insert each number among the already sorted ones, like a hand of cards.",
+    topic: "sorting",
+    level: 2,
+    concepts: ["io", "arreglos", "para", "mientras", "si", "logicos", "azar", "subprocesos"],
+    input: "12",
+    complexity: { best: "O(n)", average: "O(n²)", worst: "O(n²)", space: "O(1)", stable: true, inPlace: true },
+    source: `${SHOW_ARRAY}
+Algoritmo OrdenamientoInsercion
+	Definir datos, n, i, j, actual, desplazamientos Como Entero
+	Definir ubicado Como Logico
+	Escribir "¿Cuántos números quieres ordenar? (1 a 512)"
+	Leer n
+	Dimension datos[n]
+	Para i <- 1 Hasta n Hacer
+		datos[i] <- Aleatorio(1, 99)
+	FinPara
+	MostrarDatos("Antes:   ", datos, n)
+	desplazamientos <- 0
+	// Las posiciones 1 a i-1 ya están ordenadas; insertamos datos[i] entre ellas
+	Para i <- 2 Hasta n Con Paso 1 Hacer
+		actual <- datos[i]
+		j <- i - 1
+		ubicado <- Falso
+		// Corremos un lugar a la derecha los que son mayores que actual
+		Mientras j >= 1 Y (NO ubicado) Hacer
+			Si datos[j] > actual Entonces
+				datos[j + 1] <- datos[j]
+				j <- j - 1
+				desplazamientos <- desplazamientos + 1
+			SiNo
+				ubicado <- Verdadero
+			FinSi
+		FinMientras
+		// El hueco que quedó es su lugar
+		datos[j + 1] <- actual
+	FinPara
+	MostrarDatos("Después: ", datos, n)
+	Escribir "Desplazamientos: ", desplazamientos
+FinAlgoritmo
+`,
+  },
+  {
+    id: "shell-sort",
+    label: "Ordenamiento Shell",
+    description: "Insertion sort over far-apart elements, with a gap that keeps shrinking.",
+    topic: "sorting",
+    level: 3,
+    concepts: ["io", "arreglos", "para", "mientras", "si", "logicos", "azar", "subprocesos"],
+    input: "16",
+    complexity: { best: "O(n log n)", average: "O(n√n)", worst: "O(n²)", space: "O(1)", stable: false, inPlace: true },
+    source: `${SHOW_ARRAY}
+Algoritmo OrdenamientoShell
+	Definir datos, n, i, j, actual, salto Como Entero
+	Definir ubicado Como Logico
+	Escribir "¿Cuántos números quieres ordenar? (1 a 512)"
+	Leer n
+	Dimension datos[n]
+	Para i <- 1 Hasta n Hacer
+		datos[i] <- Aleatorio(1, 99)
+	FinPara
+	MostrarDatos("Antes:   ", datos, n)
+	// Empezamos comparando elementos lejanos: los muy desordenados viajan rápido
+	salto <- Trunc(n / 2)
+	Mientras salto > 0 Hacer
+		Escribir "Pasada con salto ", salto
+		// Inserción, pero entre elementos separados por "salto" posiciones
+		Para i <- salto + 1 Hasta n Hacer
+			actual <- datos[i]
+			j <- i
+			ubicado <- Falso
+			Mientras j > salto Y (NO ubicado) Hacer
+				Si datos[j - salto] > actual Entonces
+					datos[j] <- datos[j - salto]
+					j <- j - salto
+				SiNo
+					ubicado <- Verdadero
+				FinSi
+			FinMientras
+			datos[j] <- actual
+		FinPara
+		// La última pasada (salto 1) es una inserción común sobre datos casi ordenados
+		salto <- Trunc(salto / 2)
+	FinMientras
+	MostrarDatos("Después: ", datos, n)
+FinAlgoritmo
+`,
+  },
+  {
+    id: "merge-sort",
+    label: "Ordenamiento por mezcla",
+    description: "Split in halves, sort each half recursively and merge them.",
+    topic: "sorting",
+    level: 3,
+    concepts: ["io", "arreglos", "subprocesos", "recursion", "mientras", "para", "si", "azar"],
+    input: "12",
+    complexity: { best: "O(n log n)", average: "O(n log n)", worst: "O(n log n)", space: "O(n)", stable: true, inPlace: false },
+    source: `${SHOW_ARRAY}
+// Une dos tramos ya ordenados: datos[izquierda..medio] y datos[medio+1..derecha]
+SubProceso Mezclar(datos, temporal, izquierda, medio, derecha)
+	Definir i, j, k Como Entero
+	i <- izquierda
+	j <- medio + 1
+	k <- izquierda
+	// Tomamos siempre el menor de los dos frentes
+	Mientras i <= medio Y j <= derecha Hacer
+		// Con <= los iguales conservan su orden: por eso es estable
+		Si datos[i] <= datos[j] Entonces
+			temporal[k] <- datos[i]
+			i <- i + 1
+		SiNo
+			temporal[k] <- datos[j]
+			j <- j + 1
+		FinSi
+		k <- k + 1
+	FinMientras
+	// Copiamos lo que haya sobrado de cualquiera de las dos mitades
+	Mientras i <= medio Hacer
+		temporal[k] <- datos[i]
+		i <- i + 1
+		k <- k + 1
+	FinMientras
+	Mientras j <= derecha Hacer
+		temporal[k] <- datos[j]
+		j <- j + 1
+		k <- k + 1
+	FinMientras
+	// Devolvemos el tramo mezclado al arreglo original
+	Para k <- izquierda Hasta derecha Hacer
+		datos[k] <- temporal[k]
+	FinPara
+FinSubProceso
+
+// Los arreglos se pasan por referencia: el subproceso ordena el arreglo del algoritmo
+SubProceso OrdenarPorMezcla(datos, temporal, izquierda, derecha)
+	Definir medio Como Entero
+	// Un tramo de un solo elemento ya está ordenado: ahí termina la recursión
+	Si izquierda < derecha Entonces
+		medio <- Trunc((izquierda + derecha) / 2)
+		OrdenarPorMezcla(datos, temporal, izquierda, medio)
+		OrdenarPorMezcla(datos, temporal, medio + 1, derecha)
+		Mezclar(datos, temporal, izquierda, medio, derecha)
+	FinSi
+FinSubProceso
+
+Algoritmo OrdenamientoMezcla
+	Definir datos, temporal, n, i Como Entero
+	Escribir "¿Cuántos números quieres ordenar? (1 a 512)"
+	Leer n
+	// temporal es la memoria extra que necesita la mezcla
+	Dimension datos[n], temporal[n]
+	Para i <- 1 Hasta n Hacer
+		datos[i] <- Aleatorio(1, 99)
+	FinPara
+	MostrarDatos("Antes:   ", datos, n)
+	OrdenarPorMezcla(datos, temporal, 1, n)
+	MostrarDatos("Después: ", datos, n)
+FinAlgoritmo
+`,
+  },
+  {
+    id: "quicksort",
+    label: "Ordenamiento rápido (Quicksort)",
+    description: "Pick a pivot, split into smaller and larger, and sort each side recursively.",
+    topic: "sorting",
+    level: 3,
+    concepts: ["io", "arreglos", "subprocesos", "funciones", "recursion", "repetir", "si", "azar"],
+    input: "12",
+    complexity: { best: "O(n log n)", average: "O(n log n)", worst: "O(n²)", space: "O(log n)", stable: false, inPlace: true },
+    source: `${SHOW_ARRAY}
+// Partición de Hoare: deja a la izquierda los valores <= pivote y a la derecha
+// los >= pivote, y devuelve dónde termina la parte izquierda.
+Funcion corte <- Particionar(datos, izquierda, derecha)
+	Definir corte, pivote, i, j, aux Como Entero
+	// Usamos el elemento del medio como pivote
+	pivote <- datos[Trunc((izquierda + derecha) / 2)]
+	i <- izquierda - 1
+	j <- derecha + 1
+	Repetir
+		// i avanza hasta encontrar uno que no debería estar a la izquierda
+		Repetir
+			i <- i + 1
+		Hasta Que datos[i] >= pivote
+		// j retrocede hasta encontrar uno que no debería estar a la derecha
+		Repetir
+			j <- j - 1
+		Hasta Que datos[j] <= pivote
+		// Si no se cruzaron, los intercambiamos y seguimos
+		Si i < j Entonces
+			aux <- datos[i]
+			datos[i] <- datos[j]
+			datos[j] <- aux
+		FinSi
+	Hasta Que i >= j
+	corte <- j
+FinFuncion
+
+SubProceso OrdenarRapido(datos, izquierda, derecha)
+	Definir corte Como Entero
+	Si izquierda < derecha Entonces
+		corte <- Particionar(datos, izquierda, derecha)
+		// Cada lado se ordena por separado, con la misma idea
+		OrdenarRapido(datos, izquierda, corte)
+		OrdenarRapido(datos, corte + 1, derecha)
+	FinSi
+FinSubProceso
+
+Algoritmo Quicksort
+	Definir datos, n, i Como Entero
+	Escribir "¿Cuántos números quieres ordenar? (1 a 512)"
+	Leer n
+	Dimension datos[n]
+	Para i <- 1 Hasta n Hacer
+		datos[i] <- Aleatorio(1, 99)
+	FinPara
+	MostrarDatos("Antes:   ", datos, n)
+	OrdenarRapido(datos, 1, n)
+	MostrarDatos("Después: ", datos, n)
+FinAlgoritmo
+`,
+  },
+  {
+    id: "heap-sort",
+    label: "Ordenamiento por montículo",
+    description: "Arrange the array as a heap, then take the largest out again and again.",
+    topic: "sorting",
+    level: 3,
+    concepts: ["io", "arreglos", "subprocesos", "mientras", "para", "si", "logicos", "azar"],
+    input: "12",
+    complexity: { best: "O(n log n)", average: "O(n log n)", worst: "O(n log n)", space: "O(1)", stable: false, inPlace: true },
+    source: `${SHOW_ARRAY}
+// En un montículo, el padre de la posición k está en Trunc(k / 2)
+// y sus hijos en 2k y 2k + 1. Cada padre es mayor o igual que sus hijos.
+// Hundir baja el valor de la posición raiz hasta que vuelve a cumplirse.
+SubProceso Hundir(datos, raiz, tamanio)
+	Definir actual, hijo, aux Como Entero
+	Definir listo Como Logico
+	actual <- raiz
+	listo <- Falso
+	Mientras (NO listo) Y 2 * actual <= tamanio Hacer
+		// Elegimos el mayor de los dos hijos
+		hijo <- 2 * actual
+		Si hijo + 1 <= tamanio Entonces
+			Si datos[hijo + 1] > datos[hijo] Entonces
+				hijo <- hijo + 1
+			FinSi
+		FinSi
+		Si datos[hijo] > datos[actual] Entonces
+			aux <- datos[actual]
+			datos[actual] <- datos[hijo]
+			datos[hijo] <- aux
+			actual <- hijo
+		SiNo
+			listo <- Verdadero
+		FinSi
+	FinMientras
+FinSubProceso
+
+Algoritmo OrdenamientoMonticulo
+	Definir datos, n, i, ultimo, aux Como Entero
+	Escribir "¿Cuántos números quieres ordenar? (1 a 512)"
+	Leer n
+	Dimension datos[n]
+	Para i <- 1 Hasta n Hacer
+		datos[i] <- Aleatorio(1, 99)
+	FinPara
+	MostrarDatos("Antes:   ", datos, n)
+	// 1) Armamos el montículo, desde el último padre hasta la raíz
+	Para i <- Trunc(n / 2) Hasta 1 Con Paso -1 Hacer
+		Hundir(datos, i, n)
+	FinPara
+	// 2) El mayor está en la raíz: lo llevamos al final y reparamos el resto
+	Para ultimo <- n Hasta 2 Con Paso -1 Hacer
+		aux <- datos[1]
+		datos[1] <- datos[ultimo]
+		datos[ultimo] <- aux
+		Hundir(datos, 1, ultimo - 1)
+	FinPara
+	MostrarDatos("Después: ", datos, n)
+FinAlgoritmo
+`,
+  },
+  {
+    id: "counting-sort",
+    label: "Ordenamiento por conteo",
+    description: "Count how many times each value appears, without comparing numbers.",
+    topic: "sorting",
+    level: 2,
+    concepts: ["io", "arreglos", "para", "azar", "subprocesos"],
+    input: "20",
+    complexity: { best: "O(n + k)", average: "O(n + k)", worst: "O(n + k)", space: "O(k)", inPlace: false },
+    source: `${SHOW_ARRAY}
+Algoritmo OrdenamientoConteo
+	Definir datos, conteo, n, i, valor, veces, k Como Entero
+	Escribir "¿Cuántos números quieres ordenar? (1 a 512)"
+	Leer n
+	Dimension datos[n]
+	Para i <- 1 Hasta n Hacer
+		datos[i] <- Aleatorio(1, 99)
+	FinPara
+	MostrarDatos("Antes:   ", datos, n)
+	// Una casilla por cada valor posible (1 a 99): eso es la k de O(n + k)
+	Dimension conteo[99]
+	Para valor <- 1 Hasta 99 Hacer
+		conteo[valor] <- 0
+	FinPara
+	// Contamos cuántas veces aparece cada valor
+	Para i <- 1 Hasta n Hacer
+		conteo[datos[i]] <- conteo[datos[i]] + 1
+	FinPara
+	// Reescribimos el arreglo: cada valor tantas veces como apareció
+	k <- 0
+	Para valor <- 1 Hasta 99 Hacer
+		// "Con Paso 1": si un valor no apareció, este Para no se ejecuta
+		Para veces <- 1 Hasta conteo[valor] Con Paso 1 Hacer
+			k <- k + 1
+			datos[k] <- valor
+		FinPara
+	FinPara
+	MostrarDatos("Después: ", datos, n)
+FinAlgoritmo
+`,
+  },
+  {
+    id: "binary-search",
+    label: "Búsqueda binaria",
+    description: "Find a value in a sorted array by halving the range each step.",
+    topic: "sorting",
+    level: 2,
+    concepts: ["io", "arreglos", "mientras", "si", "azar", "subprocesos"],
+    input: "20",
+    complexity: { best: "O(1)", average: "O(log n)", worst: "O(log n)", space: "O(1)" },
+    source: `${SHOW_ARRAY}
+Algoritmo BusquedaBinaria
+	Definir datos, n, i, buscado, izquierda, derecha, medio, posicion, pasos Como Entero
+	Escribir "¿Cuántos números tiene la lista? (1 a 512)"
+	Leer n
+	// La búsqueda binaria necesita datos ordenados: usamos los pares 2, 4, 6...
+	Dimension datos[n]
+	Para i <- 1 Hasta n Hacer
+		datos[i] <- 2 * i
+	FinPara
+	MostrarDatos("Lista: ", datos, n)
+	// Un número al azar entre 1 y 2n: si es impar, no estará en la lista
+	buscado <- Aleatorio(1, 2 * n)
+	Escribir "Buscando el ", buscado
+	izquierda <- 1
+	derecha <- n
+	posicion <- 0
+	pasos <- 0
+	Mientras izquierda <= derecha Y posicion = 0 Hacer
+		medio <- Trunc((izquierda + derecha) / 2)
+		pasos <- pasos + 1
+		Escribir "  Paso ", pasos, ": miro la posición ", medio, " (", datos[medio], ")"
+		Si datos[medio] = buscado Entonces
+			posicion <- medio
+		SiNo
+			// Descartamos la mitad donde seguro no está
+			Si datos[medio] < buscado Entonces
+				izquierda <- medio + 1
+			SiNo
+				derecha <- medio - 1
+			FinSi
+		FinSi
+	FinMientras
+	Si posicion > 0 Entonces
+		Escribir "Encontrado: el ", buscado, " está en la posición ", posicion, "."
+	SiNo
+		Escribir "El ", buscado, " no está en la lista."
+	FinSi
+	Escribir "Comparaciones: ", pasos, " de ", n, " elementos."
+FinAlgoritmo
+`,
+  },
+  {
+    id: "search-comparison",
+    label: "Búsqueda lineal contra binaria",
+    description: "Count the comparisons each search needs on the same sorted list.",
+    topic: "sorting",
+    level: 2,
+    concepts: ["io", "arreglos", "funciones", "mientras", "para", "si", "azar", "subprocesos"],
+    input: "100",
+    complexity: { best: "O(1)", average: "O(n)", worst: "O(n)", space: "O(1)" },
+    source: `${SHOW_ARRAY}
+// Revisa los elementos uno por uno; devuelve cuántas comparaciones hizo
+Funcion comparaciones <- BuscarLineal(datos, n, buscado)
+	Definir comparaciones, i Como Entero
+	Definir encontrado Como Logico
+	comparaciones <- 0
+	encontrado <- Falso
+	i <- 1
+	Mientras i <= n Y (NO encontrado) Hacer
+		comparaciones <- comparaciones + 1
+		Si datos[i] = buscado Entonces
+			encontrado <- Verdadero
+		FinSi
+		i <- i + 1
+	FinMientras
+FinFuncion
+
+// Parte el rango a la mitad en cada paso; devuelve cuántas comparaciones hizo
+Funcion comparaciones <- BuscarBinaria(datos, n, buscado)
+	Definir comparaciones, izquierda, derecha, medio Como Entero
+	Definir encontrado Como Logico
+	comparaciones <- 0
+	encontrado <- Falso
+	izquierda <- 1
+	derecha <- n
+	Mientras izquierda <= derecha Y (NO encontrado) Hacer
+		medio <- Trunc((izquierda + derecha) / 2)
+		comparaciones <- comparaciones + 1
+		Si datos[medio] = buscado Entonces
+			encontrado <- Verdadero
+		SiNo
+			Si datos[medio] < buscado Entonces
+				izquierda <- medio + 1
+			SiNo
+				derecha <- medio - 1
+			FinSi
+		FinSi
+	FinMientras
+FinFuncion
+
+Algoritmo CompararBusquedas
+	Definir datos, objetivos, n, i, mitades, resto Como Entero
+	Escribir "¿Cuántos números tiene la lista? (1 a 512)"
+	Leer n
+	Dimension datos[n], objetivos[4]
+	Para i <- 1 Hasta n Hacer
+		datos[i] <- 2 * i
+	FinPara
+	MostrarDatos("Lista: ", datos, n)
+	// Cuatro casos: el primero, uno al azar, el último y uno que no está (impar)
+	objetivos[1] <- datos[1]
+	objetivos[2] <- datos[Aleatorio(1, n)]
+	objetivos[3] <- datos[n]
+	objetivos[4] <- 2 * Aleatorio(1, n) - 1
+	Para i <- 1 Hasta 4 Hacer
+		Escribir "Buscar el ", objetivos[i], " -> comparaciones: lineal ", BuscarLineal(datos, n, objetivos[i]), ", binaria ", BuscarBinaria(datos, n, objetivos[i])
+	FinPara
+	// Cuántas veces se puede partir n a la mitad: el peor caso de la binaria
+	mitades <- 0
+	resto <- n
+	Mientras resto > 0 Hacer
+		mitades <- mitades + 1
+		resto <- Trunc(resto / 2)
+	FinMientras
+	Escribir "Peor caso con ", n, " elementos: lineal ", n, ", binaria ", mitades, "."
 FinAlgoritmo
 `,
   },
@@ -999,6 +1523,7 @@ FinAlgoritmo
     level: 3,
     concepts: ["io", "subprocesos", "recursion", "si"],
     input: "3",
+    complexity: { best: "O(2ⁿ)", average: "O(2ⁿ)", worst: "O(2ⁿ)", space: "O(n)" },
     source: `SubProceso Hanoi(discos, origen, destino, auxiliar)
 	Si discos = 1 Entonces
 		Escribir "Mover disco 1 de ", origen, " a ", destino
@@ -1029,6 +1554,7 @@ FinAlgoritmo
     level: 2,
     concepts: ["io", "funciones", "mientras", "para", "matematicas"],
     input: "50",
+    complexity: { best: "O(n√n)", average: "O(n√n)", worst: "O(n√n)", space: "O(1)" },
     source: `Funcion primo <- EsPrimo(n)
 	Definir primo Como Logico
 	Definir divisor Como Entero
@@ -1068,6 +1594,7 @@ FinAlgoritmo
     level: 2,
     concepts: ["io", "funciones", "mientras", "matematicas"],
     input: "12\n18",
+    complexity: { best: "O(1)", average: "O(log n)", worst: "O(log n)", space: "O(1)" },
     source: `Funcion resultado <- MCD(a, b)
 	Definir resultado, resto Como Entero
 	// Algoritmo de Euclides
@@ -1103,6 +1630,7 @@ FinAlgoritmo
     level: 1,
     concepts: ["io", "para", "matematicas"],
     input: "15",
+    complexity: { best: "O(n)", average: "O(n)", worst: "O(n)", space: "O(1)" },
     source: `Algoritmo Fibonacci
 	Definir n, i, a, b, siguiente Como Entero
 	Escribir "¿Cuántos términos?"

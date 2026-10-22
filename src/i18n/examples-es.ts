@@ -145,14 +145,6 @@ export const esExamples: Record<string, ExampleCopy> = {
     challenge: "Si el nombre no está, ofrece agregarlo al final de la lista.",
     hint: "Necesitarás un arreglo más grande con Dimension y una variable que cuente cuántos nombres hay.",
   },
-  "bubble-sort": {
-    label: "Ordenamiento burbuja",
-    description: "Ordena ocho números al azar intercambiando vecinos.",
-    learn:
-      "Aleatorio llena el arreglo y dos Para anidados comparan cada par de vecinos. Para intercambiar dos valores usas una variable auxiliar (aux).",
-    challenge: "Ordena los números de mayor a menor.",
-    hint: "Basta con cambiar el operador de comparación dentro del Si.",
-  },
   inventory: {
     label: "Inventario de tienda",
     description: "Registra el stock de cada producto y avisa cuáles reponer.",
@@ -176,6 +168,88 @@ export const esExamples: Record<string, ExampleCopy> = {
       "Redimensionar agranda el arreglo sin perder lo que ya tenía. Para Cada recorre todos los elementos sin que tengas que manejar índices.",
     challenge: "Evita que se agregue el mismo producto dos veces.",
     hint: "Antes de guardar, recorre la lista con un Para y compara usando Mayusculas.",
+  },
+
+  /* ---------------- Ordenamiento y búsqueda ---------------- */
+  "bubble-sort": {
+    label: "Ordenamiento burbuja",
+    description: "Ordena números al azar intercambiando vecinos, y se detiene apenas quedan ordenados.",
+    learn:
+      "En cada pasada se comparan los vecinos y se intercambian si están al revés, así el mayor \"sube\" hasta el final. Si una pasada no hace ningún cambio, ya está todo ordenado y el Mientras termina antes. Por eso cuesta O(n) si los datos ya venían ordenados y O(n²) en el caso promedio y en el peor.",
+    challenge: "Ordena los números de mayor a menor.",
+    hint: "Basta con cambiar el operador de comparación dentro del Si.",
+  },
+  "selection-sort": {
+    label: "Ordenamiento por selección",
+    description: "Busca el menor de los que faltan y lo pone en su lugar.",
+    learn:
+      "En la vuelta i se busca el menor entre las posiciones i y n, y se lo lleva a la posición i con un solo intercambio. Siempre recorre todo lo que falta, así que hace unas n²/2 comparaciones aunque los datos ya estén ordenados: O(n²) en todos los casos, pero como mucho n - 1 intercambios.",
+    challenge: "Cuenta también cuántas comparaciones hace y compáralas con n * (n - 1) / 2.",
+    hint: "Suma 1 a un contador justo antes del Si que compara datos[j] con datos[minimo].",
+  },
+  "insertion-sort": {
+    label: "Ordenamiento por inserción",
+    description: "Inserta cada número entre los ya ordenados, como al acomodar cartas en la mano.",
+    learn:
+      "La parte izquierda del arreglo siempre está ordenada. Cada número nuevo se guarda en actual, los mayores se corren un lugar a la derecha y actual entra en el hueco. Con datos casi ordenados casi no corre nada (O(n)); en el promedio y en el peor caso es O(n²).",
+    challenge: "Genera los datos ya ordenados (por ejemplo datos[i] <- i) y mira cuántos desplazamientos hace.",
+    hint: "Cambia Aleatorio(1, 99) por i en el primer Para; el contador de desplazamientos debería dar 0.",
+  },
+  "shell-sort": {
+    label: "Ordenamiento Shell",
+    description: "Una inserción entre elementos lejanos, con un salto que se achica en cada pasada.",
+    learn:
+      "Primero ordena por inserción los elementos separados por un salto grande, para que los números muy fuera de lugar viajen lejos de una vez. Después divide el salto a la mitad hasta llegar a 1, que es una inserción común sobre datos casi ordenados. Con estos saltos suele andar cerca de O(n√n), y el peor caso es O(n²).",
+    challenge: "Prueba dividir el salto por 3 en lugar de 2 y compara cuántas pasadas hace.",
+    hint: "Cambia las dos líneas con Trunc(... / 2); cuida que la última pasada siga siendo con salto 1.",
+  },
+  "merge-sort": {
+    label: "Ordenamiento por mezcla",
+    description: "Parte el arreglo en mitades, ordena cada una con recursión y las mezcla.",
+    learn:
+      "OrdenarPorMezcla se llama a sí mismo con cada mitad hasta llegar a tramos de un elemento, y Mezclar une dos tramos ordenados tomando siempre el menor de los dos frentes. Se parte en mitades unas log n veces y cada nivel mezcla n elementos: O(n log n) siempre, a cambio de un arreglo temporal de tamaño n. Los arreglos se pasan por referencia, así que todos los subprocesos trabajan sobre el mismo arreglo.",
+    challenge: "Muestra en pantalla cada tramo que se mezcla, con su izquierda y su derecha.",
+    hint: "Agrega un Escribir al principio de Mezclar; prueba con n chico para que no sean demasiadas líneas.",
+  },
+  quicksort: {
+    label: "Ordenamiento rápido (Quicksort)",
+    description: "Elige un pivote, separa los menores de los mayores y ordena cada lado con recursión.",
+    learn:
+      "Particionar usa el método de Hoare: dos índices avanzan desde los extremos hacia el centro y se intercambian cuando cada uno encuentra un valor del lado equivocado del pivote. Después cada parte se ordena con la misma idea. Si el pivote parte el arreglo más o menos por la mitad cuesta O(n log n); si siempre cae en un extremo, O(n²). No necesita arreglo extra, solo la pila de llamadas (O(log n)).",
+    challenge: "Usa como pivote un elemento al azar del tramo en lugar del del medio.",
+    hint: "Aleatorio(izquierda, derecha) da una posición del tramo; guarda datos[esa posición] en pivote.",
+  },
+  "heap-sort": {
+    label: "Ordenamiento por montículo",
+    description: "Organiza el arreglo como un montículo y saca el mayor una y otra vez.",
+    learn:
+      "Un montículo es un árbol guardado en el arreglo: los hijos de la posición k están en 2k y 2k + 1, y cada padre es mayor que sus hijos, así que el mayor queda en la posición 1. Se lo cambia con el último, se achica el montículo y Hundir lo repara en log n pasos. Cuesta O(n log n) siempre y no usa memoria extra.",
+    challenge: "Muestra el arreglo justo después de armar el montículo y comprueba que datos[1] es el mayor.",
+    hint: "Llama a MostrarDatos entre los dos Para del algoritmo principal.",
+  },
+  "counting-sort": {
+    label: "Ordenamiento por conteo",
+    description: "Cuenta cuántas veces aparece cada valor, sin comparar números entre sí.",
+    learn:
+      "Como los valores van de 1 a 99, un arreglo conteo guarda cuántas veces aparece cada uno; después se reescribe el arreglo recorriendo conteo en orden. No compara nunca dos números: cuesta O(n + k), donde k es la cantidad de valores posibles. Es muy rápido cuando k es chico, pero no sirve si los valores pueden ser cualquiera.",
+    challenge: "Muestra qué valor se repitió más veces.",
+    hint: "Recorre conteo buscando su máximo, igual que buscarías el mayor de un arreglo.",
+  },
+  "binary-search": {
+    label: "Búsqueda binaria",
+    description: "Encuentra un valor en un arreglo ordenado partiendo el rango a la mitad.",
+    learn:
+      "Como la lista está ordenada, al mirar el elemento del medio sabes en qué mitad puede estar el buscado y descartas la otra. Cada paso divide el rango a la mitad, así que con 512 elementos alcanzan 10 comparaciones: O(log n), contra O(n) de revisar uno por uno.",
+    challenge: "Busca también un número que seguro no está, como 2 * n + 1, y cuenta sus pasos.",
+    hint: "Puedes copiar el bloque de búsqueda o, mejor, convertirlo en una Funcion que devuelva la posición.",
+  },
+  "search-comparison": {
+    label: "Búsqueda lineal contra binaria",
+    description: "Cuenta las comparaciones que necesita cada búsqueda en la misma lista ordenada.",
+    learn:
+      "Dos funciones buscan el mismo valor y devuelven cuántas comparaciones hicieron. La lineal revisa uno por uno: O(1) si está primero, O(n) si está al final o no está. La binaria nunca pasa de log n comparaciones. Prueba con n = 10 y con n = 500 para ver cómo se separan.",
+    challenge: "Calcula el promedio de comparaciones de cada búsqueda buscando todos los valores de la lista.",
+    hint: "Recorre i de 1 a n, busca datos[i] con las dos funciones y acumula los resultados; al final divide por n.",
   },
 
   /* ---------------- Texto ---------------- */

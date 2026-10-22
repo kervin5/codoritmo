@@ -145,14 +145,6 @@ export const enExamples: Record<string, ExampleCopy> = {
     challenge: "If the name isn't there, offer to add it to the end of the list.",
     hint: "You'll need a bigger array from Dimension and a variable counting how many names are stored.",
   },
-  "bubble-sort": {
-    label: "Bubble Sort",
-    description: "Sorts eight random numbers by swapping neighbors.",
-    learn:
-      "Aleatorio fills the array and two nested Para loops compare each pair of neighbors. Swapping two values takes a helper variable (aux).",
-    challenge: "Sort the numbers from largest to smallest.",
-    hint: "Changing the comparison operator inside the Si is enough.",
-  },
   inventory: {
     label: "Store Inventory",
     description: "Records the stock of each product and flags what to restock.",
@@ -176,6 +168,88 @@ export const enExamples: Record<string, ExampleCopy> = {
       "Redimensionar makes the array bigger without losing what it already holds. Para Cada visits every element without managing indexes yourself.",
     challenge: "Don't let the same item be added twice.",
     hint: "Before saving, loop through the list with Para and compare using Mayusculas.",
+  },
+
+  /* ---------------- Sorting & searching ---------------- */
+  "bubble-sort": {
+    label: "Bubble Sort",
+    description: "Sorts random numbers by swapping neighbors, and stops as soon as they're in order.",
+    learn:
+      "Each pass compares neighbors and swaps them when they're out of order, so the largest one \"bubbles up\" to the end. If a pass makes no swaps, everything is already sorted and the Mientras loop ends early. That's why it costs O(n) when the data comes sorted and O(n²) on average and in the worst case.",
+    challenge: "Sort the numbers from largest to smallest.",
+    hint: "Changing the comparison operator inside the Si is enough.",
+  },
+  "selection-sort": {
+    label: "Selection Sort",
+    description: "Finds the smallest of the remaining numbers and puts it in its place.",
+    learn:
+      "On round i it looks for the smallest value between positions i and n and moves it to position i with a single swap. It always scans everything that's left, so it makes about n²/2 comparisons even if the data is already sorted: O(n²) in every case, but at most n - 1 swaps.",
+    challenge: "Also count the comparisons and check them against n * (n - 1) / 2.",
+    hint: "Add 1 to a counter right before the Si that compares datos[j] with datos[minimo].",
+  },
+  "insertion-sort": {
+    label: "Insertion Sort",
+    description: "Inserts each number among the sorted ones, like arranging cards in your hand.",
+    learn:
+      "The left part of the array is always sorted. Each new number is kept in actual, the larger ones shift one place to the right, and actual drops into the gap. With nearly sorted data it barely shifts anything (O(n)); on average and in the worst case it's O(n²).",
+    challenge: "Generate data that's already sorted (for example datos[i] <- i) and see how many shifts it makes.",
+    hint: "Replace Aleatorio(1, 99) with i in the first Para; the shift counter should end at 0.",
+  },
+  "shell-sort": {
+    label: "Shell Sort",
+    description: "Insertion sort between far-apart elements, with a gap that shrinks every pass.",
+    learn:
+      "It first insertion-sorts the elements that are a big gap apart, so numbers that are way out of place travel far in one move. Then it halves the gap until it reaches 1, which is an ordinary insertion sort on nearly sorted data. With these gaps it usually runs close to O(n√n), and the worst case is O(n²).",
+    challenge: "Try dividing the gap by 3 instead of 2 and compare how many passes it makes.",
+    hint: "Change the two Trunc(... / 2) lines, and make sure the last pass still uses a gap of 1.",
+  },
+  "merge-sort": {
+    label: "Merge Sort",
+    description: "Splits the array in halves, sorts each one recursively and merges them.",
+    learn:
+      "OrdenarPorMezcla calls itself on each half until the pieces have one element, and Mezclar joins two sorted pieces by always taking the smaller of the two fronts. The array is halved about log n times and each level merges n elements: always O(n log n), at the price of a temporary array of size n. Arrays are passed by reference, so every subprocess works on the same array.",
+    challenge: "Print every range that gets merged, with its left and right ends.",
+    hint: "Add an Escribir at the start of Mezclar; try a small n so there aren't too many lines.",
+  },
+  quicksort: {
+    label: "Quicksort",
+    description: "Picks a pivot, splits smaller from larger values and sorts each side recursively.",
+    learn:
+      "Particionar uses Hoare's method: two indexes walk in from both ends and swap whenever each one finds a value on the wrong side of the pivot. Then each part is sorted with the same idea. If the pivot splits the array roughly in half it costs O(n log n); if it always lands at one end, O(n²). It needs no extra array, only the call stack (O(log n)).",
+    challenge: "Use a random element of the range as the pivot instead of the middle one.",
+    hint: "Aleatorio(izquierda, derecha) gives a position in the range; store datos[that position] in pivote.",
+  },
+  "heap-sort": {
+    label: "Heap Sort",
+    description: "Arranges the array as a heap, then takes the largest out again and again.",
+    learn:
+      "A heap is a tree stored in the array: the children of position k are at 2k and 2k + 1, and every parent is larger than its children, so the largest value sits at position 1. It's swapped with the last one, the heap shrinks, and Hundir repairs it in log n steps. It always costs O(n log n) and uses no extra memory.",
+    challenge: "Print the array right after the heap is built and check that datos[1] is the largest.",
+    hint: "Call MostrarDatos between the two Para loops of the main algorithm.",
+  },
+  "counting-sort": {
+    label: "Counting Sort",
+    description: "Counts how many times each value appears, without comparing numbers.",
+    learn:
+      "Since the values go from 1 to 99, a conteo array stores how many times each one appears; then the array is rewritten by walking conteo in order. It never compares two numbers: it costs O(n + k), where k is the number of possible values. It's very fast when k is small, but it doesn't work when the values could be anything.",
+    challenge: "Show which value was repeated the most.",
+    hint: "Walk conteo looking for its maximum, the same way you'd find the largest value in an array.",
+  },
+  "binary-search": {
+    label: "Binary Search",
+    description: "Finds a value in a sorted array by halving the range every step.",
+    learn:
+      "Because the list is sorted, looking at the middle element tells you which half the target can be in, and you discard the other. Every step halves the range, so 10 comparisons are enough for 512 elements: O(log n), versus O(n) for checking one by one.",
+    challenge: "Also search for a number that surely isn't there, like 2 * n + 1, and count its steps.",
+    hint: "You can copy the search block or, better, turn it into a Funcion that returns the position.",
+  },
+  "search-comparison": {
+    label: "Linear vs. Binary Search",
+    description: "Counts the comparisons each search needs on the same sorted list.",
+    learn:
+      "Two functions search for the same value and return how many comparisons they made. Linear search checks one by one: O(1) if the value comes first, O(n) if it's last or missing. Binary search never needs more than log n comparisons. Try n = 10 and n = 500 to see them drift apart.",
+    challenge: "Compute the average number of comparisons of each search by looking up every value in the list.",
+    hint: "Loop i from 1 to n, search for datos[i] with both functions and add up the results; divide by n at the end.",
   },
 
   /* ---------------- Text ---------------- */

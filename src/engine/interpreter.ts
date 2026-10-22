@@ -7,6 +7,7 @@ import {
   DataType,
   Diagnostic,
   EngineSettings,
+  ExecutionMetrics,
   ExecutionResult,
   ExecutionStatementEvent,
   ExpressionNode,
@@ -58,6 +59,7 @@ interface ExecutionContext {
   settings: EngineSettings;
   /** Shared across routine calls so the budget covers the whole run. */
   counter: { steps: number; lastStatement: StatementNode | null };
+  metrics: ExecutionMetrics;
 }
 
 class RuntimeError extends Error {
@@ -89,6 +91,8 @@ function snapshotValue(value: RuntimeValue): VariableSnapshotValue {
 }
 
 class Scope {
+  /** Array cells created by Dimension/Redimensionar while running in this scope. */
+  ownedArrayCells = 0;
   private readonly values = new Map<string, Cell>();
   private readonly displayNames = new Map<string, string>();
 
@@ -338,7 +342,16 @@ export interface InterpreterOptions {
   settings?: Partial<EngineSettings>;
 }
 
+function emptyMetrics(): ExecutionMetrics {
+  return { steps: 0, comparisons: 0, arrayReads: 0, arrayWrites: 0, arrayCells: 0, peakArrayCells: 0, peakCallDepth: 0 };
+}
+
+function cellCount(dimensions: number[]): number {
+  return dimensions.reduce((total, size) => total * Math.max(0, size), 1);
+}
+
 export class Interpreter {
+  private metrics: ExecutionMetrics = emptyMetrics();
   private readonly hooks: InterpreterHooks;
   private readonly limits: InterpreterLimits;
   private readonly random: () => number;
@@ -361,6 +374,7 @@ export class Interpreter {
   ): Promise<ExecutionResult> {
     const buffer = createOutputBuffer(this.limits.maxOutputLines);
     const routines = new Map<string, RoutineNode>();
+    this.metrics = emptyMetrics();
 
     for (const routine of program.routines) {
       routines.set(routine.name.toLowerCase(), routine);
@@ -372,6 +386,7 @@ export class Interpreter {
         output: buffer.snapshot(),
         diagnostics: [],
         state: "ok",
+        metrics: { ...this.metrics },
       };
     } catch (error) {
       if (error instanceof RuntimeError) {
@@ -379,6 +394,7 @@ export class Interpreter {
           output: buffer.snapshot(),
           diagnostics: [error.diagnostic],
           state: "runtime_error",
+          metrics: { ...this.metrics },
         };
       }
 
@@ -387,6 +403,7 @@ export class Interpreter {
           output: buffer.snapshot(),
           diagnostics: [],
           state: "stopped",
+          metrics: { ...this.metrics },
         };
       }
 
@@ -431,6 +448,7 @@ export class Interpreter {
       routines,
       settings: this.settings,
       counter: { steps: 0, lastStatement: null },
+      metrics: this.metrics,
     };
   }
 
@@ -438,11 +456,19 @@ export class Interpreter {
    * Counts one unit of work. Blocks count too, so loops with an empty body
    * still advance the budget and can be stopped.
    */
+  /** Records array cells created (or released, when negative) in a scope. */
+  private trackArrayCells(delta: number, scope: Scope): void {
+    scope.ownedArrayCells += delta;
+    this.metrics.arrayCells += delta;
+    this.metrics.peakArrayCells = Math.max(this.metrics.peakArrayCells, this.metrics.arrayCells);
+  }
+
   private step(
     statement: StatementNode | null,
     context: ExecutionContext
   ): Promise<void> | undefined {
     context.counter.steps += 1;
+    this.metrics.steps = context.counter.steps;
     if (statement) {
       context.counter.lastStatement = statement;
     }
@@ -495,6 +521,7 @@ export class Interpreter {
           callDepth: context.callDepth,
           routine: context.routineName,
           step: context.counter.steps,
+          metrics: { ...this.metrics },
           variables: () => scope.snapshot(),
         });
       }
@@ -607,6 +634,7 @@ export class Interpreter {
             );
           }
           const leafType = existing.dataType;
+          this.trackArrayCells(cellCount(dimensions), scope);
           existing.value = createArray(
             dimensions,
             leafType ? createDefaultValue(leafType) : null,
@@ -1035,6 +1063,7 @@ export class Interpreter {
     const leafType =
       cell.dataType ??
       arrayLeaves(current).find((leaf) => leaf.dataType)?.dataType;
+    this.trackArrayCells(cellCount(dimensions) - cellCount(current.dimensions), scope);
     const resized = createArray(
       dimensions,
       leafType ? createDefaultValue(leafType) : null,
@@ -1262,16 +1291,22 @@ export class Interpreter {
       case "^":
         return Math.pow(toNumber(left), toNumber(right));
       case "=":
+        this.metrics.comparisons += 1;
         return left === right;
       case "<>":
+        this.metrics.comparisons += 1;
         return left !== right;
       case "<":
+        this.metrics.comparisons += 1;
         return toNumberOrString(left) < toNumberOrString(right);
       case ">":
+        this.metrics.comparisons += 1;
         return toNumberOrString(left) > toNumberOrString(right);
       case "<=":
+        this.metrics.comparisons += 1;
         return toNumberOrString(left) <= toNumberOrString(right);
       case ">=":
+        this.metrics.comparisons += 1;
         return toNumberOrString(left) >= toNumberOrString(right);
       default:
         return null;
@@ -1400,6 +1435,8 @@ export class Interpreter {
     }
 
     const cell = this.resolveArrayCell(base, indices, expression);
+    if (mode === "read") this.metrics.arrayReads += 1;
+    else if (mode === "write" || mode === "read_target") this.metrics.arrayWrites += 1;
     if (mode === "read") {
       this.ensureReadableArrayCell(cell, expression);
     } else if (this.settings.forceDefineVars && !cell.dataType) {
@@ -1575,11 +1612,18 @@ export class Interpreter {
       });
     }
 
-    const returned = await this.executeBlock(routine.body, scope, {
-      ...context,
-      callDepth: context.callDepth + 1,
-      routineName: routine.name,
-    });
+    this.metrics.peakCallDepth = Math.max(this.metrics.peakCallDepth, context.callDepth + 1);
+    let returned: RuntimeValue | undefined;
+    try {
+      returned = await this.executeBlock(routine.body, scope, {
+        ...context,
+        callDepth: context.callDepth + 1,
+        routineName: routine.name,
+      });
+    } finally {
+      // Arrays created inside the call disappear when it returns.
+      this.metrics.arrayCells -= scope.ownedArrayCells;
+    }
     if (returned !== undefined) {
       return returned;
     }

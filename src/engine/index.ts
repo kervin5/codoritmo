@@ -63,9 +63,11 @@ export type {
   EngineProfile,
   EngineSettingDefinition,
   EngineSettings,
+  ExampleComplexity,
   ExampleConcept,
   ExampleProgram,
   ExampleTopic,
+  ExecutionMetrics,
   ExecutionResult,
   ExecutionState,
   ExecutionStatementEvent,
@@ -88,3 +90,12 @@ export type {
   VariableSnapshot,
   VariableSnapshotValue,
 } from "./types";
+export {
+  DEFAULT_SIZES,
+  fitComplexity,
+  GROWTH,
+  measureComplexity,
+  spaceOf,
+  timeOf,
+} from "./complexity";
+export type { ComplexityClass, ComplexityFit, ComplexityReport, ComplexitySample } from "./complexity";

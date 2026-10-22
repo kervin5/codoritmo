@@ -69,6 +69,8 @@ import {
 import FlowDiagram from "./flow-diagram";
 import { registerLanguageServices, type LanguageCatalog } from "./language-services";
 import { MenuBar, type Menu, type MenuItem } from "./menu-bar";
+import { ArrayView } from "./array-view";
+import { ComplexityPanel } from "./complexity-panel";
 import { ExamplesBrowser } from "./examples-browser";
 import { ConsolePanel, DeskCheckPanel, formatValue, TranslationPanel, type TraceRow } from "./panels";
 import { profileLabel, ProfileDialog } from "./profile-dialog";
@@ -531,6 +533,8 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
         { label: t.view.bottomPanel, shortcut: k("J"), checked: prefs.bottomOpen, onSelect: () => updatePrefs({ bottomOpen: !prefs.bottomOpen }) },
         { label: t.view.console, checked: prefs.bottomOpen && prefs.bottomTab === "consola", onSelect: () => openBottom("consola") },
         { label: t.view.deskCheck, checked: prefs.bottomOpen && prefs.bottomTab === "prueba", onSelect: () => openBottom("prueba") },
+        { label: t.visualizer.arraysTab, checked: prefs.bottomOpen && prefs.bottomTab === "arreglos", onSelect: () => openBottom("arreglos") },
+        { label: t.visualizer.complexityTab, checked: prefs.bottomOpen && prefs.bottomTab === "complejidad", onSelect: () => openBottom("complejidad") },
         { label: t.view.problems, checked: prefs.bottomOpen && prefs.bottomTab === "problemas", onSelect: () => openBottom("problemas") },
         { separator: true },
         {
@@ -877,6 +881,8 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                 tabs={[
                   ["consola", t.view.console],
                   ["prueba", t.view.deskCheck],
+                  ["arreglos", t.visualizer.arraysTab],
+                  ["complejidad", t.visualizer.complexityTab],
                   ["problemas", t.view.problems, errors.length],
                 ]}
                 value={prefs.bottomOpen ? prefs.bottomTab : null}
@@ -896,6 +902,19 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
               <div className="min-h-0 flex-1 select-text">
                 {prefs.bottomTab === "consola" && <ConsolePanel dictionary={dictionary} player={player} />}
                 {prefs.bottomTab === "prueba" && <DeskCheckPanel dictionary={dictionary} onPickStep={player.seek} trace={trace} />}
+                {prefs.bottomTab === "arreglos" && (
+                  <ArrayView
+                    baseZero={settings.baseZeroArrays}
+                    dictionary={dictionary}
+                    line={activeLine ? sourceLines[activeLine - 1] ?? null : null}
+                    metrics={player.frame?.metrics ?? null}
+                    previous={player.previous?.variables.length ? player.previous.variables : null}
+                    variables={player.variables}
+                  />
+                )}
+                {prefs.bottomTab === "complejidad" && (
+                  <ComplexityPanel dictionary={dictionary} exampleId={doc.exampleId} settings={settings} source={source} />
+                )}
                 {prefs.bottomTab === "problemas" && (
                   <div className="workspace-scroll h-full overflow-auto py-1 select-none">
                     {diagnostics.length === 0 && <p className="px-4 py-3 text-[12.5px] text-white/40">{t.problemsEmpty}</p>}

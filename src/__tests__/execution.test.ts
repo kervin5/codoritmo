@@ -248,7 +248,8 @@ FinProceso`,
     execution.continueKey();
     const result = await execution.result;
 
-    expect(result).toEqual({ output: ["Fin"], diagnostics: [], state: "ok" });
+    expect(result).toMatchObject({ output: ["Fin"], diagnostics: [], state: "ok" });
+    expect(result.metrics?.steps).toBeGreaterThan(0);
     expect(execution.getOutput()).toEqual(["Fin"]);
     expect(outputs.at(-1)).toEqual(["Fin"]);
   });

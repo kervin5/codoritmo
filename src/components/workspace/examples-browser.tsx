@@ -78,6 +78,40 @@ async function runPreview(example: ExampleProgram, signal: { cancelled: boolean 
   return lines;
 }
 
+/** "Mejor O(n) · Promedio O(n²) · … · Estable" as a compact row of chips. */
+function ComplexityChips({
+  complexity,
+  labels,
+}: {
+  complexity: NonNullable<ExampleProgram["complexity"]>;
+  labels: Dictionary["studio"]["examples"]["complexity"];
+}) {
+  const costs: [string, string][] = [
+    [labels.best, complexity.best],
+    [labels.average, complexity.average],
+    [labels.worst, complexity.worst],
+    [labels.space, complexity.space],
+  ];
+  const traits = [
+    complexity.stable === undefined ? null : complexity.stable ? labels.stable : labels.unstable,
+    complexity.inPlace ? labels.inPlace : null,
+  ].filter((trait): trait is string => trait !== null);
+  return (
+    <ul aria-label={labels.label} className="mt-2 flex flex-wrap items-center gap-1 text-[11px]">
+      {costs.map(([label, value]) => (
+        <li key={label} className="rounded-full bg-[#7FE0B8]/[0.08] px-2 py-[2px] text-white/50">
+          {label} <span className="font-mono text-[#A9F0D2]/85">{value}</span>
+        </li>
+      ))}
+      {traits.map((trait) => (
+        <li key={trait} className="rounded-full bg-white/[0.05] px-2 py-[2px] text-white/50">
+          {trait}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function ExamplesBrowser({
   dictionary,
   onOpen,
@@ -341,6 +375,7 @@ export function ExamplesBrowser({
                       <span>·</span>
                       <span>{formatMessage(t.lines, { n: lineCount })}</span>
                     </div>
+                    {active.complexity && <ComplexityChips complexity={active.complexity} labels={t.complexity} />}
                   </div>
                   <button
                     className="flex h-[32px] shrink-0 items-center gap-2 rounded-[8px] bg-[#2F8F6E] px-3.5 text-[13px] font-medium text-white hover:bg-[#35A27C] active:bg-[#287A5E]"
