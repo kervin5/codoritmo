@@ -7,8 +7,10 @@ import type {
 } from "../types";
 import { CGenerator } from "./c";
 import { CppGenerator } from "./cpp";
+import { JavaGenerator } from "./java";
+import { PythonGenerator } from "./python";
 
-export type ExportLanguage = "javascript" | "c" | "cpp";
+export type ExportLanguage = "javascript" | "c" | "cpp" | "python" | "java";
 
 export interface ExportOptions {
   settings?: Partial<EngineSettings>;
@@ -19,7 +21,7 @@ export interface ExportOptions {
 }
 
 /**
- * One export language. New languages (Python, Java...) only need an entry in
+ * One export language. New languages only need an entry in
  * `exportLanguages`; typed ones can reuse `TypeInference` from
  * `./type-inference`.
  */
@@ -57,6 +59,20 @@ export const exportLanguages: Record<ExportLanguage, ExportLanguageDefinition> =
     supportsTargets: false,
     generate: (program, options) => new CppGenerator(options).generate(program),
   },
+  python: {
+    id: "python",
+    fileExtension: "py",
+    mimeType: "text/x-python;charset=utf-8",
+    supportsTargets: false,
+    generate: (program, options) => new PythonGenerator(options).generate(program),
+  },
+  java: {
+    id: "java",
+    fileExtension: "java",
+    mimeType: "text/x-java-source;charset=utf-8",
+    supportsTargets: false,
+    generate: (program, options) => new JavaGenerator(options).generate(program),
+  },
 };
 
 export function isExportLanguage(value: unknown): value is ExportLanguage {
@@ -71,6 +87,6 @@ export function generateExport(
   return exportLanguages[language].generate(program, options);
 }
 
-export { CGenerator, CppGenerator };
+export { CGenerator, CppGenerator, JavaGenerator, PythonGenerator };
 export { TypeInference } from "./type-inference";
 export type { InferredType, ProgramTypes, ScopeTypes, VariableInfo } from "./type-inference";
