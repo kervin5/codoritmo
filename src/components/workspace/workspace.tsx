@@ -74,8 +74,8 @@ import { SPEEDS, usePlayer } from "./use-player";
 type SideTab = WorkspacePrefs["sideTab"];
 type BottomTab = WorkspacePrefs["bottomTab"];
 
-const LANGUAGE_NAMES: Record<string, string> = { c: "C", cpp: "C++", javascript: "JavaScript" };
-const SOON = ["Java", "Python", "C#", "PHP", "Pascal", "Visual Basic", "QBasic", "MatLab"];
+const LANGUAGE_NAMES: Record<string, string> = { c: "C", cpp: "C++", javascript: "JavaScript", python: "Python", java: "Java" };
+const SOON = ["C#", "PHP", "Pascal", "Visual Basic", "QBasic", "MatLab"];
 const LANGUAGES = Object.keys(exportLanguages).map((id) => ({
   id: id as ExportLanguage,
   name: LANGUAGE_NAMES[id] ?? id.toUpperCase(),
