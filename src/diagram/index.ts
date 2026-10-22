@@ -1,5 +1,5 @@
 export { buildFlowDiagram } from './model';
-export { exportRoutineToPng } from './export';
+export { exportRoutineToPng, exportRoutineToSvg } from './export';
 export { applyFlowNodeOffsets, layoutFlowDiagram } from './layout';
 export {
   DIAGRAM_BACKGROUND_COLOR,

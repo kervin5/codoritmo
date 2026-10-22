@@ -1,11 +1,12 @@
 "use client";
 
-// PROTOTYPE — a desktop-style menu bar. Behaves like native menus:
+// A desktop-style menu bar. Behaves like native menus:
 // opens on mousedown, hovering another title while open switches menus,
 // ←/→ move between menus, ↑/↓ move items, Enter activates, Esc closes,
 // submenus open on hover or →. Shortcuts are displayed, not bound here.
+// In compact mode (phones) every menu collapses into one ☰ menu with headings.
 
-import { Check, ChevronRight } from "lucide-react";
+import { Check, ChevronRight, Menu as MenuIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export interface MenuItem {
@@ -15,6 +16,8 @@ export interface MenuItem {
   disabled?: boolean;
   checked?: boolean;
   separator?: boolean;
+  /** Non-interactive section title (used by the compact menu). */
+  heading?: string;
   submenu?: MenuItem[];
   hint?: string;
 }
@@ -24,9 +27,34 @@ export interface Menu {
   items: MenuItem[];
 }
 
-const actionable = (item: MenuItem) => !item.separator && !item.disabled;
+const actionable = (item: MenuItem) => !item.separator && !item.heading && !item.disabled;
 
-export function MenuBar({ menus, leading, trailing }: { menus: Menu[]; leading?: React.ReactNode; trailing?: React.ReactNode }) {
+export function MenuBar({
+  menus: fullMenus,
+  leading,
+  trailing,
+  compact,
+}: {
+  menus: Menu[];
+  leading?: React.ReactNode;
+  trailing?: React.ReactNode;
+  compact?: boolean;
+}) {
+  const menus: Menu[] = compact
+    ? [
+        {
+          label: "☰",
+          items: fullMenus.flatMap((menu, index) => [
+            ...(index > 0 ? [{ separator: true }] : []),
+            { heading: menu.label },
+            // Submenus are flattened so the single scrolling menu never clips a flyout.
+            ...menu.items.flatMap((item) =>
+              item.submenu ? [{ heading: `${menu.label} › ${item.label}` }, ...item.submenu.filter((sub) => !sub.separator)] : [item]
+            ),
+          ]),
+        },
+      ]
+    : fullMenus;
   const [open, setOpen] = useState<number | null>(null);
   const [active, setActive] = useState<number>(-1);
   const [sub, setSub] = useState<{ index: number; active: number } | null>(null);
@@ -105,6 +133,9 @@ export function MenuBar({ menus, leading, trailing }: { menus: Menu[]; leading?:
       {menus.map((menu, index) => (
         <div key={menu.label} className="relative">
           <button
+            aria-expanded={open === index}
+            aria-haspopup="menu"
+            aria-label={menu.label === "☰" ? "Menu" : undefined}
             className={`h-[26px] rounded-[5px] px-2.5 text-[13px] ${open === index ? "bg-white/[0.12] text-white" : "text-[#C9D1CD] hover:bg-white/[0.06]"}`}
             onMouseDown={(event) => {
               event.preventDefault();
@@ -124,10 +155,11 @@ export function MenuBar({ menus, leading, trailing }: { menus: Menu[]; leading?:
             }}
             type="button"
           >
-            {menu.label}
+            {menu.label === "☰" ? <MenuIcon className="-mx-0.5" size={15} /> : menu.label}
           </button>
           {open === index && (
             <MenuPanel
+              scroll={compact}
               active={active}
               items={menu.items}
               onActivate={run}
@@ -155,7 +187,9 @@ function MenuPanel({
   sub,
   onSubHover,
   nested,
+  scroll,
 }: {
+  scroll?: boolean;
   items: MenuItem[];
   active: number;
   onHover: (index: number) => void;
@@ -166,14 +200,18 @@ function MenuPanel({
 }) {
   return (
     <div
-      className={`absolute z-[200] min-w-[248px] rounded-[9px] border border-white/[0.09] bg-[#262B2E]/[0.92] p-[5px] text-[13px] text-[#E6ECE9] shadow-[0_18px_50px_rgba(0,0,0,0.55),0_0_0_0.5px_rgba(0,0,0,0.6)] backdrop-blur-xl ${
+      className={`absolute z-[200] min-w-[248px] rounded-[9px] ${scroll ? "max-h-[75vh] overflow-y-auto" : ""} border border-white/[0.09] bg-[#262B2E]/[0.92] p-[5px] text-[13px] text-[#E6ECE9] shadow-[0_18px_50px_rgba(0,0,0,0.55),0_0_0_0.5px_rgba(0,0,0,0.6)] backdrop-blur-xl ${
         nested ? "top-[-6px] left-full ml-[2px]" : "top-[30px] left-0"
       }`}
       onMouseDown={(event) => event.preventDefault()}
       role="menu"
     >
       {items.map((item, index) =>
-        item.separator ? (
+        item.heading ? (
+          <div key={`heading-${index}`} className="px-2.5 pt-1.5 pb-0.5 text-[11px] font-semibold tracking-[0.06em] text-white/40 uppercase">
+            {item.heading}
+          </div>
+        ) : item.separator ? (
           <div key={`sep-${index}`} className="mx-2 my-[5px] h-px bg-white/[0.08]" />
         ) : (
           <div key={`${item.label}-${index}`} className="relative">

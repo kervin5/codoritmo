@@ -1,8 +1,8 @@
 "use client";
 
-// PROTOTYPE — flowchart restyled for the "player" direction: dark, soft
-// palette; the block that is playing glows, visited blocks stay lit, the rest
-// dim. Reuses the real model + layout (src/diagram), only rendering differs.
+// Live flowchart: dark, soft palette; the block that is running glows,
+// visited blocks stay lit, the rest dim. Uses the shared model + layout from
+// src/diagram; only the rendering is specific to the workspace.
 
 import {
   Background,
@@ -22,8 +22,8 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { buildFlowDiagram, layoutFlowDiagram, type FlowNodeKind, type PositionedFlowDiagram } from "@/src/diagram";
 import { Parser, type EngineSettings } from "@/src/engine";
 
-type MellowNodeData = { label: string; kind: FlowNodeKind; state: "active" | "visited" | "idle" | "dim"; line?: number };
-type MellowNode = Node<MellowNodeData>;
+type FlowNodeViewData = { label: string; kind: FlowNodeKind; state: "active" | "visited" | "idle" | "dim"; line?: number };
+type FlowNodeView = Node<FlowNodeViewData>;
 
 const palette: Record<FlowNodeKind, { fill: string; stroke: string; text: string }> = {
   terminator: { fill: "#1B2723", stroke: "#3F7C66", text: "#BFE6D4" },
@@ -37,7 +37,7 @@ const palette: Record<FlowNodeKind, { fill: string; stroke: string; text: string
 
 const ACTIVE = "#86F0C4";
 
-const MellowNodeCard = memo(function MellowNodeCard({ data }: NodeProps<MellowNode>) {
+const FlowNodeViewCard = memo(function FlowNodeViewCard({ data }: NodeProps<FlowNodeView>) {
   const colors = palette[data.kind] ?? palette.process;
   const active = data.state === "active";
   const opacity = data.state === "dim" ? 0.42 : 1;
@@ -95,18 +95,20 @@ const MellowNodeCard = memo(function MellowNodeCard({ data }: NodeProps<MellowNo
   );
 });
 
-const nodeTypes = { mellow: MellowNodeCard };
+const nodeTypes = { flow: FlowNodeViewCard };
 
-interface MellowDiagramProps {
+interface FlowDiagramProps {
   source: string;
   settings: EngineSettings;
   activeLine: number | null;
   visitedLines: Set<number>;
   routineName: string | null;
   onPickLine?: (line: number) => void;
+  /** Reports the routine on screen (for exporting exactly what you see). */
+  onRoutineChange?: (routineId: string) => void;
 }
 
-function Canvas({ source, settings, activeLine, visitedLines, routineName, onPickLine }: MellowDiagramProps) {
+function Canvas({ source, settings, activeLine, visitedLines, routineName, onPickLine, onRoutineChange }: FlowDiagramProps) {
   const [diagram, setDiagram] = useState<PositionedFlowDiagram | null>(null);
   const [pickedRoutine, setPickedRoutine] = useState<string | null>(null);
   const flow = useReactFlow();
@@ -129,12 +131,15 @@ function Canvas({ source, settings, activeLine, visitedLines, routineName, onPic
     : undefined;
   const routine = playingRoutine ?? routines.find((r) => r.id === pickedRoutine) ?? routines[0];
   const hasRun = visitedLines.size > 0;
+  useEffect(() => {
+    if (routine) onRoutineChange?.(routine.id);
+  }, [onRoutineChange, routine]);
 
-  const nodes = useMemo<MellowNode[]>(() => {
+  const nodes = useMemo<FlowNodeView[]>(() => {
     if (!routine) return [];
     return routine.nodes.map((node) => {
       const line = node.sourceSpan?.start.line;
-      const state: MellowNodeData["state"] =
+      const state: FlowNodeViewData["state"] =
         line !== undefined && line === activeLine
           ? "active"
           : line !== undefined && visitedLines.has(line)
@@ -144,7 +149,7 @@ function Canvas({ source, settings, activeLine, visitedLines, routineName, onPic
               : "idle";
       return {
         id: node.id,
-        type: "mellow",
+        type: "flow",
         position: node.position,
         draggable: false,
         style: { width: node.size.width, height: node.size.height },
@@ -248,7 +253,7 @@ function Canvas({ source, settings, activeLine, visitedLines, routineName, onPic
   );
 }
 
-export default function MellowDiagram(props: MellowDiagramProps) {
+export default function FlowDiagram(props: FlowDiagramProps) {
   return (
     <ReactFlowProvider>
       <Canvas {...props} />

@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
-import Playground from '@/src/components/ide/playground';
-import PrototypeRoot from '@/src/components/ide/prototype/prototype-root';
+import Workspace from '@/src/components/workspace/workspace';
 import { hasLocale } from '@/src/i18n/config';
 import { getDictionary } from '@/src/i18n/server';
 import { localeAlternates, openGraphLocale, localizedSiteUrl } from '@/src/seo/site';
@@ -12,8 +11,6 @@ interface HomePageProps {
   params: Promise<{
     lang: string;
   }>;
-  // PROTOTYPE: ?variant=A|B|C swaps in the UI prototypes (throwaway branch).
-  searchParams?: Promise<{ variant?: string | string[] }>;
 }
 
 export async function generateMetadata({
@@ -52,10 +49,8 @@ export async function generateMetadata({
 
 export default async function Home({
   params,
-  searchParams,
 }: HomePageProps) {
   const { lang } = await params;
-  const variant = (await searchParams)?.variant;
 
   if (!hasLocale(lang)) {
     notFound();
@@ -65,18 +60,14 @@ export default async function Home({
   const structuredData = createHomeStructuredData(lang, dictionary);
 
   return (
-    <main className="min-h-screen overflow-x-hidden">
+    <main className="h-[100dvh] overflow-hidden bg-[#141719]">
       <script
         dangerouslySetInnerHTML={{
           __html: JSON.stringify(structuredData),
         }}
         type="application/ld+json"
       />
-      {typeof variant === 'string' ? (
-        <PrototypeRoot dictionary={dictionary} variant={variant} />
-      ) : (
-        <Playground dictionary={dictionary} key={lang} locale={lang} />
-      )}
+      <Workspace dictionary={dictionary} key={lang} locale={lang} />
     </main>
   );
 }

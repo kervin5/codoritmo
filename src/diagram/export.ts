@@ -265,6 +265,10 @@ async function svgToPngDataUrl(svg: string, width: number, height: number) {
   }
 }
 
+export function exportRoutineToSvg(routine: PositionedFlowRoutineDiagram) {
+  return buildDiagramSvg(routine);
+}
+
 export async function exportRoutineToPng(routine: PositionedFlowRoutineDiagram) {
   const { svg, width, height } = buildDiagramSvg(routine);
   const dataUrl = await svgToPngDataUrl(svg, width, height);

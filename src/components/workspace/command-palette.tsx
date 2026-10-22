@@ -1,13 +1,13 @@
 "use client";
 
-// PROTOTYPE — ⌘K palette: one search box for every menu action and every
-// reference entry. ↑/↓ to move, Enter to run, Esc to close.
+// ⌘K palette: one search box for every menu action and every reference
+// entry. ↑/↓ to move, Enter to run, Esc to close.
 
 import { BookOpen, Command, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { Menu, MenuItem } from "./native-menu";
-import type { ReferenceEntry } from "./reference-inspector";
+import type { Menu, MenuItem } from "./menu-bar";
+import type { ReferenceEntry } from "./reference-panel";
 
 interface PaletteRow {
   key: string;
@@ -39,13 +39,17 @@ export function CommandPalette({
   reference,
   onPickReference,
   onClose,
+  text,
+  initialQuery = "",
 }: {
+  initialQuery?: string;
+  text: { placeholder: string; actions: string; noResults: string; referencePath: string };
   menus: Menu[];
   reference: ReferenceEntry[];
   onPickReference: (entry: ReferenceEntry) => void;
   onClose: () => void;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -56,7 +60,7 @@ export function CommandPalette({
         key: `ref-${entry.id}`,
         kind: "reference" as const,
         label: entry.label,
-        path: `Referencia › ${entry.title}`,
+        path: `${text.referencePath} › ${entry.title}`,
         run: () => onPickReference(entry),
       })),
     ];
@@ -72,9 +76,8 @@ export function CommandPalette({
       .sort((a, b) => a.score - b.score)
       .slice(0, 40)
       .map((x) => x.row);
-  }, [menus, onPickReference, query, reference]);
+  }, [menus, onPickReference, query, reference, text.referencePath]);
 
-  useEffect(() => setActive(0), [query]);
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
@@ -96,7 +99,10 @@ export function CommandPalette({
           <input
             autoFocus
             className="flex-1 bg-transparent text-[16px] text-white outline-none placeholder:text-white/30"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setActive(0);
+            }}
             onKeyDown={(event) => {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
@@ -112,14 +118,14 @@ export function CommandPalette({
                 onClose();
               }
             }}
-            placeholder="Busca una acción o un comando: ejecutar, para, raíz…"
+            placeholder={text.placeholder}
             value={query}
           />
           <kbd className="rounded-[4px] border border-white/10 px-1.5 text-[11px] text-white/40">esc</kbd>
         </div>
         <div ref={listRef} className="proto-scroll max-h-[380px] overflow-auto p-1.5">
-          {!query && <div className="px-2.5 pt-1.5 pb-1 text-[11px] font-semibold tracking-[0.08em] text-white/35 uppercase">Acciones</div>}
-          {rows.length === 0 && <div className="px-3 py-6 text-center text-[13px] text-white/40">Sin resultados</div>}
+          {!query && <div className="px-2.5 pt-1.5 pb-1 text-[11px] font-semibold tracking-[0.08em] text-white/35 uppercase">{text.actions}</div>}
+          {rows.length === 0 && <div className="px-3 py-6 text-center text-[13px] text-white/40">{text.noResults}</div>}
           {rows.map((row, index) => (
             <div
               key={row.key}

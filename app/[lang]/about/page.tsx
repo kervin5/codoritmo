@@ -64,7 +64,7 @@ export default async function AboutPage({ params }: AboutPageProps) {
   const structuredData = createAboutStructuredData(lang, dictionary);
 
   return (
-    <main className="min-h-screen overflow-x-hidden">
+    <main className="min-h-[100dvh] bg-[#141719]">
       <script
         dangerouslySetInnerHTML={{
           __html: JSON.stringify(structuredData),
@@ -100,7 +100,7 @@ export default async function AboutPage({ params }: AboutPageProps) {
                 {dictionary.aboutPage.compatibilityBody}
               </p>
               <Link
-                className="inline-flex items-center gap-2 rounded-full border border-[var(--accent-soft)] bg-[var(--accent-surface)] px-4 py-2 text-sm font-medium text-[var(--accent-strong)] transition hover:border-[var(--accent)] hover:bg-[rgba(241,252,247,0.98)]"
+                className="inline-flex items-center gap-2 rounded-full border border-[var(--accent-soft)] bg-[var(--accent-surface)] px-4 py-2 text-sm font-medium text-[var(--accent-strong)] transition hover:border-[var(--accent)]"
                 href={officialPseintUrl}
                 rel="noreferrer"
                 target="_blank"

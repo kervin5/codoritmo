@@ -1,19 +1,20 @@
 "use client";
 
-// PROTOTYPE — editor intelligence for Codoritmo: autocomplete (keywords as
-// snippets with tab-stops, functions, and the program's own variables), hover
-// explanations for keywords and variables, and comment/bracket config so
-// ⌘/ and auto-closing quotes work. Registered once per Monaco instance; reads
-// the latest catalog through a getter so profile changes are picked up.
+// Editor intelligence for Codoritmo: autocomplete (keywords as snippets with
+// tab-stops, functions, and the program's own variables), hover explanations
+// for keywords and variables, and comment/bracket config so ⌘/ and
+// auto-closing quotes work. Registered once per Monaco instance; reads the
+// latest catalog through a getter so profile and locale changes are picked up.
 
 import type { Monaco } from "@monaco-editor/react";
 import type { languages } from "monaco-editor";
 
-import type { ReferenceEntry } from "./reference-inspector";
+import type { ReferenceEntry } from "./reference-panel";
 
 export interface LanguageCatalog {
   entries: ReferenceEntry[];
   lookup: (word: string | null) => ReferenceEntry | null;
+  text: { variable: string; firstSeen: string; counter: string; line: string };
 }
 
 let registered = false;
@@ -33,7 +34,7 @@ interface DeclaredVariable {
 }
 
 /** Cheap scan for variables: Definir lists, assignments, Leer and Para counters. */
-function scanVariables(text: string): DeclaredVariable[] {
+function scanVariables(text: string, counterLabel: string): DeclaredVariable[] {
   const found = new Map<string, DeclaredVariable>();
   const lines = text.split("\n");
   lines.forEach((raw, i) => {
@@ -53,7 +54,7 @@ function scanVariables(text: string): DeclaredVariable[] {
       }
     }
     const loop = /^\s*Para\s+([\p{L}_][\p{L}\p{N}_]*)/iu.exec(line);
-    if (loop && !found.has(loop[1].toLowerCase())) found.set(loop[1].toLowerCase(), { name: loop[1], type: "contador", line: i + 1 });
+    if (loop && !found.has(loop[1].toLowerCase())) found.set(loop[1].toLowerCase(), { name: loop[1], type: counterLabel, line: i + 1 });
   });
   return [...found.values()];
 }
@@ -116,12 +117,13 @@ export function registerLanguageServices(monaco: Monaco, getCatalog: () => Langu
           sortText: `1-${entry.label}`,
         });
       }
-      for (const variable of scanVariables(model.getValue())) {
+      const text = catalog?.text;
+      for (const variable of scanVariables(model.getValue(), text?.counter ?? "")) {
         if (variable.line === position.lineNumber && variable.name.length <= word.word.length) continue;
         suggestions.push({
-          label: { label: variable.name, description: variable.type ?? "variable" },
+          label: { label: variable.name, description: variable.type ?? text?.variable },
           kind: monaco.languages.CompletionItemKind.Variable,
-          detail: `Variable · línea ${variable.line}`,
+          detail: `${text?.variable ?? ""} · ${(text?.line ?? "").replace("{n}", String(variable.line))}`,
           insertText: variable.name,
           range,
           sortText: `0-${variable.name}`,
@@ -141,8 +143,12 @@ export function registerLanguageServices(monaco: Monaco, getCatalog: () => Langu
         startColumn: word.startColumn,
         endColumn: word.endColumn,
       };
-      const variable = scanVariables(model.getValue()).find((v) => v.name.toLowerCase() === word.word.toLowerCase());
-      const entry = getCatalog()?.lookup(word.word);
+      const catalog = getCatalog();
+      const text = catalog?.text;
+      const variable = scanVariables(model.getValue(), text?.counter ?? "").find(
+        (v) => v.name.toLowerCase() === word.word.toLowerCase()
+      );
+      const entry = catalog?.lookup(word.word);
       if (entry) {
         return {
           range,
@@ -157,8 +163,8 @@ export function registerLanguageServices(monaco: Monaco, getCatalog: () => Langu
         return {
           range,
           contents: [
-            { value: `**${variable.name}** · variable${variable.type ? ` (${variable.type})` : ""}` },
-            { value: `Aparece por primera vez en la línea ${variable.line}.` },
+            { value: `**${variable.name}** · ${text?.variable ?? ""}${variable.type ? ` (${variable.type})` : ""}` },
+            { value: (text?.firstSeen ?? "").replace("{n}", String(variable.line)) },
           ],
         };
       }

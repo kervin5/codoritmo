@@ -193,4 +193,67 @@ export interface Dictionary {
     untitled: string;
     untitledNumber: string;
   };
+  studio: {
+    menus: { file: string; edit: string; run: string; view: string; help: string };
+    file: {
+      new: string; open: string; openExample: string; save: string; rename: string; closeTab: string;
+      exportAs: string; diagramPng: string; diagramSvg: string; shareLink: string;
+    };
+    edit: { undo: string; redo: string; find: string; replace: string; suggestions: string; commentLine: string; insert: string };
+    run: {
+      run: string; continue: string; pause: string; stepNext: string; stepBack: string; stop: string; speed: string;
+      speeds: { slow: string; normal: string; fast: string; instant: string };
+      profile: string; moreProfiles: string; customize: string;
+    };
+    view: {
+      diagram: string; code: string; reference: string; bottomPanel: string; console: string; deskCheck: string; problems: string;
+      translateTo: string; comingSoon: string; zoomIn: string; zoomOut: string; fullscreen: string;
+    };
+    help: { palette: string; reference: string; shortcuts: string; about: string; officialSite: string };
+    status: { idle: string; playing: string; paused: string; input: string; done: string; error: string; stopped: string; rewound: string };
+    search: string;
+    noErrors: string;
+    errorCount: { one: string; other: string };
+    edited: string;
+    unsaved: string;
+    closePanel: string;
+    togglePanel: string;
+    askingInput: string;
+    consoleEmpty: string;
+    inputPlaceholder: string;
+    programFinished: string;
+    pressPlay: string;
+    line: string;
+    mainRoutine: string;
+    stepsRun: string;
+    endOfProgram: string;
+    stoppedLine: string;
+    pressEnter: string;
+    deskCheckEmpty: string;
+    stepColumn: string;
+    lineColumn: string;
+    problemsEmpty: string;
+    translationNeedsFix: string;
+    copy: string;
+    copied: string;
+    saved: string;
+    opened: string;
+    exported: string;
+    exportNeedsFix: string;
+    linkCopied: string;
+    linkOpened: string;
+    renamePrompt: string;
+    speedLabel: string;
+    reference: {
+      atCursor: string; selected: string; followCursor: string; cursorHint: string; search: string; insert: string; insertHint: string;
+    };
+    palette: { placeholder: string; actions: string; noResults: string; referencePath: string };
+    shortcuts: {
+      title: string; runPause: string; step: string; pauseOutside: string; stop: string; suggestions: string;
+      palette: string; panels: string; bottomPanel: string; files: string;
+    };
+    profiles: { title: string; search: string; builtIn: string; schools: string; settings: string; done: string; flexible: string };
+    hover: { variable: string; firstSeen: string; counter: string };
+    activity: { diagram: string; code: string; reference: string };
+  };
 }

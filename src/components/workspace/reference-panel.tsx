@@ -1,15 +1,15 @@
 "use client";
 
-// PROTOTYPE — the reference as a docked, always-visible inspector. The top
-// card follows the editor cursor ("what is this word?"); below is the full
-// searchable catalog. Data comes from the real snippet catalog.
+// The language reference as a docked panel. The top card follows the editor
+// cursor ("what is this word?"); below is the full searchable catalog built
+// from the snippet catalog, so it always matches the active profile.
 
 import { CornerDownLeft, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { EngineSettings } from "@/src/engine";
 import type { Dictionary } from "@/src/i18n/types";
-import { getOperatorGroups, getStructureSnippets } from "../snippets";
+import { getOperatorGroups, getStructureSnippets } from "../ide/snippets";
 
 export interface ReferenceEntry {
   id: string;
@@ -67,19 +67,23 @@ export function useReferenceCatalog(dictionary: Dictionary, settings: EngineSett
       const alias = ALIASES[key];
       return byWord.get(key) ?? (alias ? byWord.get(alias) : undefined) ?? null;
     };
-    return { entries, groups: [...new Set(entries.map((e) => e.group))], lookup };
+    const text = { ...dictionary.studio.hover, line: dictionary.studio.line };
+    return { entries, groups: [...new Set(entries.map((e) => e.group))], lookup, text };
   }, [dictionary, settings]);
 }
 
-export function ReferenceInspector({
+export function ReferencePanel({
   catalog,
   cursorWord,
   onInsert,
+  dictionary,
 }: {
   catalog: ReturnType<typeof useReferenceCatalog>;
   cursorWord: string | null;
   onInsert: (text: string) => void;
+  dictionary: Dictionary;
 }) {
+  const t = dictionary.studio.reference;
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<ReferenceEntry | null>(null);
   const contextual = catalog.lookup(cursorWord);
@@ -97,10 +101,10 @@ export function ReferenceInspector({
       {/* Focus card: follows the cursor unless the user picked something */}
       <div className="shrink-0 border-b border-white/[0.06] px-4 pt-3.5 pb-4">
         <div className="flex items-center justify-between text-[11px] font-semibold tracking-[0.08em] text-white/40 uppercase">
-          {picked ? "Seleccionado" : "En el cursor"}
+          {picked ? t.selected : t.atCursor}
           {picked && (
             <button className="tracking-normal text-[#7FE0B8] normal-case hover:underline" onClick={() => setPicked(null)} type="button">
-              Seguir el cursor
+              {t.followCursor}
             </button>
           )}
         </div>
@@ -120,14 +124,11 @@ export function ReferenceInspector({
               onClick={() => onInsert(focus.example)}
               type="button"
             >
-              <CornerDownLeft size={12} /> Insertar
+              <CornerDownLeft size={12} /> {t.insert}
             </button>
           </div>
         ) : (
-          <p className="mt-2 text-[12.5px] leading-[19px] text-white/45">
-            Coloca el cursor sobre una palabra clave (por ejemplo <code className="text-white/70">Para</code> o{" "}
-            <code className="text-white/70">Leer</code>) y aquí verás qué hace y cómo se usa.
-          </p>
+          <p className="mt-2 text-[12.5px] leading-[19px] text-white/45">{t.cursorHint}</p>
         )}
       </div>
 
@@ -138,7 +139,7 @@ export function ReferenceInspector({
           <input
             className="flex-1 bg-transparent text-[12.5px] text-white/90 outline-none placeholder:text-white/30"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar en la referencia"
+            placeholder={t.search}
             value={query}
           />
         </div>
@@ -158,7 +159,7 @@ export function ReferenceInspector({
                   }`}
                   onClick={() => setPicked(entry)}
                   onDoubleClick={() => onInsert(entry.example)}
-                  title="Doble clic para insertar"
+                  title={t.insertHint}
                   type="button"
                 >
                   <code className="w-[92px] shrink-0 truncate font-mono text-[12.5px] text-[#8FE3BE]">{entry.label}</code>

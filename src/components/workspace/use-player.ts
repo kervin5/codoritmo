@@ -1,7 +1,8 @@
 "use client";
 
-// PROTOTYPE — "execution as playback". Runs the real Interpreter in-thread
-// and records every statement (line, variables, console length) so the UI can
+// Execution as playback. Runs the Interpreter in-thread (it yields every few
+// thousand steps, so the page stays responsive and Stop always works) and
+// records every statement — line, variables, console length — so the UI can
 // play, pause, step, and scrub back through what already happened.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,17 +27,29 @@ export interface Frame {
 
 /** ms between steps; 0 = instant (a normal run). */
 export const SPEEDS = [
-  { id: "slow", label: "Lento", ms: 900 },
-  { id: "normal", label: "Normal", ms: 380 },
-  { id: "fast", label: "Rápido", ms: 90 },
-  { id: "instant", label: "Instantáneo", ms: 0 },
+  { id: "slow", ms: 900 },
+  { id: "normal", ms: 380 },
+  { id: "fast", ms: 90 },
+  { id: "instant", ms: 0 },
 ] as const;
+
+export type SpeedId = (typeof SPEEDS)[number]["id"];
+
+export interface PlayerText {
+  endOfProgram: string;
+  stopped: string;
+  pressEnter: string;
+  /** "Línea {n}" style prefix for runtime errors. */
+  line: string;
+}
 
 const MAX_FRAMES = 20_000;
 
 class Stopped extends Error {}
 
-export function usePlayer(source: string, settings: EngineSettings) {
+export function usePlayer(source: string, settings: EngineSettings, text: PlayerText) {
+  const textRef = useRef(text);
+  textRef.current = text;
   const [status, setStatus] = useState<PlayerStatus>("idle");
   const [lines, setLines] = useState<PlayerLine[]>([]);
   const [frameCount, setFrameCount] = useState(0);
@@ -158,7 +171,7 @@ export function usePlayer(source: string, settings: EngineSettings) {
         },
         waitForKey() {
           flushPending();
-          pushLine({ kind: "sys", text: "Pulsa Enter para continuar" });
+          pushLine({ kind: "sys", text: textRef.current.pressEnter });
           const resumeStatus: PlayerStatus = playingRef.current ? "playing" : "paused";
           setStatusBoth("input");
           return new Promise<void>((resolve, reject) => {
@@ -224,27 +237,30 @@ export function usePlayer(source: string, settings: EngineSettings) {
         const result = await interpreter.run(source, runtime);
         flushPending();
         if (result.state === "ok") {
-          pushLine({ kind: "sys", text: "Fin del programa" });
+          pushLine({ kind: "sys", text: textRef.current.endOfProgram });
           setStatusBoth("done");
         } else if (result.state === "stopped") {
-          pushLine({ kind: "sys", text: "Detenido" });
+          pushLine({ kind: "sys", text: textRef.current.stopped });
           setStatusBoth("stopped");
         } else {
           const diagnostic = result.diagnostics.find((d) => d.severity === "error") ?? null;
           setRuntimeError(diagnostic);
-          if (diagnostic) pushLine({ kind: "err", text: `Línea ${diagnostic.line}: ${diagnostic.message}` });
+          if (diagnostic) {
+            const prefix = textRef.current.line.replace("{n}", String(diagnostic.line));
+            pushLine({ kind: "err", text: `${prefix[0].toUpperCase()}${prefix.slice(1)}: ${diagnostic.message}` });
+          }
           setStatusBoth("error");
         }
       } catch {
         flushPending();
-        pushLine({ kind: "sys", text: "Detenido" });
+        pushLine({ kind: "sys", text: textRef.current.stopped });
         setStatusBoth("stopped");
       }
       setWantPlay(false);
       // Instant runs only snapshot every 25th frame; fill variables for the last one.
       scheduleFlush();
     },
-    [flushPending, pushLine, scheduleFlush, settings, source]
+    [flushPending, pushLine, scheduleFlush, setCursor, setWantPlay, settings, source]
   );
 
   const live = status === "playing" || status === "paused" || status === "input";
@@ -262,7 +278,7 @@ export function usePlayer(source: string, settings: EngineSettings) {
   const pause = useCallback(() => {
     setWantPlay(false);
     if (statusRef.current === "playing") setStatusBoth("paused");
-  }, []);
+  }, [setWantPlay]);
 
   const stepForward = useCallback(() => {
     setWantPlay(false);
@@ -278,7 +294,7 @@ export function usePlayer(source: string, settings: EngineSettings) {
     }
     stepTokensRef.current += 1;
     wake();
-  }, [live, start]);
+  }, [live, setCursor, setWantPlay, start]);
 
   const stepBack = useCallback(() => {
     setWantPlay(false);
@@ -287,14 +303,14 @@ export function usePlayer(source: string, settings: EngineSettings) {
     if (total === 0) return;
     const c = cursorRef.current ?? total - 1;
     setCursor(Math.max(0, c - 1));
-  }, []);
+  }, [setCursor, setWantPlay]);
 
   const seek = useCallback((index: number) => {
     setWantPlay(false);
     if (statusRef.current === "playing") setStatusBoth("paused");
     const total = framesRef.current.length;
     setCursor(index >= total - 1 ? null : Math.max(0, index));
-  }, []);
+  }, [setCursor, setWantPlay]);
 
   const stop = useCallback(() => {
     stopRef.current = true;
@@ -303,7 +319,7 @@ export function usePlayer(source: string, settings: EngineSettings) {
     const pending = inputRef.current;
     inputRef.current = null;
     pending?.reject(new Stopped());
-  }, []);
+  }, [setWantPlay]);
 
   const submitInput = useCallback((value: string) => {
     const pending = inputRef.current;
@@ -323,7 +339,7 @@ export function usePlayer(source: string, settings: EngineSettings) {
       } else setCursor(next);
     }, ms);
     return () => clearTimeout(timer);
-  }, [cursor, speedIndex, wantPlay]);
+  }, [cursor, setCursor, speedIndex, wantPlay]);
 
   useEffect(
     () => () => {

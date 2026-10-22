@@ -7,3 +7,11 @@ export function formatMessage(
     template,
   );
 }
+
+/** Picks the `one`/`other` form for `count` and fills `{count}`. */
+export function formatPlural(
+  forms: { one: string; other: string },
+  count: number,
+): string {
+  return formatMessage(count === 1 ? forms.one : forms.other, { count });
+}
