@@ -40,6 +40,33 @@ function defineThemes(monaco: Monaco) {
       "editorGutter.background": "#FFFFFF",
     },
   });
+  monaco.editor.defineTheme("proto-mellow", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "keyword", foreground: "8FD9B6" },
+      { token: "type.identifier", foreground: "9CC4E4" },
+      { token: "string", foreground: "E8BE8C" },
+      { token: "string.quote", foreground: "E8BE8C" },
+      { token: "number", foreground: "D2B3F2" },
+      { token: "comment", foreground: "5E6A66", fontStyle: "italic" },
+      { token: "operator", foreground: "9AA6A1" },
+      { token: "identifier", foreground: "E4EAE7" },
+    ],
+    colors: {
+      "editor.background": "#00000000",
+      "editor.foreground": "#E4EAE7",
+      "editor.lineHighlightBackground": "#FFFFFF08",
+      "editor.lineHighlightBorder": "#00000000",
+      "editorLineNumber.foreground": "#3C4649",
+      "editorLineNumber.activeForeground": "#9AA6A1",
+      "editorCursor.foreground": "#86F0C4",
+      "editor.selectionBackground": "#2A4A3F",
+      "editorIndentGuide.background1": "#1F272A",
+      "editorGutter.background": "#00000000",
+      "scrollbarSlider.background": "#FFFFFF14",
+    },
+  });
   monaco.editor.defineTheme("proto-ink", {
     base: "vs-dark",
     inherit: true,
@@ -68,10 +95,11 @@ interface PrototypeEditorProps {
   diagnostics: Diagnostic[];
   currentLine: number | null;
   readOnly?: boolean;
-  theme?: "paper" | "ink";
+  theme?: "paper" | "ink" | "mellow";
   fontSize?: number;
   onCursorLine?: (line: number) => void;
   highlightLine?: number | null;
+  onReady?: (instance: editor.IStandaloneCodeEditor) => void;
 }
 
 export default function PrototypeEditor({
@@ -84,6 +112,7 @@ export default function PrototypeEditor({
   fontSize = 15,
   onCursorLine,
   highlightLine,
+  onReady,
 }: PrototypeEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -98,8 +127,8 @@ export default function PrototypeEditor({
         range: { startLineNumber: currentLine, startColumn: 1, endLineNumber: currentLine, endColumn: 1 },
         options: {
           isWholeLine: true,
-          className: "proto-step-line",
-          glyphMarginClassName: "proto-step-glyph",
+          className: theme === "mellow" ? "proto-play-line" : "proto-step-line",
+          glyphMarginClassName: theme === "mellow" ? "proto-play-glyph" : "proto-step-glyph",
         },
       });
       instance.revealLineInCenterIfOutsideViewport(currentLine);
@@ -111,7 +140,7 @@ export default function PrototypeEditor({
       });
     }
     decorationsRef.current?.set(decorations);
-  }, [currentLine, highlightLine]);
+  }, [currentLine, highlightLine, theme]);
 
   useEffect(() => {
     const monaco = monacoRef.current;
@@ -142,6 +171,7 @@ export default function PrototypeEditor({
         monacoRef.current = monaco;
         decorationsRef.current = instance.createDecorationsCollection([]);
         instance.onDidChangeCursorPosition((event) => onCursorLine?.(event.position.lineNumber));
+        onReady?.(instance);
       }}
       language="codoritmo"
       onChange={(next) => onChange(next ?? "")}
@@ -162,7 +192,7 @@ export default function PrototypeEditor({
         tabSize: 4,
         readOnly,
       }}
-      theme={theme === "ink" ? "proto-ink" : "proto-paper"}
+      theme={theme === "ink" ? "proto-ink" : theme === "mellow" ? "proto-mellow" : "proto-paper"}
       value={value}
     />
   );

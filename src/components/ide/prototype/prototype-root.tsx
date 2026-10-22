@@ -14,6 +14,7 @@ import { SAMPLE_PROGRAM, usePrototypeRun, type PrototypeRun } from "./use-protot
 import VariantA from "./variant-a-studio";
 import VariantB from "./variant-b-notebook";
 import VariantC from "./variant-c-dual";
+import VariantD from "./variant-d-player";
 
 export interface VariantProps {
   dictionary: Dictionary;
@@ -26,6 +27,7 @@ export interface VariantProps {
 }
 
 const variants = [
+  { key: "D", name: "Reproductor", Component: VariantD },
   { key: "A", name: "Estudio", Component: VariantA },
   { key: "B", name: "Cuaderno", Component: VariantB },
   { key: "C", name: "Doble vista", Component: VariantC },
@@ -80,7 +82,7 @@ function PrototypeSwitcher({ index }: { index: number }) {
   }, []);
 
   return (
-    <div className="fixed right-4 bottom-4 z-[100] flex items-center gap-1 rounded-full bg-[#FF3D7F] p-1 text-white shadow-[0_8px_30px_rgba(255,61,127,0.45)]">
+    <div className="fixed right-4 bottom-[118px] z-[100] scale-90 opacity-80 hover:opacity-100 flex items-center gap-1 rounded-full bg-[#FF3D7F] p-1 text-white shadow-[0_8px_30px_rgba(255,61,127,0.45)]">
       <button className="rounded-full px-2.5 py-1 hover:bg-white/20" onClick={() => go(-1)} type="button">
         ←
       </button>
