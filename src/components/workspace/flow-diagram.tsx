@@ -7,95 +7,155 @@
 import {
   Background,
   BackgroundVariant,
+  BaseEdge,
   Handle,
+  MarkerType,
   Position,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 
-import { buildFlowDiagram, layoutFlowDiagram, type FlowNodeKind, type PositionedFlowDiagram } from "@/src/diagram";
+import {
+  buildFlowDiagram,
+  DARK_ACTIVE_COLOR,
+  DARK_ACTIVE_FILL,
+  DARK_ACTIVE_TEXT,
+  DARK_EDGE_COLORS,
+  DARK_TOKEN_COLORS,
+  darkPaletteForFlowNodeKind,
+  ioMarkerPath,
+  layoutFlowDiagram,
+  polylinePath,
+  SHAPE_FOR_KIND,
+  shapeGeometry,
+  tokenColor,
+  type FlowNode,
+  type Point,
+  type PositionedFlowDiagram,
+} from "@/src/diagram";
+import { LABEL_FONT_FAMILY, LABEL_FONT_SIZE, LABEL_LINE_HEIGHT } from "@/src/diagram/label";
 import { Parser, type EngineSettings } from "@/src/engine";
 
-type FlowNodeViewData = { label: string; kind: FlowNodeKind; state: "active" | "visited" | "idle" | "dim"; line?: number };
+type FlowNodeViewData = {
+  node: FlowNode;
+  state: "active" | "visited" | "idle" | "dim";
+  line?: number;
+};
 type FlowNodeView = Node<FlowNodeViewData>;
+type RoutedEdgeData = { points: Point[]; labelPosition?: Point };
+type RoutedEdgeView = Edge<RoutedEdgeData>;
 
-const palette: Record<FlowNodeKind, { fill: string; stroke: string; text: string }> = {
-  terminator: { fill: "#1B2723", stroke: "#3F7C66", text: "#BFE6D4" },
-  io: { fill: "#18222C", stroke: "#4E7EA3", text: "#BED7EC" },
-  decision: { fill: "#272217", stroke: "#A88546", text: "#EAD3A5" },
-  loop: { fill: "#192620", stroke: "#58A684", text: "#C5EAD9" },
-  switch: { fill: "#261C25", stroke: "#9C7596", text: "#E6CDE1" },
-  branch: { fill: "#1C1F22", stroke: "#5B6266", text: "#C9D0CD" },
-  process: { fill: "#1B1F22", stroke: "#3D464B", text: "#DCE3E0" },
-} as Record<FlowNodeKind, { fill: string; stroke: string; text: string }>;
-
-const ACTIVE = "#86F0C4";
+// Every connector is routed by src/diagram (same as the PNG/SVG export), so
+// these handles only give React Flow something to attach edges to; each
+// edge names its source and target handle explicitly.
+const hiddenHandle = { opacity: 0, pointerEvents: "none" as const };
+const HANDLES = (
+  <>
+    <Handle id="top" position={Position.Top} style={hiddenHandle} type="target" />
+    <Handle id="left-in" position={Position.Left} style={hiddenHandle} type="target" />
+    <Handle id="right-in" position={Position.Right} style={hiddenHandle} type="target" />
+    <Handle id="bottom" position={Position.Bottom} style={hiddenHandle} type="source" />
+    <Handle id="left" position={Position.Left} style={hiddenHandle} type="source" />
+    <Handle id="right" position={Position.Right} style={hiddenHandle} type="source" />
+  </>
+);
 
 const FlowNodeViewCard = memo(function FlowNodeViewCard({ data }: NodeProps<FlowNodeView>) {
-  const colors = palette[data.kind] ?? palette.process;
-  const active = data.state === "active";
-  const opacity = data.state === "dim" ? 0.42 : 1;
-  const stroke = active ? ACTIVE : colors.stroke;
-  const glow = active ? `0 0 0 1.5px ${ACTIVE}, 0 0 28px rgba(134,240,196,0.38)` : "none";
-  const handles = (
-    <>
-      <Handle id="top" position={Position.Top} style={{ opacity: 0 }} type="target" />
-      <Handle id="left-in" position={Position.Left} style={{ opacity: 0 }} type="target" />
-      <Handle id="right-in" position={Position.Right} style={{ opacity: 0 }} type="target" />
-      <Handle id="left" position={Position.Left} style={{ opacity: 0 }} type="source" />
-      <Handle id="right" position={Position.Right} style={{ opacity: 0 }} type="source" />
-      <Handle id="bottom" position={Position.Bottom} style={{ opacity: 0 }} type="source" />
-    </>
-  );
-  const label = (
-    <div className="text-center text-[13px] leading-5 font-medium" style={{ color: active ? "#F2FFF9" : colors.text }}>
-      {data.label}
-    </div>
-  );
-
-  if (data.kind === "decision") {
-    return (
-      <div className="relative h-full w-full transition-opacity duration-300" style={{ opacity, filter: active ? "drop-shadow(0 0 14px rgba(134,240,196,0.45))" : undefined }}>
-        {handles}
-        <svg className="absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 212 132">
-          <path d="M106 4 L208 66 L106 128 L4 66 Z" fill={colors.fill} stroke={stroke} strokeWidth={active ? 2 : 1.3} />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center px-10">{label}</div>
-      </div>
-    );
-  }
-
-  const shape: React.CSSProperties =
-    data.kind === "terminator"
-      ? { borderRadius: 999 }
-      : data.kind === "io"
-        ? { borderRadius: 10, transform: "skewX(-12deg)" }
-        : data.kind === "loop"
-          ? { borderRadius: 22 }
-          : data.kind === "branch"
-            ? { borderRadius: 14, borderStyle: "dashed" }
-            : { borderRadius: 14 };
+  const { node, state } = data;
+  const colors = darkPaletteForFlowNodeKind(node.kind);
+  const active = state === "active";
+  const { width, height } = node.size;
+  const shape = shapeGeometry(SHAPE_FOR_KIND[node.kind], width, height);
+  const stroke = active ? DARK_ACTIVE_COLOR : colors.stroke;
+  const tooltip = node.truncated || node.title !== node.label ? node.title : undefined;
 
   return (
-    <div className="relative h-full w-full transition-opacity duration-300" style={{ opacity }}>
-      {handles}
-      <div
-        className="flex h-full w-full items-center justify-center border px-5 py-3 transition-[box-shadow,border-color] duration-300"
-        style={{ ...shape, background: colors.fill, borderColor: stroke, boxShadow: glow }}
+    <div
+      className="relative h-full w-full transition-opacity duration-300"
+      style={{ opacity: state === "dim" ? 0.42 : 1 }}
+      title={tooltip}
+    >
+      {HANDLES}
+      <svg
+        className="absolute inset-0 overflow-visible transition-[filter] duration-300"
+        height={height}
+        style={{ filter: active ? "drop-shadow(0 0 10px rgba(134,240,196,0.5))" : undefined }}
+        width={width}
       >
-        <div style={data.kind === "io" ? { transform: "skewX(12deg)" } : undefined}>{label}</div>
-      </div>
+        <path
+          d={shape.outline}
+          fill={node.kind === "junction" ? stroke : active ? DARK_ACTIVE_FILL : colors.fill}
+          stroke={stroke}
+          strokeWidth={node.kind === "junction" ? 0 : active ? 2 : 1.4}
+        />
+        {shape.details && <path d={shape.details} fill="none" stroke={stroke} strokeWidth={1.3} />}
+        {(node.kind === "input" || node.kind === "output") && (
+          <path
+            d={ioMarkerPath(node.kind, width, height)}
+            fill="none"
+            stroke={stroke}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.8}
+          />
+        )}
+      </svg>
+      {node.lines.length > 0 && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center whitespace-pre"
+          style={{ fontFamily: LABEL_FONT_FAMILY, fontSize: LABEL_FONT_SIZE, lineHeight: `${LABEL_LINE_HEIGHT}px` }}
+        >
+          {node.lines.map((line, lineIndex) => (
+            <div key={lineIndex}>
+              {line.map((token, tokenIndex) => (
+                <span
+                  key={tokenIndex}
+                  style={{
+                    color: token.type === "identifier" && active
+                      ? DARK_ACTIVE_TEXT
+                      : tokenColor(token.type, colors, DARK_TOKEN_COLORS),
+                    fontWeight: token.type === "keyword" ? 600 : 400,
+                  }}
+                >
+                  {token.text}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 });
 
+function RoutedEdge({ id, data, label, markerEnd, style }: EdgeProps<RoutedEdgeView>) {
+  if (!data) return null;
+  return (
+    <BaseEdge
+      id={id}
+      label={label}
+      labelBgBorderRadius={999}
+      labelBgPadding={[6, 3]}
+      labelBgStyle={{ fill: "#161B1E", fillOpacity: 1, stroke: String(style?.stroke ?? "#5A666C"), strokeOpacity: 0.5 }}
+      labelStyle={{ fill: "#C3CCC8", fontSize: 11, fontWeight: 600 }}
+      labelX={data.labelPosition?.x}
+      labelY={data.labelPosition?.y}
+      markerEnd={markerEnd}
+      path={polylinePath(data.points)}
+      style={style}
+    />
+  );
+}
+
 const nodeTypes = { flow: FlowNodeViewCard };
+const edgeTypes = { routed: RoutedEdge };
 
 interface FlowDiagramProps {
   source: string;
@@ -127,7 +187,7 @@ function Canvas({ source, settings, activeLine, visitedLines, routineName, onPic
 
   const routines = diagram?.routines ?? [];
   const playingRoutine = routineName
-    ? routines.find((r) => r.label.toLowerCase().includes(routineName.toLowerCase()))
+    ? routines.find((r) => r.name.toLowerCase() === routineName.toLowerCase())
     : undefined;
   const routine = playingRoutine ?? routines.find((r) => r.id === pickedRoutine) ?? routines[0];
   const hasRun = visitedLines.size > 0;
@@ -139,12 +199,13 @@ function Canvas({ source, settings, activeLine, visitedLines, routineName, onPic
     if (!routine) return [];
     return routine.nodes.map((node) => {
       const line = node.sourceSpan?.start.line;
+      const visitLine = node.visitLine ?? node.traceLine;
       const state: FlowNodeViewData["state"] =
-        line !== undefined && line === activeLine
+        node.traceLine !== undefined && node.traceLine === activeLine
           ? "active"
-          : line !== undefined && visitedLines.has(line)
+          : visitLine !== undefined && visitedLines.has(visitLine)
             ? "visited"
-            : hasRun && node.kind !== "terminator"
+            : hasRun && node.kind !== "terminator" && node.kind !== "junction"
               ? "dim"
               : "idle";
       return {
@@ -153,33 +214,29 @@ function Canvas({ source, settings, activeLine, visitedLines, routineName, onPic
         position: node.position,
         draggable: false,
         style: { width: node.size.width, height: node.size.height },
-        data: { label: node.label, kind: node.kind, state, line },
+        data: { node, state, line },
       };
     });
   }, [activeLine, hasRun, routine, visitedLines]);
 
-  const edges = useMemo<Edge[]>(() => {
+  const edges = useMemo<RoutedEdgeView[]>(() => {
     if (!routine) return [];
-    return routine.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      sourceHandle: edge.sourceHandle,
-      targetHandle: edge.targetHandle,
-      label: edge.label,
-      type: "smoothstep",
-      animated: edge.kind === "loop",
-      pathOptions: edge.kind === "loop" ? { offset: 36, borderRadius: 18 } : { borderRadius: 14 },
-      style: {
-        stroke: edge.kind === "loop" ? "#3F7C66" : "#384146",
-        strokeWidth: 1.5,
-        ...(edge.kind === "loop" ? { strokeDasharray: "6 6" } : {}),
-      },
-      labelStyle: { fill: "#AEB8B4", fontSize: 11, fontWeight: 600 },
-      labelBgStyle: { fill: "#161B1E", fillOpacity: 1 },
-      labelBgPadding: [6, 3] as [number, number],
-      labelBgBorderRadius: 999,
-    }));
+    return routine.edges.map((edge) => {
+      const color = DARK_EDGE_COLORS[edge.kind];
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+        label: edge.label,
+        type: "routed",
+        animated: edge.kind === "loop",
+        data: { points: edge.points, labelPosition: edge.labelPosition },
+        markerEnd: { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
+        style: { stroke: color, strokeWidth: edge.kind === "loop" ? 1.8 : 1.5 },
+      };
+    });
   }, [routine]);
 
   // Open at a readable zoom: fit the width (never below 55%), anchored at the top.
@@ -239,6 +296,7 @@ function Canvas({ source, settings, activeLine, visitedLines, routineName, onPic
         edges={edges}
         maxZoom={1.6}
         minZoom={0.2}
+        edgeTypes={edgeTypes}
         nodeTypes={nodeTypes}
         nodes={nodes}
         nodesConnectable={false}

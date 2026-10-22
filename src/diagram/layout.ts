@@ -1,126 +1,171 @@
+// Structured layout: every block is laid out around a vertical axis (the
+// line the flow runs down), so consecutive blocks line up and sequence
+// connectors are straight. Compound blocks reserve side lanes for the
+// connectors that leave them (decision arms, loop exits, back edges), and
+// the connectors are routed here, once, for both renderers.
+
 import type { DiagramNodeOffset } from '@/src/components/ide/types';
 
-import type { FlowDiagram, FlowEdge, FlowLayoutBlock, FlowNode, FlowRoutineDiagram } from './model';
+import { estimateEdgeLabelWidth } from './label';
+import { JUNCTION_SIZE, type FlowDiagram, type FlowEdge, type FlowLayoutBlock, type FlowNode, type FlowRoutineDiagram } from './model';
+import { routeEdge, type EdgeRouteHint } from './route';
+import type { Point } from './shapes';
 
 export interface PositionedFlowNode extends FlowNode {
-  position: {
-    x: number;
-    y: number;
-  };
+  position: Point;
+}
+
+export interface PositionedFlowEdge extends FlowEdge {
+  /** Orthogonal polyline from the source handle to the target handle. */
+  points: Point[];
+  labelPosition?: Point;
 }
 
 export interface PositionedFlowRoutineDiagram {
-  edges: FlowEdge[];
+  edges: PositionedFlowEdge[];
   id: string;
   label: string;
+  name: string;
   nodes: PositionedFlowNode[];
+  /** Lane hints used to route the connectors (kept so offsets can re-route). */
+  routeHints: Record<string, EdgeRouteHint>;
 }
 
 export interface PositionedFlowDiagram {
   routines: PositionedFlowRoutineDiagram[];
 }
 
-interface LayoutFrame {
+/** A laid-out block: extents measured from its axis (x = 0) and its top (y = 0). */
+interface Frame {
+  left: number;
+  right: number;
   height: number;
-  positions: Record<string, { x: number; y: number }>;
-  width: number;
+  /** Top-left corner of each node. */
+  positions: Record<string, Point>;
+  hints: Record<string, EdgeRouteHint>;
 }
 
-const HORIZONTAL_GAP = 120;
-const LOOP_LEFT_GUTTER = 140;
-const LOOP_RIGHT_GUTTER = 120;
 const PADDING = 40;
-const REPEAT_CONDITION_GAP = 20;
-const SEQUENCE_GAP = 72;
-const SWITCH_LANE_MIN_WIDTH = 188;
-const LOOP_BODY_GAP = 44;
-const REPEAT_LEFT_GUTTER = 156;
-const REPEAT_RIGHT_GUTTER = 132;
+/** Vertical gap between consecutive blocks (room for a Sí/No label too). */
+const SEQUENCE_GAP = 40;
+/** Space between neighbouring lanes. */
+const LANE_GAP = 36;
+/** Shortest horizontal arm out of a decision corner. */
+const MIN_ARM = 44;
+/** Room for a loop's back edge or exit lane beside its body. */
+const LOOP_GUTTER = 34;
+/** How far below a block a back edge turns towards its lane. */
+const BACK_EDGE_DROP = 18;
+/** Gap above a merge junction, below the longest lane. */
+const MERGE_GAP = 24;
+/** Segun: trunk length below the switch before the lanes fan out. */
+const FAN_DROP = 18;
+const FAN_LABEL_ROOM = 42;
+const SWITCH_LANE_MIN = 48;
 
 export async function layoutFlowDiagram(flow: FlowDiagram): Promise<PositionedFlowDiagram> {
-  return {
-    routines: flow.routines.map(layoutRoutine),
-  };
+  return layoutFlowDiagramSync(flow);
+}
+
+export function layoutFlowDiagramSync(flow: FlowDiagram): PositionedFlowDiagram {
+  return { routines: flow.routines.map(layoutRoutine) };
 }
 
 export function applyFlowNodeOffsets(
   routine: PositionedFlowRoutineDiagram,
   offsets: Record<string, DiagramNodeOffset>,
 ): PositionedFlowRoutineDiagram {
-  return {
-    ...routine,
-    nodes: routine.nodes.map((node) => {
-      const offset = offsets[node.id] ?? { x: 0, y: 0 };
-      return {
-        ...node,
-        position: {
-          x: node.position.x + offset.x,
-          y: node.position.y + offset.y,
-        },
-      };
-    }),
-  };
+  const nodes = routine.nodes.map((node) => {
+    const offset = offsets[node.id] ?? { x: 0, y: 0 };
+    return { ...node, position: { x: node.position.x + offset.x, y: node.position.y + offset.y } };
+  });
+  return { ...routine, nodes, edges: routeEdges(routine.edges, nodes, routine.routeHints) };
 }
 
-function emptyFrame(): LayoutFrame {
-  return {
-    width: 0,
-    height: 0,
-    positions: {},
-  };
-}
-
-function mergePositions(
-  target: Record<string, { x: number; y: number }>,
-  source: Record<string, { x: number; y: number }>,
-  dx: number,
-  dy: number,
-) {
-  Object.entries(source).forEach(([nodeId, position]) => {
-    target[nodeId] = {
-      x: position.x + dx,
-      y: position.y + dy,
-    };
+function routeEdges(
+  edges: FlowEdge[],
+  nodes: PositionedFlowNode[],
+  hints: Record<string, EdgeRouteHint>,
+): PositionedFlowEdge[] {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  return edges.flatMap((edge) => {
+    const source = nodeMap.get(edge.source);
+    const target = nodeMap.get(edge.target);
+    if (!source || !target) return [];
+    const { points, labelPosition } = routeEdge(edge, source, target, hints[edge.id]);
+    return [{
+      id: edge.id,
+      kind: edge.kind,
+      label: edge.label,
+      source: edge.source,
+      sourceHandle: edge.sourceHandle,
+      target: edge.target,
+      targetHandle: edge.targetHandle,
+      points,
+      labelPosition,
+    }];
   });
 }
 
 function layoutRoutine(routine: FlowRoutineDiagram): PositionedFlowRoutineDiagram {
   const nodeMap = new Map(routine.nodes.map((node) => [node.id, node]));
   const frame = layoutBlock(routine.layout, nodeMap);
+  const dx = frame.left + PADDING;
+  const dy = PADDING;
+
+  const nodes = routine.nodes.map((node) => {
+    const position = frame.positions[node.id] ?? { x: -node.size.width / 2, y: 0 };
+    return { ...node, position: { x: position.x + dx, y: position.y + dy } };
+  });
+  const hints = shiftHints(frame.hints, dx, dy);
 
   return {
     id: routine.id,
     label: routine.label,
-    edges: routine.edges,
-    nodes: routine.nodes.map((node) => ({
-      ...node,
-      position: {
-        x: (frame.positions[node.id]?.x ?? 0) + PADDING,
-        y: (frame.positions[node.id]?.y ?? 0) + PADDING,
-      },
-    })),
+    name: routine.name,
+    nodes,
+    edges: routeEdges(routine.edges, nodes, hints),
+    routeHints: hints,
   };
 }
 
-function layoutBlock(
-  block: FlowLayoutBlock | null,
-  nodeMap: Map<string, FlowNode>,
-): LayoutFrame {
-  if (!block) {
-    return emptyFrame();
-  }
+function shiftHints(hints: Record<string, EdgeRouteHint>, dx: number, dy: number): Record<string, EdgeRouteHint> {
+  return Object.fromEntries(Object.entries(hints).map(([id, hint]) => [id, {
+    ...hint,
+    laneX: hint.laneX === undefined ? undefined : hint.laneX + dx,
+    turnY: hint.turnY === undefined ? undefined : hint.turnY + dy,
+    label: hint.label ? { x: hint.label.x + dx, y: hint.label.y + dy } : undefined,
+  }]));
+}
+
+function emptyFrame(): Frame {
+  return { left: 0, right: 0, height: 0, positions: {}, hints: {} };
+}
+
+function isEmpty(frame: Frame): boolean {
+  return Object.keys(frame.positions).length === 0;
+}
+
+/** Copies a child frame into a parent, with the child's axis at x = dx and its top at y = dy. */
+function place(target: Frame, child: Frame, dx: number, dy: number) {
+  Object.entries(child.positions).forEach(([id, position]) => {
+    target.positions[id] = { x: position.x + dx, y: position.y + dy };
+  });
+  Object.assign(target.hints, shiftHints(child.hints, dx, dy));
+}
+
+function layoutBlock(block: FlowLayoutBlock | null, nodeMap: Map<string, FlowNode>): Frame {
+  if (!block) return emptyFrame();
 
   switch (block.kind) {
     case 'node':
-      return layoutNode(nodeMap, block.nodeId);
+      return layoutNode(nodeMap.get(block.nodeId));
     case 'sequence':
-      return layoutSequence(block.blocks, nodeMap, block.gap ?? SEQUENCE_GAP);
+      return layoutSequence(block.blocks, nodeMap);
     case 'if':
       return layoutIf(block, nodeMap);
     case 'loop':
-      return layoutLoop(block.loopId, block.body, nodeMap);
-    case 'while':
-      return layoutLoop(block.decisionId, block.body, nodeMap);
+      return layoutLoop(block, nodeMap);
     case 'repeat':
       return layoutRepeat(block, nodeMap);
     case 'switch':
@@ -128,222 +173,156 @@ function layoutBlock(
   }
 }
 
-function layoutNode(nodeMap: Map<string, FlowNode>, nodeId: string): LayoutFrame {
-  const node = nodeMap.get(nodeId);
-  if (!node) {
-    return emptyFrame();
-  }
-
+function layoutNode(node: FlowNode | undefined): Frame {
+  if (!node) return emptyFrame();
+  const half = node.size.width / 2;
   return {
-    width: node.size.width,
+    left: half,
+    right: half,
     height: node.size.height,
-    positions: {
-      [nodeId]: { x: 0, y: 0 },
-    },
+    positions: { [node.id]: { x: -half, y: 0 } },
+    hints: {},
   };
 }
 
-function layoutSequence(
-  blocks: FlowLayoutBlock[],
-  nodeMap: Map<string, FlowNode>,
-  gap: number,
-): LayoutFrame {
-  const frames = blocks
-    .map((child) => layoutBlock(child, nodeMap))
-    .filter((frame) => frame.width > 0 || Object.keys(frame.positions).length > 0);
-
-  if (frames.length === 0) {
-    return emptyFrame();
-  }
-
-  const width = Math.max(...frames.map((frame) => frame.width));
-  const positions: Record<string, { x: number; y: number }> = {};
+function layoutSequence(blocks: FlowLayoutBlock[], nodeMap: Map<string, FlowNode>): Frame {
+  const frame = emptyFrame();
   let y = 0;
 
-  frames.forEach((frame, index) => {
-    mergePositions(positions, frame.positions, Math.round((width - frame.width) / 2), y);
-    y += frame.height;
-    if (index < frames.length - 1) {
-      y += gap;
-    }
-  });
+  blocks
+    .map((child) => layoutBlock(child, nodeMap))
+    .filter((child) => !isEmpty(child))
+    .forEach((child, index) => {
+      if (index > 0) y += SEQUENCE_GAP;
+      place(frame, child, 0, y);
+      frame.left = Math.max(frame.left, child.left);
+      frame.right = Math.max(frame.right, child.right);
+      y += child.height;
+    });
 
-  return {
-    width,
-    height: y,
-    positions,
-  };
+  frame.height = y;
+  return frame;
 }
 
-function layoutIf(
-  block: Extract<FlowLayoutBlock, { kind: 'if' }>,
-  nodeMap: Map<string, FlowNode>,
-): LayoutFrame {
-  const decision = layoutNode(nodeMap, block.decisionId);
+/** Junction centred on the axis with its top at y. */
+function placeJunction(frame: Frame, junctionId: string | null, y: number) {
+  if (!junctionId) return;
+  frame.positions[junctionId] = { x: -JUNCTION_SIZE / 2, y };
+}
+
+function layoutIf(block: Extract<FlowLayoutBlock, { kind: 'if' }>, nodeMap: Map<string, FlowNode>): Frame {
+  const decision = layoutNode(nodeMap.get(block.decisionId));
   const thenFrame = layoutBlock(block.thenBlock, nodeMap);
   const elseFrame = layoutBlock(block.elseBlock, nodeMap);
-  const leftWidth = Math.max(elseFrame.width, 168);
-  const rightWidth = Math.max(thenFrame.width, 168);
-  const branchSpan = leftWidth + HORIZONTAL_GAP + rightWidth;
-  const width = Math.max(decision.width, branchSpan);
-  const positions: Record<string, { x: number; y: number }> = {};
-  const decisionX = Math.round((width - decision.width) / 2);
-  const branchY = decision.height + SEQUENCE_GAP;
-  const branchStartX = Math.round((width - branchSpan) / 2);
+  const half = decision.right;
 
-  mergePositions(positions, decision.positions, decisionX, 0);
-  mergePositions(
-    positions,
-    elseFrame.positions,
-    branchStartX + Math.round((leftWidth - elseFrame.width) / 2),
-    branchY,
-  );
-  mergePositions(
-    positions,
-    thenFrame.positions,
-    branchStartX + leftWidth + HORIZONTAL_GAP + Math.round((rightWidth - thenFrame.width) / 2),
-    branchY,
-  );
+  // Lanes sit beside the diamond's corners and never overlap each other.
+  const thenX = Math.max(half + MIN_ARM, thenFrame.left + LANE_GAP / 2);
+  const elseX = -Math.max(half + MIN_ARM, elseFrame.right + LANE_GAP / 2);
+  const branchY = decision.height + 14;
+  const lanesBottom = branchY + Math.max(thenFrame.height, elseFrame.height);
+  const junctionY = (isEmpty(thenFrame) && isEmpty(elseFrame) ? decision.height : lanesBottom) + MERGE_GAP;
 
-  return {
-    width,
-    height: branchY + Math.max(thenFrame.height, elseFrame.height),
-    positions,
-  };
+  const frame = emptyFrame();
+  place(frame, decision, 0, 0);
+  place(frame, thenFrame, thenX, branchY);
+  place(frame, elseFrame, elseX, branchY);
+  placeJunction(frame, block.junctionId, junctionY);
+  frame.hints[block.thenEdgeId] = { laneX: thenX };
+  frame.hints[block.elseEdgeId] = { laneX: elseX };
+
+  frame.left = Math.max(half, -elseX + elseFrame.left, -elseX + 8);
+  frame.right = Math.max(half, thenX + thenFrame.right, thenX + 8);
+  frame.height = block.junctionId ? junctionY + JUNCTION_SIZE : lanesBottom;
+  return frame;
 }
 
-function layoutLoop(
-  loopId: string,
-  body: FlowLayoutBlock | null,
-  nodeMap: Map<string, FlowNode>,
-): LayoutFrame {
-  const header = layoutNode(nodeMap, loopId);
-  const bodyFrame = layoutBlock(body, nodeMap);
-  const contentWidth = Math.max(header.width, bodyFrame.width);
-  const width = contentWidth + LOOP_LEFT_GUTTER + LOOP_RIGHT_GUTTER;
-  const positions: Record<string, { x: number; y: number }> = {};
-  const headerX = LOOP_LEFT_GUTTER + Math.round((contentWidth - header.width) / 2);
+function layoutLoop(block: Extract<FlowLayoutBlock, { kind: 'loop' }>, nodeMap: Map<string, FlowNode>): Frame {
+  const header = layoutNode(nodeMap.get(block.headerId));
+  const body = layoutBlock(block.body, nodeMap);
+  const bodyY = header.height + SEQUENCE_GAP;
+  const bodyBottom = isEmpty(body) ? header.height : bodyY + body.height;
 
-  mergePositions(positions, header.positions, headerX, 0);
+  const backLaneX = -(Math.max(header.left, body.left) + LOOP_GUTTER);
+  const exitLaneX = Math.max(header.right + MIN_ARM, body.right + LOOP_GUTTER);
+  const junctionY = bodyBottom + BACK_EDGE_DROP + 16;
 
-  if (bodyFrame.width === 0 && Object.keys(bodyFrame.positions).length === 0) {
-    return {
-      width,
-      height: header.height,
-      positions,
-    };
-  }
+  const frame = emptyFrame();
+  place(frame, header, 0, 0);
+  if (!isEmpty(body)) place(frame, body, 0, bodyY);
+  placeJunction(frame, block.junctionId, junctionY);
+  block.backEdgeIds.forEach((id) => {
+    frame.hints[id] = { laneX: backLaneX, turnY: bodyBottom + BACK_EDGE_DROP };
+  });
+  frame.hints[block.exitEdgeId] = { laneX: exitLaneX };
 
-  const bodyY = header.height + LOOP_BODY_GAP;
-  const bodyX = LOOP_LEFT_GUTTER + Math.round((contentWidth - bodyFrame.width) / 2);
-  mergePositions(positions, bodyFrame.positions, bodyX, bodyY);
-
-  return {
-    width,
-    height: bodyY + bodyFrame.height,
-    positions,
-  };
+  frame.left = -backLaneX + 6;
+  frame.right = exitLaneX + 6;
+  frame.height = junctionY + JUNCTION_SIZE;
+  return frame;
 }
 
-function layoutRepeat(
-  block: Extract<FlowLayoutBlock, { kind: 'repeat' }>,
-  nodeMap: Map<string, FlowNode>,
-): LayoutFrame {
-  const header = layoutNode(nodeMap, block.headerId);
-  const bodyFrame = layoutBlock(block.body, nodeMap);
-  const condition = layoutNode(nodeMap, block.conditionId);
-  const contentWidth = Math.max(header.width, bodyFrame.width, condition.width);
-  const width = contentWidth + REPEAT_LEFT_GUTTER + REPEAT_RIGHT_GUTTER;
-  const positions: Record<string, { x: number; y: number }> = {};
+function layoutRepeat(block: Extract<FlowLayoutBlock, { kind: 'repeat' }>, nodeMap: Map<string, FlowNode>): Frame {
+  const entry = layoutNode(nodeMap.get(block.entryId));
+  const body = layoutBlock(block.body, nodeMap);
+  const condition = layoutNode(nodeMap.get(block.conditionId));
+  const bodyY = entry.height + 26;
+  const conditionY = isEmpty(body) ? bodyY : bodyY + body.height + SEQUENCE_GAP;
+  const backLaneX = -(Math.max(body.left, condition.left) + LOOP_GUTTER);
 
-  mergePositions(
-    positions,
-    header.positions,
-    REPEAT_LEFT_GUTTER + Math.round((contentWidth - header.width) / 2),
-    0,
-  );
+  const frame = emptyFrame();
+  place(frame, entry, 0, 0);
+  if (!isEmpty(body)) place(frame, body, 0, bodyY);
+  place(frame, condition, 0, conditionY);
+  frame.hints[block.backEdgeId] = { laneX: backLaneX };
 
-  const bodyY = header.height + LOOP_BODY_GAP;
-
-  if (bodyFrame.width > 0 || Object.keys(bodyFrame.positions).length > 0) {
-    mergePositions(
-      positions,
-      bodyFrame.positions,
-      REPEAT_LEFT_GUTTER + Math.round((contentWidth - bodyFrame.width) / 2),
-      bodyY,
-    );
-  }
-
-  const conditionY = bodyFrame.height > 0
-    ? bodyY + bodyFrame.height + REPEAT_CONDITION_GAP
-    : bodyY + REPEAT_CONDITION_GAP;
-  mergePositions(
-    positions,
-    condition.positions,
-    REPEAT_LEFT_GUTTER + Math.round((contentWidth - condition.width) / 2),
-    conditionY,
-  );
-
-  return {
-    width,
-    height: conditionY + condition.height,
-    positions,
-  };
+  frame.left = -backLaneX + 6;
+  frame.right = Math.max(body.right, condition.right);
+  // A tail below the diamond keeps its Sí/No exit label clear of whatever follows.
+  frame.height = conditionY + condition.height + 18;
+  return frame;
 }
 
-function layoutSwitch(
-  block: Extract<FlowLayoutBlock, { kind: 'switch' }>,
-  nodeMap: Map<string, FlowNode>,
-): LayoutFrame {
-  const header = layoutNode(nodeMap, block.switchId);
-  const laneFrames = block.branches.map((branch) => {
-    const branchNode = layoutNode(nodeMap, branch.branchId);
-    const body = layoutBlock(branch.body, nodeMap);
-    const lane = body.width > 0 || Object.keys(body.positions).length > 0
-      ? layoutSequence([{ kind: 'node', nodeId: branch.branchId }, branch.body!], nodeMap, 36)
-      : branchNode;
+function layoutSwitch(block: Extract<FlowLayoutBlock, { kind: 'switch' }>, nodeMap: Map<string, FlowNode>): Frame {
+  const header = layoutNode(nodeMap.get(block.switchId));
+  const busY = header.height + FAN_DROP;
+  const laneY = busY + FAN_LABEL_ROOM;
 
-    return {
-      frame: lane,
-      width: Math.max(lane.width, SWITCH_LANE_MIN_WIDTH),
-    };
+  // Lay the lanes out left to right, then centre them under the switch.
+  let cursor = 0;
+  const lanes = block.branches.map((branch) => {
+    const frame = layoutBlock(branch.body, nodeMap);
+    const labelHalf = estimateEdgeLabelWidth(branch.label) / 2 + 4;
+    const left = Math.max(frame.left, labelHalf, SWITCH_LANE_MIN);
+    const right = Math.max(frame.right, labelHalf, SWITCH_LANE_MIN);
+    const axis = cursor + left;
+    cursor = axis + right + LANE_GAP;
+    return { branch, frame, axis, left, right };
   });
 
-  if (laneFrames.length === 0) {
-    return {
-      width: header.width,
-      height: header.height,
-      positions: header.positions,
+  const n = lanes.length;
+  const shift = n % 2 === 1
+    ? -lanes[(n - 1) / 2].axis
+    : -(lanes[n / 2 - 1].axis + lanes[n / 2].axis) / 2;
+  const lanesBottom = laneY + Math.max(0, ...lanes.map((lane) => lane.frame.height));
+  const junctionY = lanesBottom + MERGE_GAP;
+
+  const frame = emptyFrame();
+  place(frame, header, 0, 0);
+  frame.left = header.left;
+  frame.right = header.right;
+  lanes.forEach((lane) => {
+    const x = lane.axis + shift;
+    place(frame, lane.frame, x, laneY);
+    frame.hints[lane.branch.edgeId] = {
+      laneX: x,
+      turnY: busY,
+      label: { x, y: busY + FAN_LABEL_ROOM / 2 },
     };
-  }
-
-  const laneSpan = laneFrames.reduce((sum, lane, index) => (
-    sum + lane.width + (index < laneFrames.length - 1 ? HORIZONTAL_GAP : 0)
-  ), 0);
-  const width = Math.max(header.width, laneSpan);
-  const laneStartX = Math.round((width - laneSpan) / 2);
-  const laneY = header.height + SEQUENCE_GAP;
-  const positions: Record<string, { x: number; y: number }> = {};
-  let currentX = laneStartX;
-
-  mergePositions(positions, header.positions, Math.round((width - header.width) / 2), 0);
-
-  laneFrames.forEach((lane, index) => {
-    mergePositions(
-      positions,
-      lane.frame.positions,
-      currentX + Math.round((lane.width - lane.frame.width) / 2),
-      laneY,
-    );
-    currentX += lane.width;
-    if (index < laneFrames.length - 1) {
-      currentX += HORIZONTAL_GAP;
-    }
+    frame.left = Math.max(frame.left, -(x - lane.left));
+    frame.right = Math.max(frame.right, x + lane.right);
   });
-
-  return {
-    width,
-    height: laneY + Math.max(...laneFrames.map((lane) => lane.frame.height)),
-    positions,
-  };
+  placeJunction(frame, block.junctionId, junctionY);
+  frame.height = block.junctionId ? junctionY + JUNCTION_SIZE : lanesBottom;
+  return frame;
 }

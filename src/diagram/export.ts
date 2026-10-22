@@ -1,18 +1,31 @@
-import { Position, getSmoothStepPath } from '@xyflow/react';
+// PNG/SVG export. Draws the same symbols (shapes.ts), the same wrapped and
+// highlighted labels (label.ts) and the same connector routes (route.ts) as
+// the live diagram, on a light, printable palette.
 
-import type { FlowEdge } from './model';
+import {
+  EDGE_LABEL_FONT_SIZE,
+  EXPORT_LABEL_FONT_FAMILY,
+  LABEL_FONT_SIZE,
+  LABEL_LINE_HEIGHT,
+  estimateEdgeLabelWidth,
+} from './label';
+import type { PositionedFlowEdge, PositionedFlowNode, PositionedFlowRoutineDiagram } from './layout';
+import type { FlowEdgeKind } from './model';
+import { polylinePath } from './route';
+import { ioMarkerPath, shapeGeometry, SHAPE_FOR_KIND } from './shapes';
 import {
   DIAGRAM_BACKGROUND_COLOR,
-  DIAGRAM_EDGE_DEFAULT_COLOR,
   DIAGRAM_GRID_COLOR,
   DIAGRAM_LABEL_COLOR,
+  LIGHT_TOKEN_COLORS,
   colorForFlowEdgeKind,
   paletteForFlowNodeKind,
+  tokenColor,
 } from './theme';
-import type { PositionedFlowNode, PositionedFlowRoutineDiagram } from './layout';
 
-const EXPORT_PADDING = 84;
+const EXPORT_PADDING = 48;
 const EXPORT_SCALE = 2;
+const EDGE_KINDS: FlowEdgeKind[] = ['default', 'branch', 'loop', 'merge'];
 
 function escapeXml(value: string): string {
   return value
@@ -23,214 +36,83 @@ function escapeXml(value: string): string {
     .replaceAll("'", '&apos;');
 }
 
-function wrapLabel(label: string, maxChars: number): string[] {
-  const words = label.split(/\s+/u);
-  const lines: string[] = [];
-  let current = '';
-
-  words.forEach((word) => {
-    const candidate = current ? `${current} ${word}` : word;
-    if (candidate.length <= maxChars || !current) {
-      current = candidate;
-      return;
-    }
-
-    lines.push(current);
-    current = word;
-  });
-
-  if (current) {
-    lines.push(current);
-  }
-
-  return lines;
-}
-
-function labelLines(node: PositionedFlowNode): string[] {
-  const maxChars = node.kind === 'decision'
-    ? 13
-    : node.kind === 'io'
-      ? 22
-      : Math.max(14, Math.floor((node.size.width - 36) / 8));
-  return wrapLabel(node.label, maxChars);
-}
-
-function nodeBounds(routine: PositionedFlowRoutineDiagram) {
+function diagramBounds(routine: PositionedFlowRoutineDiagram) {
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let maxY = Number.NEGATIVE_INFINITY;
+  const include = (x: number, y: number) => {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  };
 
   routine.nodes.forEach((node) => {
-    minX = Math.min(minX, node.position.x);
-    minY = Math.min(minY, node.position.y);
-    maxX = Math.max(maxX, node.position.x + node.size.width);
-    maxY = Math.max(maxY, node.position.y + node.size.height);
+    include(node.position.x, node.position.y);
+    include(node.position.x + node.size.width, node.position.y + node.size.height);
   });
+  routine.edges.forEach((edge) => edge.points.forEach((point) => include(point.x, point.y)));
 
-  return {
-    minX,
-    minY,
-    maxX,
-    maxY,
-  };
+  return { minX, minY, maxX, maxY };
 }
 
-function anchorForHandle(node: PositionedFlowNode, handle: string | undefined, mode: 'source' | 'target') {
-  const resolved = handle ?? (mode === 'source' ? 'bottom' : 'top');
-  const centerX = node.position.x + node.size.width / 2;
-  const centerY = node.position.y + node.size.height / 2;
-
-  switch (resolved) {
-    case 'left':
-    case 'left-in':
-      return { x: node.position.x, y: centerY, position: Position.Left };
-    case 'right':
-    case 'right-in':
-      return { x: node.position.x + node.size.width, y: centerY, position: Position.Right };
-    case 'top':
-      return { x: centerX, y: node.position.y, position: Position.Top };
-    case 'bottom':
-    default:
-      return { x: centerX, y: node.position.y + node.size.height, position: Position.Bottom };
-  }
-}
-
-function edgeMarkup(edge: FlowEdge, nodeMap: Map<string, PositionedFlowNode>, offsetX: number, offsetY: number): string {
-  const sourceNode = nodeMap.get(edge.source);
-  const targetNode = nodeMap.get(edge.target);
-  if (!sourceNode || !targetNode) {
-    return '';
-  }
-
-  const source = anchorForHandle(sourceNode, edge.sourceHandle, 'source');
-  const target = anchorForHandle(targetNode, edge.targetHandle, 'target');
-  const [path, labelX, labelY] = getSmoothStepPath({
-    sourceX: source.x + offsetX,
-    sourceY: source.y + offsetY,
-    sourcePosition: source.position,
-    targetX: target.x + offsetX,
-    targetY: target.y + offsetY,
-    targetPosition: target.position,
-    borderRadius: edge.kind === 'loop' ? 18 : edge.kind === 'branch' ? 16 : 14,
-    offset: edge.kind === 'loop' ? 36 : edge.kind === 'branch' ? 24 : 20,
-  });
-
+function edgeMarkup(edge: PositionedFlowEdge, offsetX: number, offsetY: number): string {
+  const points = edge.points.map((point) => ({ x: point.x + offsetX, y: point.y + offsetY }));
   const stroke = colorForFlowEdgeKind(edge.kind);
-  const labelMarkup = edge.label
-    ? `
-      <g transform="translate(${labelX}, ${labelY})">
-        <rect x="-28" y="-12" width="56" height="24" rx="12" fill="${edge.kind === 'loop' ? '#e7f6ef' : '#fff8ef'}" />
-        <text x="0" y="1" fill="${edge.kind === 'loop' ? '#1d5e4d' : DIAGRAM_LABEL_COLOR}" font-size="11" font-weight="700" text-anchor="middle" dominant-baseline="middle">${escapeXml(edge.label)}</text>
-      </g>
-    `
-    : '';
+  const path = `<path d="${polylinePath(points)}" fill="none" marker-end="url(#arrow-${edge.kind})" stroke="${stroke}" stroke-linecap="round" stroke-linejoin="round" stroke-width="${edge.kind === 'loop' ? 2 : 1.6}" />`;
 
-  return `
-    <g>
-      <path
-        d="${path}"
-        fill="none"
-        marker-end="url(#arrow-${edge.kind})"
-        stroke="${stroke}"
-        stroke-dasharray="${edge.kind === 'loop' ? '10 8' : ''}"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        stroke-width="${edge.kind === 'loop' ? '2.2' : '1.8'}"
-      />
-      ${labelMarkup}
-    </g>
-  `;
+  if (!edge.label || !edge.labelPosition) return path;
+
+  const width = estimateEdgeLabelWidth(edge.label);
+  const x = edge.labelPosition.x + offsetX;
+  const y = edge.labelPosition.y + offsetY;
+  return `${path}<g transform="translate(${x}, ${y})"><rect x="${-width / 2}" y="-10" width="${width}" height="20" rx="10" fill="${DIAGRAM_BACKGROUND_COLOR}" stroke="${stroke}" stroke-opacity="0.45" /><text x="0" y="0.5" fill="${edge.kind === 'loop' ? '#1d5e4d' : DIAGRAM_LABEL_COLOR}" font-family="Helvetica Neue, Arial, sans-serif" font-size="${EDGE_LABEL_FONT_SIZE}" font-weight="700" text-anchor="middle" dominant-baseline="middle">${escapeXml(edge.label)}</text></g>`;
 }
 
-function nodeShapeMarkup(node: PositionedFlowNode, x: number, y: number) {
+function nodeMarkup(node: PositionedFlowNode, x: number, y: number): string {
   const palette = paletteForFlowNodeKind(node.kind);
-  const width = node.size.width;
-  const height = node.size.height;
-  const lines = labelLines(node);
-  const lineHeight = 18;
-  const startY = y + height / 2 - ((lines.length - 1) * lineHeight) / 2;
-  const textMarkup = lines
-    .map(
-      (line, index) => `
-        <tspan x="${x + width / 2}" y="${startY + index * lineHeight}">${escapeXml(line)}</tspan>
-      `,
-    )
-    .join('');
+  const { width, height } = node.size;
+  const shape = shapeGeometry(SHAPE_FOR_KIND[node.kind], width, height, x, y);
+  const parts = [
+    `<path d="${shape.outline}" fill="${palette.fill}" stroke="${palette.stroke}" stroke-width="${node.kind === 'junction' ? 0 : 1.8}" />`,
+  ];
+  if (shape.details) {
+    parts.push(`<path d="${shape.details}" fill="none" stroke="${palette.stroke}" stroke-width="1.6" />`);
+  }
+  if (node.kind === 'input' || node.kind === 'output') {
+    parts.push(`<path d="${ioMarkerPath(node.kind, width, height, x, y)}" fill="none" stroke="${palette.stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />`);
+  }
 
-  const shape = (() => {
-    switch (node.kind) {
-      case 'decision':
-        return `<polygon points="${x + width / 2},${y} ${x + width},${y + height / 2} ${x + width / 2},${y + height} ${x},${y + height / 2}" fill="${palette.fill}" stroke="${palette.stroke}" stroke-width="2" />`;
-      case 'io':
-        return `<polygon points="${x + 24},${y} ${x + width},${y} ${x + width - 24},${y + height} ${x},${y + height}" fill="${palette.fill}" stroke="${palette.stroke}" stroke-width="2" />`;
-      case 'switch':
-        return `<polygon points="${x + 24},${y} ${x + width - 24},${y} ${x + width},${y + height / 2} ${x + width - 24},${y + height} ${x + 24},${y + height} ${x},${y + height / 2}" fill="${palette.fill}" stroke="${palette.stroke}" stroke-width="2" />`;
-      case 'branch':
-        return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="20" fill="${palette.fill}" stroke="${palette.stroke}" stroke-width="2" stroke-dasharray="${palette.dashArray ?? ''}" />`;
-      case 'loop':
-        return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="24" fill="${palette.fill}" stroke="${palette.stroke}" stroke-width="2" />`;
-      case 'terminator':
-        return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${height / 2}" fill="${palette.fill}" stroke="${palette.stroke}" stroke-width="2" />`;
-      case 'process':
-      default:
-        return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="18" fill="${palette.fill}" stroke="${palette.stroke}" stroke-width="2" />`;
-    }
-  })();
+  const firstBaseline = y + height / 2 - ((node.lines.length - 1) * LABEL_LINE_HEIGHT) / 2;
+  node.lines.forEach((line, index) => {
+    const spans = line
+      .map((token) => `<tspan fill="${tokenColor(token.type, palette, LIGHT_TOKEN_COLORS)}"${token.type === 'keyword' ? ' font-weight="600"' : ''}>${escapeXml(token.text)}</tspan>`)
+      .join('');
+    parts.push(`<text x="${x + width / 2}" y="${firstBaseline + index * LABEL_LINE_HEIGHT}" xml:space="preserve" font-family='${EXPORT_LABEL_FONT_FAMILY}' font-size="${LABEL_FONT_SIZE}" text-anchor="middle" dominant-baseline="central">${spans}</text>`);
+  });
 
-  return `
-    <g>
-      ${shape}
-      <text fill="${palette.text}" font-family="Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700" text-anchor="middle" dominant-baseline="middle">
-        ${textMarkup}
-      </text>
-    </g>
-  `;
+  return `<g>${node.title ? `<title>${escapeXml(node.title)}</title>` : ''}${parts.join('')}</g>`;
 }
 
 function buildDiagramSvg(routine: PositionedFlowRoutineDiagram) {
-  const bounds = nodeBounds(routine);
-  const width = Math.max(640, Math.ceil(bounds.maxX - bounds.minX + EXPORT_PADDING * 2));
-  const height = Math.max(480, Math.ceil(bounds.maxY - bounds.minY + EXPORT_PADDING * 2));
+  const bounds = diagramBounds(routine);
+  const width = Math.ceil(bounds.maxX - bounds.minX + EXPORT_PADDING * 2);
+  const height = Math.ceil(bounds.maxY - bounds.minY + EXPORT_PADDING * 2);
   const offsetX = EXPORT_PADDING - bounds.minX;
   const offsetY = EXPORT_PADDING - bounds.minY;
-  const nodeMap = new Map(routine.nodes.map((node) => [node.id, node]));
 
-  const edges = routine.edges
-    .map((edge) => edgeMarkup(edge, nodeMap, offsetX, offsetY))
-    .join('');
+  const markers = EDGE_KINDS.map((kind) => (
+    `<marker id="arrow-${kind}" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0.5 1 L9 5 L0.5 9 Z" fill="${colorForFlowEdgeKind(kind)}" /></marker>`
+  )).join('');
+  const edges = routine.edges.map((edge) => edgeMarkup(edge, offsetX, offsetY)).join('');
   const nodes = routine.nodes
-    .map((node) => nodeShapeMarkup(node, node.position.x + offsetX, node.position.y + offsetY))
+    .map((node) => nodeMarkup(node, node.position.x + offsetX, node.position.y + offsetY))
     .join('');
 
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none">
-      <defs>
-        <pattern id="diagram-grid" width="22" height="22" patternUnits="userSpaceOnUse">
-          <circle cx="1.1" cy="1.1" r="1" fill="${DIAGRAM_GRID_COLOR}" />
-        </pattern>
-        <marker id="arrow-default" markerWidth="10" markerHeight="10" refX="7.5" refY="5" orient="auto">
-          <path d="M1 1 L8 5 L1 9 Z" fill="${DIAGRAM_EDGE_DEFAULT_COLOR}" />
-        </marker>
-        <marker id="arrow-loop" markerWidth="10" markerHeight="10" refX="7.5" refY="5" orient="auto">
-          <path d="M1 1 L8 5 L1 9 Z" fill="#2f816b" />
-        </marker>
-        <marker id="arrow-branch" markerWidth="10" markerHeight="10" refX="7.5" refY="5" orient="auto">
-          <path d="M1 1 L8 5 L1 9 Z" fill="#8c7251" />
-        </marker>
-      </defs>
-      <rect width="${width}" height="${height}" fill="${DIAGRAM_BACKGROUND_COLOR}" />
-      <rect width="${width}" height="${height}" fill="url(#diagram-grid)" />
-      ${edges}
-      ${nodes}
-    </svg>
-  `;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none"><title>${escapeXml(routine.label)}</title><defs><pattern id="diagram-grid" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1.1" cy="1.1" r="1" fill="${DIAGRAM_GRID_COLOR}" /></pattern>${markers}</defs><rect width="${width}" height="${height}" fill="${DIAGRAM_BACKGROUND_COLOR}" /><rect width="${width}" height="${height}" fill="url(#diagram-grid)" />${edges}${nodes}</svg>`;
 
-  return {
-    width,
-    height,
-    svg,
-  };
+  return { width, height, svg };
 }
 
 async function svgToPngDataUrl(svg: string, width: number, height: number) {
