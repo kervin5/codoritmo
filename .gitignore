@@ -46,3 +46,6 @@ tmp
 .kiro
 .vscode
 .swc
+# Claude Code: per-branch working copies and local settings
+.claude/worktrees/
+.claude/settings.local.json
