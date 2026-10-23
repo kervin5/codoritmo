@@ -4,6 +4,8 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { Locale } from '@/src/i18n/config';
 import type { Dictionary } from '@/src/i18n/types';
 import { examplesIndexPath } from '@/src/lib/example-urls';
+import { featureIds, featurePath, sectionPath, type FeatureId, type SectionKind } from '@/src/seo/sections';
+import { officialPseintUrl } from '@/src/seo/site';
 import { GitHubMark, LogoMark, REPOSITORY_URL } from '@/src/components/brand/logo-mark';
 
 import motionStyles from './motion.module.css';
@@ -14,9 +16,57 @@ interface ExamplesShellProps {
   locale: Locale;
   /** The same page in the other locale (slugs differ per language). */
   alternateHref: string;
-  /** True on the index itself, so its header link is marked as the current page. */
+  /** True on the examples index itself, so its header link is marked as the current page. */
   isIndex?: boolean;
+  /** The section this page belongs to, highlighted in the header. */
+  section?: SectionKind;
 }
+
+// Navigation copy for the public pages' header and footer.
+const NAV: Record<Locale, { sections: Record<SectionKind, string>; features: Record<FeatureId, string>; learn: string; tools: string; project: string; source: string; pseint: string }> = {
+  es: {
+    sections: { examples: 'Ejemplos', reference: 'Referencia', profiles: 'Perfiles' },
+    features: {
+      'pseint-online': 'PSeInt online',
+      alternative: 'Alternativa a PSeInt',
+      flowchart: 'Diagramas de flujo',
+      'desk-check': 'Prueba de escritorio',
+      'to-python': 'Pseudocódigo a Python',
+      'to-c': 'Pseudocódigo a C',
+      'to-java': 'Pseudocódigo a Java',
+      blocks: 'Programar con bloques',
+    },
+    learn: 'Aprende',
+    tools: 'Herramientas',
+    project: 'Proyecto',
+    source: 'Código fuente',
+    pseint: 'PSeInt oficial',
+  },
+  en: {
+    sections: { examples: 'Examples', reference: 'Reference', profiles: 'Profiles' },
+    features: {
+      'pseint-online': 'PSeInt online',
+      alternative: 'PSeInt alternative',
+      flowchart: 'Flowchart maker',
+      'desk-check': 'Trace tables',
+      'to-python': 'Pseudocode to Python',
+      'to-c': 'Pseudocode to C',
+      'to-java': 'Pseudocode to Java',
+      blocks: 'Block-based programming',
+    },
+    learn: 'Learn',
+    tools: 'Tools',
+    project: 'Project',
+    source: 'Source code',
+    pseint: 'Official PSeInt',
+  },
+};
+
+const sectionLabelsFor = (locale: Locale) => (['examples', 'reference', 'profiles'] as SectionKind[]).map((kind) => ({
+  kind,
+  href: kind === 'examples' ? examplesIndexPath(locale) : sectionPath(locale, kind),
+  label: NAV[locale].sections[kind],
+}));
 
 // Same dark tokens as the about page, plus a few for code and cards.
 const darkTokens = {
@@ -31,9 +81,11 @@ const darkTokens = {
   '--panel-raised': '#1F2427',
 } as CSSProperties;
 
-export default function ExamplesShell({ children, dictionary, locale, alternateHref, isIndex = false }: ExamplesShellProps) {
+export default function ExamplesShell({ children, dictionary, locale, alternateHref, isIndex = false, section }: ExamplesShellProps) {
   const text = dictionary.examplePages;
   const otherLocale: Locale = locale === 'es' ? 'en' : 'es';
+  const nav = NAV[locale];
+  const current: SectionKind | undefined = section ?? (isIndex ? 'examples' : undefined);
 
   return (
     <div
@@ -51,14 +103,20 @@ export default function ExamplesShell({ children, dictionary, locale, alternateH
           <LogoMark className="shrink-0" />
           <span className="hidden sm:inline">{dictionary.metadata.siteName}</span>
         </Link>
-        <span aria-hidden="true" className="text-white/25">/</span>
-        <Link
-          aria-current={isIndex ? 'page' : undefined}
-          className="truncate text-[13px] text-white/50 hover:text-white/80"
-          href={examplesIndexPath(locale)}
-        >
-          {dictionary.appShell.examples}
-        </Link>
+        <nav aria-label={nav.learn} className="ml-1 flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
+          {sectionLabelsFor(locale).map(({ kind, href, label }) => (
+            <Link
+              key={kind}
+              aria-current={current === kind ? (isIndex ? 'page' : 'true') : undefined}
+              className={`shrink-0 rounded-[6px] px-2 py-0.5 text-[13px] transition-colors ${
+                current === kind ? 'bg-white/[0.08] text-white' : 'text-white/55 hover:text-white/85'
+              }`}
+              href={href}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
         <Link
           className="ml-auto shrink-0 text-[12px] text-white/55 hover:text-white"
           href={alternateHref}
@@ -92,6 +150,52 @@ export default function ExamplesShell({ children, dictionary, locale, alternateH
         {children}
       </div>
       <footer className="border-t border-[var(--line)] px-4 py-10 sm:px-8">
+        <nav aria-label={nav.project} className="mx-auto mb-10 grid max-w-[1080px] grid-cols-2 gap-8 text-sm sm:grid-cols-3">
+          <div>
+            <p className="font-medium text-white/85">{nav.learn}</p>
+            <ul className="mt-3 space-y-2 text-[var(--muted)]">
+              {sectionLabelsFor(locale).map(({ kind, href, label }) => (
+                <li key={kind}>
+                  <Link className="hover:text-white" href={href}>
+                    {label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="font-medium text-white/85">{nav.tools}</p>
+            <ul className="mt-3 space-y-2 text-[var(--muted)]">
+              {featureIds.map((id) => (
+                <li key={id}>
+                  <Link className="hover:text-white" href={featurePath(locale, id)}>
+                    {nav.features[id]}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="font-medium text-white/85">{nav.project}</p>
+            <ul className="mt-3 space-y-2 text-[var(--muted)]">
+              <li>
+                <Link className="hover:text-white" href={`/${locale}/about`}>
+                  {dictionary.appShell.about}
+                </Link>
+              </li>
+              <li>
+                <a className="hover:text-white" href={REPOSITORY_URL} rel="noopener noreferrer" target="_blank">
+                  {nav.source}
+                </a>
+              </li>
+              <li>
+                <a className="hover:text-white" href={officialPseintUrl} rel="noopener noreferrer" target="_blank">
+                  {nav.pseint}
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
         <div className="mx-auto flex max-w-[1080px] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-base font-semibold">{text.footerCta}</p>
