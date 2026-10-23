@@ -81,7 +81,10 @@ export function fitComplexity(points: { n: number; y: number }[]): ComplexityFit
         const predicted = a * x + b;
         return sum + ((predicted - ys[i]) / Math.max(1, ys[i])) ** 2;
       }, 0) / xs.length;
-    return { cls, error: Math.sqrt(error) };
+    // How much of the variation the curve explains (R²): what "Ajuste/Fit" reports.
+    const residual = xs.reduce((sum, x, i) => sum + (a * x + b - ys[i]) ** 2, 0);
+    const total = ys.reduce((sum, y) => sum + (y - meanY) ** 2, 0);
+    return { cls, error: Math.sqrt(error), r2: total > 0 ? 1 - residual / total : 1 };
   });
 
   scores.sort((p, q) => p.error - q.error);
@@ -92,7 +95,7 @@ export function fitComplexity(points: { n: number; y: number }[]): ComplexityFit
       best = candidate;
     }
   }
-  return { best: best.cls, confidence: Math.max(0, Math.min(1, 1 - best.error * 4)) };
+  return { best: best.cls, confidence: Math.max(0, Math.min(1, best.r2)) };
 }
 
 /** Deterministic random numbers (mulberry32) so measurements repeat exactly. */

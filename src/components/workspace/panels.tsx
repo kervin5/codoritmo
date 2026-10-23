@@ -3,12 +3,17 @@
 // Panel contents for the workspace: console, desk check, and code translation.
 
 import { Check, Copy, CornerDownLeft } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useAnimate, useReducedMotion } from "motion/react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { generateExport, Parser, type EngineSettings, type ExportLanguage } from "@/src/engine";
 import type { Diagnostic, VariableSnapshot } from "@/src/engine/types";
 import { formatDiagnostic } from "@/src/i18n/diagnostics";
 import type { Dictionary } from "@/src/i18n/types";
+import { duration, easeOut, spring } from "@/src/lib/motion";
+import consoleMotion from "./motion/console-motion.module.css";
+import { useFreshFrom } from "./motion/panel-fresh";
+import panelMotion from "./motion/panel-motion.module.css";
 import type { Player } from "./use-player";
 
 export function formatValue(value: VariableSnapshot["value"]): string {
@@ -27,62 +32,116 @@ function runtimeErrorText(diagnostic: Diagnostic, dictionary: Dictionary): strin
   return `${prefix[0].toUpperCase()}${prefix.slice(1)}: ${formatDiagnostic(diagnostic, dictionary)}`;
 }
 
+/** Where the typed answer was on screen when Enter was pressed, so its echo can fly from there. */
+interface AnswerFlight {
+  text: string;
+  /** Console length at submit time: the echo is the first "in" line at or after it. */
+  after: number;
+  /** Where the typed text started and its top edge, in viewport pixels. */
+  left: number;
+  top: number;
+}
+
+/** The echoed answer: settles into the console from where it was typed. */
+function EchoLine({ text, flight, fresh }: { text: string; flight: AnswerFlight | null; fresh: boolean }) {
+  const [scope, animate] = useAnimate<HTMLSpanElement>();
+  const reduceMotion = useReducedMotion();
+  useLayoutEffect(() => {
+    if (!flight || !scope.current) return;
+    const rect = scope.current.getBoundingClientRect();
+    // The echo pill pads its text by 12px; line the text up with where it was typed.
+    const dx = flight.left - 12 - rect.left;
+    const dy = flight.top - rect.top;
+    if (reduceMotion || (Math.abs(dx) < 1 && Math.abs(dy) < 1)) return;
+    const controls = animate(scope.current, { x: [dx, 0], y: [dy, 0], scale: [1.06, 1] }, spring.smooth);
+    return () => controls.stop();
+    // Fly once, when the echo first appears.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div className={`flex justify-end ${fresh && !flight ? consoleMotion.lineEnter : ""}`}>
+      <span ref={scope} className="my-0.5 inline-block rounded-full bg-[#86F0C4]/15 px-3 text-[#A9F5D5]">
+        {text}
+      </span>
+    </div>
+  );
+}
+
 export function ConsolePanel({ player, dictionary }: { player: Player; dictionary: Dictionary }) {
   const t = dictionary.studio;
   const [draft, setDraft] = useState("");
+  const [flight, setFlight] = useState<AnswerFlight | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const asking = player.status === "input" && !player.scrubbing;
+  const lines = player.consoleLines;
+  const freshFrom = useFreshFrom(lines.length);
+  const echoIndex = flight ? lines.findIndex((line, index) => index >= flight.after && line.kind === "in") : -1;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "nearest" });
     if (asking) inputRef.current?.focus();
-  }, [player.consoleLines.length, asking]);
+  }, [lines.length, asking]);
 
   return (
-    <div className="workspace-scroll h-full overflow-auto px-5 py-4 font-mono text-[14px] leading-7 text-[#DCE3E0]">
-      {player.consoleLines.length === 0 && !asking && <p className="font-sans text-[13px] text-[#5E6A66]">{t.consoleEmpty}</p>}
-      {player.consoleLines.map((line, index) =>
-        line.kind === "in" ? (
-          <div key={index} className="flex justify-end">
-            <span className="my-0.5 rounded-full bg-[#86F0C4]/15 px-3 text-[#A9F5D5]">{line.text}</span>
-          </div>
+    <div className="workspace-scroll relative h-full overflow-auto px-5 py-4 font-mono text-[14px] leading-7 text-[#DCE3E0]">
+      {lines.length === 0 && !asking && <p className="font-sans text-[13px] text-[#5E6A66]">{t.consoleEmpty}</p>}
+      {lines.map((line, index) => {
+        const fresh = index >= freshFrom;
+        return line.kind === "in" ? (
+          <EchoLine key={index} flight={index === echoIndex ? flight : null} fresh={fresh} text={line.text} />
         ) : line.kind === "sys" ? (
-          <div key={index} className="mt-1 font-sans text-[12px] text-[#5E6A66]">
+          <div key={index} className={`mt-1 font-sans text-[12px] text-[#5E6A66] ${fresh ? consoleMotion.lineEnter : ""}`}>
             {line.text}
           </div>
         ) : line.kind === "err" ? (
-          <div key={index} className="mt-2 rounded-lg bg-[#F08A6C]/10 px-3 py-2 font-sans text-[13px] text-[#F5A68E]">
+          <div
+            key={index}
+            className={`mt-2 rounded-lg bg-[#F08A6C]/10 px-3 py-2 font-sans text-[13px] text-[#F5A68E] ${consoleMotion.error} ${
+              fresh ? `${consoleMotion.lineEnter} ${consoleMotion.errorEnter}` : ""
+            }`}
+          >
             {line.diagnostic ? runtimeErrorText(line.diagnostic, dictionary) : line.text}
           </div>
         ) : (
-          <div key={index} className="whitespace-pre-wrap">
-            {line.text || " "}
+          <div key={index} className={`whitespace-pre-wrap ${fresh ? consoleMotion.lineEnter : ""}`}>
+            {line.text || " "}
           </div>
-        )
-      )}
-      {asking && (
-        <form
-          className="mt-1 flex justify-end"
-          onSubmit={(event) => {
-            event.preventDefault();
-            player.submitInput(draft);
-            setDraft("");
-          }}
-        >
-          <div className="flex items-center gap-2 rounded-full bg-[#86F0C4]/10 px-3 py-0.5 shadow-[0_0_24px_rgba(134,240,196,0.18)] ring-1 ring-[#86F0C4]/60">
-            <input
-              ref={inputRef}
-              aria-label={t.inputPlaceholder}
-              className="w-44 bg-transparent font-mono text-[#EEF3F0] outline-none placeholder:text-[#5E8A78]"
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder={t.inputPlaceholder}
-              value={draft}
-            />
-            <CornerDownLeft className="text-[#86F0C4]" size={13} />
-          </div>
-        </form>
-      )}
+        );
+      })}
+      <AnimatePresence initial={false} mode="popLayout">
+        {asking && (
+          <motion.form
+            key="answer"
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="mt-1 flex origin-right justify-end"
+            exit={{ opacity: 0, scale: 0.97, transition: { duration: duration.fast, ease: easeOut } }}
+            initial={{ opacity: 0, y: 10, scale: 0.94 }}
+            onSubmit={(event) => {
+              event.preventDefault();
+              const box = inputRef.current?.getBoundingClientRect();
+              if (box) setFlight({ text: draft, after: lines.length, left: box.left, top: box.top });
+              player.submitInput(draft);
+              setDraft("");
+            }}
+            transition={spring.bouncy}
+          >
+            <div
+              className={`flex items-center gap-2 rounded-full bg-[#86F0C4]/10 px-3 py-0.5 ring-1 ring-[#86F0C4]/35 ${consoleMotion.waiting}`}
+            >
+              <input
+                ref={inputRef}
+                aria-label={t.inputPlaceholder}
+                className="w-44 bg-transparent font-mono text-[#EEF3F0] caret-[#86F0C4] outline-none placeholder:text-[#5E8A78]"
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder={t.inputPlaceholder}
+                value={draft}
+              />
+              <CornerDownLeft className="text-[#86F0C4]" size={13} />
+            </div>
+          </motion.form>
+        )}
+      </AnimatePresence>
       <div ref={endRef} />
     </div>
   );
@@ -112,6 +171,7 @@ export function DeskCheckPanel({
     return seen;
   }, [trace]);
   const endRef = useRef<HTMLTableRowElement>(null);
+  const freshFrom = useFreshFrom(trace.length);
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "nearest" });
   }, [trace.length]);
@@ -136,11 +196,14 @@ export function DeskCheckPanel({
           {trace.map((row, index) => {
             const previous = trace[index - 1];
             const last = index === trace.length - 1;
+            const fresh = index >= freshFrom && index > 0;
             return (
               <tr
                 key={row.step}
                 ref={last ? endRef : undefined}
-                className={`cursor-default border-b border-white/[0.06] ${last ? "bg-[#1F7A5C]/25" : "hover:bg-white/[0.03]"}`}
+                className={`cursor-default border-b border-white/[0.06] transition-colors duration-300 ${last ? "bg-[#1F7A5C]/25" : "hover:bg-white/[0.03]"} ${
+                  fresh ? panelMotion.rowEnter : ""
+                }`}
                 onClick={() => onPickStep?.(row.step)}
               >
                 <td className="px-3 py-1.5 text-white/40">{row.step + 1}</td>
@@ -149,9 +212,20 @@ export function DeskCheckPanel({
                   const variable = row.variables.find((v) => v.name === name);
                   const before = previous?.variables.find((v) => v.name === name);
                   const changed = variable?.initialized && JSON.stringify(variable.value) !== JSON.stringify(before?.value);
+                  const text = variable?.initialized ? formatValue(variable.value) : "";
+                  // A freshly written value rolls in like an odometer, pushing the old one up and out.
+                  const roll = changed && fresh;
                   return (
                     <td key={name} className={`px-3 py-1.5 ${changed ? "font-semibold text-[#86F0C4]" : ""}`}>
-                      {variable?.initialized ? formatValue(variable.value) : ""}
+                      {roll ? (
+                        <span className={panelMotion.glow}>
+                          <span className={panelMotion.roll} data-old={before?.initialized ? formatValue(before.value) : ""}>
+                            <span className={`font-semibold text-[#86F0C4] ${panelMotion.rollValue}`}>{text}</span>
+                          </span>
+                        </span>
+                      ) : (
+                        text
+                      )}
                     </td>
                   );
                 })}

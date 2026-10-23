@@ -6,7 +6,8 @@
 // for comparison. Theory from the example library is shown when known.
 
 import { Gauge, Square } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { animate, AnimatePresence, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import {
   examplePrograms,
@@ -22,12 +23,36 @@ import {
 } from "@/src/engine";
 import { formatMessage } from "@/src/i18n/format";
 import type { Dictionary } from "@/src/i18n/types";
+import { duration, easeOut, spring, stagger } from "@/src/lib/motion";
 
 type Measure = "time" | "space";
 
 const theoryOf = (example: ExampleProgram | undefined) => example?.complexity;
 
 const COLORS = { main: "#86F0C4", fit: "#86F0C4", compare: "#E8BE8C" };
+
+/** A measured point; ghosts are the previous measurement, shown until re-measuring replaces them. */
+type ChartSample = ComplexitySample & { ghost?: boolean };
+
+/** A number that counts up to its value (and between values when re-measured). */
+function CountUp({ value }: { value: number }) {
+  const reduceMotion = useReducedMotion();
+  const count = useMotionValue(value);
+  const text = useTransform(count, (v) => String(Math.round(v)));
+  const shown = useRef(false);
+  useEffect(() => {
+    if (reduceMotion) {
+      count.set(value);
+      return;
+    }
+    // The first appearance counts up from zero; later changes count from where it was.
+    if (!shown.current) count.set(0);
+    shown.current = true;
+    const controls = animate(count, value, { duration: 0.7, ease: easeOut });
+    return () => controls.stop();
+  }, [count, reduceMotion, value]);
+  return <motion.span>{text}</motion.span>;
+}
 
 function Chart({
   samples,
@@ -36,12 +61,13 @@ function Chart({
   fitClass,
   labels,
 }: {
-  samples: ComplexitySample[];
+  samples: ChartSample[];
   compare: ComplexitySample[] | null;
   measure: Measure;
   fitClass: string | null;
   labels: { n: string; y: string };
 }) {
+  const clipId = useId();
   const value = measure === "time" ? timeOf : spaceOf;
   const all = [...samples, ...(compare ?? [])];
   if (all.length === 0) return null;
@@ -55,7 +81,8 @@ function Chart({
   const path = (points: ComplexitySample[]) =>
     points.map((s, i) => `${i ? "L" : "M"}${x(s.n).toFixed(1)},${y(value(s.metrics)).toFixed(1)}`).join(" ");
 
-  // Fitted curve scaled through the last measured point.
+  // Fitted curve scaled through the last measured point. Always 41 points, so a
+  // new fit (or switching time/space) morphs the curve rather than redrawing it.
   let fitPath = "";
   if (fitClass && fitClass in GROWTH && samples.length >= 3) {
     const g = GROWTH[fitClass as keyof typeof GROWTH];
@@ -70,8 +97,28 @@ function Chart({
   }
 
   const ticks = [0, 0.25, 0.5, 0.75, 1];
+  const draw = { pathLength: { duration: 0.9, ease: easeOut }, d: spring.smooth };
+  const point = (delay: number) => ({
+    default: spring.smooth,
+    scale: { ...spring.bouncy, delay },
+    opacity: { duration: duration.fast, delay },
+  });
   return (
     <svg className="w-full max-w-[640px]" role="img" viewBox={`0 0 ${W} ${H}`}>
+      <defs>
+        <clipPath id={clipId}>
+          {/* Wipes the fitted curve in left to right whenever the fitted class changes. */}
+          <motion.rect
+            key={fitClass ?? ""}
+            animate={{ width: W }}
+            height={H}
+            initial={{ width: 0 }}
+            transition={{ duration: 0.8, ease: easeOut }}
+            x={0}
+            y={0}
+          />
+        </clipPath>
+      </defs>
       {ticks.map((f) => (
         <g key={f}>
           <line stroke="rgba(255,255,255,0.06)" x1={pad.l} x2={W - pad.r} y1={y(maxY * f)} y2={y(maxY * f)} />
@@ -89,20 +136,74 @@ function Chart({
       <text fill="rgba(255,255,255,0.45)" fontSize="10" x={4} y={10}>
         {labels.y}
       </text>
-      {fitPath && <path d={fitPath} fill="none" stroke={COLORS.fit} strokeDasharray="4 4" strokeOpacity="0.45" strokeWidth="1.5" />}
+      {fitPath && (
+        <g clipPath={`url(#${clipId})`}>
+          <motion.path
+            animate={{ d: fitPath }}
+            fill="none"
+            initial={false}
+            stroke={COLORS.fit}
+            strokeDasharray="4 4"
+            strokeOpacity="0.45"
+            strokeWidth="1.5"
+            transition={spring.smooth}
+          />
+        </g>
+      )}
       {compare && compare.length > 0 && (
         <>
-          <path d={path(compare)} fill="none" stroke={COLORS.compare} strokeWidth="2" />
-          {compare.map((s) => (
-            <circle key={`c${s.n}`} cx={x(s.n)} cy={y(value(s.metrics))} fill={COLORS.compare} r="3" />
+          <motion.path
+            animate={{ d: path(compare), pathLength: 1 }}
+            fill="none"
+            initial={{ d: path(compare), pathLength: 0 }}
+            stroke={COLORS.compare}
+            strokeWidth="2"
+            transition={draw}
+          />
+          {compare.map((s, i) => (
+            <motion.circle
+              key={`c${s.n}`}
+              animate={{ cx: x(s.n), cy: y(value(s.metrics)), scale: 1, opacity: 1 }}
+              fill={COLORS.compare}
+              initial={{ cx: x(s.n), cy: y(value(s.metrics)), scale: 0, opacity: 0 }}
+              r="3"
+              transition={point(stagger(i, 0.05, 0.6))}
+            />
           ))}
         </>
       )}
-      <path d={path(samples)} fill="none" stroke={COLORS.main} strokeWidth="2" />
+      <motion.path
+        animate={{ d: path(samples), pathLength: 1 }}
+        fill="none"
+        initial={{ d: path(samples), pathLength: 0 }}
+        stroke={COLORS.main}
+        strokeWidth="2"
+        transition={draw}
+      />
+      {/* Measured points stream in one at a time, so each pops as it arrives. */}
       {samples.map((s) => (
-        <circle key={s.n} cx={x(s.n)} cy={y(value(s.metrics))} fill={COLORS.main} r="3" />
+        <motion.circle
+          key={s.n}
+          animate={{ cx: x(s.n), cy: y(value(s.metrics)), scale: 1, opacity: s.ghost ? 0.3 : 1 }}
+          fill={COLORS.main}
+          initial={{ cx: x(s.n), cy: y(value(s.metrics)), scale: 0, opacity: 0 }}
+          r="3"
+          transition={point(0)}
+        />
       ))}
     </svg>
+  );
+}
+
+/** "Ajuste: 92%" with the number counting up. */
+function Confidence({ template, pct }: { template: string; pct: number }) {
+  const [before, after = ""] = formatMessage(template, { pct: "\u0000" }).split("\u0000");
+  return (
+    <>
+      {before}
+      <CountUp value={pct} />
+      {after}
+    </>
   );
 }
 
@@ -126,6 +227,8 @@ export function ComplexityPanel({
   const [compareReport, setCompareReport] = useState<ComplexityReport | null>(null);
   const stopRef = useRef(false);
   const [measuredSource, setMeasuredSource] = useState<string | null>(null);
+  /** The last results, kept on screen while re-measuring so the chart and cards morph instead of flashing. */
+  const [previous, setPrevious] = useState<{ report: ComplexityReport; compare: ComplexityReport | null } | null>(null);
 
   const comparable = useMemo(() => examplePrograms.filter((e) => theoryOf(e)), []);
   const theory = theoryOf(examplePrograms.find((e) => e.id === exampleId));
@@ -134,6 +237,7 @@ export function ComplexityPanel({
   const run = async () => {
     stopRef.current = false;
     setRunning(true);
+    setPrevious(report ? { report, compare: compareReport } : null);
     setProgress([]);
     setReport(null);
     setCompareReport(null);
@@ -155,7 +259,16 @@ export function ComplexityPanel({
   };
 
   const samples = report?.samples ?? progress;
-  const fit = report ? (measure === "time" ? report.time : report.space) : null;
+  const held = running ? previous : null;
+  const shownReport = report ?? held?.report ?? null;
+  const shownCompare = compareReport ?? held?.compare ?? null;
+  // While re-measuring, old points stay (faded) until their n is measured again.
+  const chartSamples: ChartSample[] = held
+    ? [...samples, ...held.report.samples.filter((old) => !samples.some((s) => s.n === old.n)).map((old) => ({ ...old, ghost: true }))].sort(
+        (a, b) => a.n - b.n
+      )
+    : samples;
+  const fit = shownReport ? (measure === "time" ? shownReport.time : shownReport.space) : null;
   const titleOf = (e: ExampleProgram) => dictionary.examples[e.id]?.label ?? e.label;
 
   return (
@@ -223,17 +336,17 @@ export function ComplexityPanel({
       {report?.issue === "too-slow" && <p className="mt-3 text-[#E8C47A]">{t.tooSlow}</p>}
       {stale && <p className="mt-3 text-[12px] text-white/45">{t.stale}</p>}
 
-      {samples.length > 0 && (
+      {chartSamples.length > 0 && (
         <div className="mt-3 flex flex-wrap items-start gap-6">
           <div className="min-w-[280px] flex-1">
             <Chart
-              compare={compareReport?.samples ?? null}
+              compare={shownCompare?.samples ?? null}
               fitClass={fit?.best ?? null}
               labels={{ n: "n", y: measure === "time" ? t.yTime : t.ySpace }}
               measure={measure}
-              samples={samples}
+              samples={chartSamples}
             />
-            {compareReport && (
+            {shownCompare && (
               <div className="mt-1 flex gap-4 text-[11.5px] text-white/50">
                 <span className="flex items-center gap-1.5">
                   <i className="inline-block h-[3px] w-4 rounded bg-[#86F0C4]" /> {t.thisProgram}
@@ -241,21 +354,40 @@ export function ComplexityPanel({
                 <span className="flex items-center gap-1.5">
                   <i className="inline-block h-[3px] w-4 rounded bg-[#E8BE8C]" />
                   {titleOf(comparable.find((e) => e.id === compareId)!)}{" "}
-                  {(measure === "time" ? compareReport.time.best : compareReport.space.best) ?? ""}
+                  {(measure === "time" ? shownCompare.time.best : shownCompare.space.best) ?? ""}
                 </span>
               </div>
             )}
           </div>
-          {report && (
-            <div className="w-[260px] shrink-0 space-y-3">
+          {shownReport && (
+            <div className={`w-[260px] shrink-0 space-y-3 transition-opacity duration-300 ${report ? "" : "opacity-50"}`}>
               {(["time", "space"] as Measure[]).map((m) => {
-                const f = m === "time" ? report.time : report.space;
+                const f = m === "time" ? shownReport.time : shownReport.space;
                 return (
-                  <div key={m} className={`rounded-[10px] border p-3 ${measure === m ? "border-[#86F0C4]/40 bg-[#86F0C4]/[0.05]" : "border-white/[0.07]"}`}>
+                  <div
+                    key={m}
+                    className={`rounded-[10px] border p-3 transition-colors duration-300 ${
+                      measure === m ? "border-[#86F0C4]/40 bg-[#86F0C4]/[0.05]" : "border-white/[0.07]"
+                    }`}
+                  >
                     <div className="text-[11px] font-semibold tracking-[0.06em] text-white/40 uppercase">{m === "time" ? t.time : t.space}</div>
-                    <div className="mt-0.5 font-mono text-[20px] font-semibold text-white">{f.best ?? "—"}</div>
+                    {/* The fitted class settles in with a small pop; a new class replaces the old one in place. */}
+                    <div className="relative mt-0.5 h-[30px] font-mono text-[20px] font-semibold text-white">
+                      <AnimatePresence initial={true} mode="popLayout">
+                        <motion.div
+                          key={f.best ?? "none"}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          className="origin-left"
+                          exit={{ opacity: 0, scale: 0.9, y: -8, transition: { duration: duration.fast, ease: easeOut } }}
+                          initial={{ opacity: 0, scale: 0.82, y: 8 }}
+                          transition={spring.bouncy}
+                        >
+                          {f.best ?? "—"}
+                        </motion.div>
+                      </AnimatePresence>
+                    </div>
                     <div className="text-[11.5px] text-white/45">
-                      {f.best ? formatMessage(t.confidence, { pct: Math.round(f.confidence * 100) }) : t.notEnough}
+                      {f.best ? <Confidence pct={Math.round(f.confidence * 100)} template={t.confidence} /> : t.notEnough}
                     </div>
                     {f.best && <p className="mt-1.5 text-[12px] leading-[17px] text-white/60">{t.explain[f.best] ?? ""}</p>}
                   </div>

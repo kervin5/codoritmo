@@ -1,0 +1,94 @@
+/* Console micro-motion. Pure CSS so it costs nothing per line and runs in jsdom untouched. */
+
+/* A new output line rises 6px into place. */
+.lineEnter {
+  animation: console-line-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes console-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Runtime errors carry a coral edge; a fresh one sweeps it in from the top. */
+.error {
+  position: relative;
+  overflow: hidden;
+}
+
+.error::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: #f08a6c;
+  opacity: 0.55;
+  transform-origin: top;
+}
+
+.errorEnter::before {
+  animation: console-error-sweep 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes console-error-sweep {
+  0% {
+    opacity: 1;
+    transform: scaleY(0);
+  }
+  55% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  100% {
+    opacity: 0.55;
+    transform: scaleY(1);
+  }
+}
+
+/* The answer box breathes while the program waits: a soft halo, opacity only. */
+.waiting {
+  position: relative;
+}
+
+.waiting::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow:
+    0 0 0 1px rgba(134, 240, 196, 0.85),
+    0 0 22px rgba(134, 240, 196, 0.32);
+  pointer-events: none;
+  animation: console-breathe 2.6s ease-in-out infinite;
+}
+
+@keyframes console-breathe {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lineEnter {
+    animation-name: console-fade-in;
+  }
+  .errorEnter::before,
+  .waiting::after {
+    animation: none;
+  }
+  .waiting::after {
+    opacity: 0.6;
+  }
+}
+
+@keyframes console-fade-in {
+  from {
+    opacity: 0;
+  }
+}
