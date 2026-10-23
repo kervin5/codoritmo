@@ -6,6 +6,7 @@
 // box that is running glows mint, visited boxes stay lit, the rest dim, and
 // clicking a box jumps to its line.
 
+import { LocateFixed, Minus, Plus } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -43,12 +44,27 @@ export interface NassiDiagramProps {
   step?: number;
   /** The run reached the end. Optional: inferred from "no active line but visited lines". */
   finished?: boolean;
+  /** Labels for the zoom controls. */
+  zoomLabels?: { in: string; out: string; fit: string };
 }
 
 /** Room above the diagram for the routine picker. */
 const TOP_GUTTER = 52;
 const SIDE_GUTTER = 24;
 const MIN_SCALE = 0.55;
+/** How far the student can zoom with the wheel, pinch or buttons. */
+const MIN_ZOOM = 0.2;
+const MAX_ZOOM = 2.5;
+/** Pointer travel (px) before a press becomes a drag instead of a click on a box. */
+const DRAG_THRESHOLD = 4;
+
+interface Viewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 const FINISHED_FILL = "#1F3A30";
 const TAG_COLOR = "#9AA6A1";
 
@@ -207,12 +223,20 @@ export default function NassiDiagram({
   onRoutineChange,
   step,
   finished,
+  zoomLabels = { in: "Acercar", out: "Alejar", fit: "Ajustar a la vista" },
 }: NassiDiagramProps) {
   const [diagram, setDiagram] = useState<NassiDiagramModel | null>(null);
   const [pickedRoutine, setPickedRoutine] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [boxWidth, setBoxWidth] = useState(0);
+  const [boxHeight, setBoxHeight] = useState(0);
+  /** null until the student pans or zooms; until then the diagram fits the panel's width. */
+  const [viewport, setViewport] = useState<Viewport | null>(null);
+  const drag = useRef<{ startX: number; startY: number; origin: Viewport; moved: boolean; pointer: number } | null>(null);
+  const swallowClick = useRef(false);
+  /** Glide for fit, buttons and following the run; follow the pointer exactly for drag and wheel. */
+  const [smooth, setSmooth] = useState(false);
   const reduced = useReducedMotion();
 
   // Rebuild on every edit; a program that does not parse keeps the last good diagram.
@@ -225,7 +249,10 @@ export default function NassiDiagram({
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
-    const measure = () => setBoxWidth(element.clientWidth);
+    const measure = () => {
+      setBoxWidth(element.clientWidth);
+      setBoxHeight(element.clientHeight);
+    };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
@@ -269,28 +296,101 @@ export default function NassiDiagram({
   const activeCell = routine?.cells.find((_, index) => states[index] === "active");
   const finishedCell = routine?.cells.find((_, index) => states[index] === "finished");
 
-  const scale = routine && boxWidth
-    ? Math.min(1, Math.max(MIN_SCALE, (boxWidth - SIDE_GUTTER * 2) / routine.width))
-    : 1;
-  const width = routine ? routine.width * scale : 0;
-  const height = routine ? routine.height * scale : 0;
-  const offsetX = Math.max(SIDE_GUTTER, (boxWidth - width) / 2);
+  // The fitted view: the whole width visible (never above 100%, never below MIN_SCALE), anchored at the top.
+  const fitZoom = routine && boxWidth ? Math.min(1, Math.max(MIN_SCALE, (boxWidth - SIDE_GUTTER * 2) / routine.width)) : 1;
+  const fitted: Viewport = {
+    zoom: fitZoom,
+    x: routine ? Math.max(SIDE_GUTTER, (boxWidth - routine.width * fitZoom) / 2) : SIDE_GUTTER,
+    y: TOP_GUTTER,
+  };
+  const view = viewport ?? fitted;
 
-  // Follow the running box: scroll it into view when it is off screen.
+  // A new routine (or switching routines) starts from the fitted view; edits keep the student's view.
+  const [viewFor, setViewFor] = useState<string | null>(null);
+  if (routineKey !== viewFor) {
+    setViewFor(routineKey);
+    if (viewport) setViewport(null);
+  }
+
+  const zoomAround = (factor: number, cx: number, cy: number) =>
+    setViewport((current) => {
+      const from = current ?? fitted;
+      const zoom = clampZoom(from.zoom * factor);
+      const ratio = zoom / from.zoom;
+      return { zoom, x: cx - (cx - from.x) * ratio, y: cy - (cy - from.y) * ratio };
+    });
+  const zoomFromCenter = (factor: number) => {
+    setSmooth(true);
+    zoomAround(factor, boxWidth / 2, boxHeight / 2);
+  };
+  const fitView = () => {
+    setSmooth(true);
+    setViewport(null);
+  };
+
+  // Wheel and trackpad pinch zoom around the pointer, as in the flowchart. A native
+  // listener, because React's onWheel is passive and can't stop the page from scrolling.
   useEffect(() => {
     const element = scrollRef.current;
-    if (!element || !activeCell) return;
-    const top = TOP_GUTTER + activeCell.y * scale;
-    const bottom = top + activeCell.height * scale;
-    const viewTop = element.scrollTop;
-    const viewBottom = viewTop + element.clientHeight;
-    if (top >= viewTop + 8 && Math.min(bottom, top + element.clientHeight * 0.6) <= viewBottom - 8) return;
-    element.scrollTo?.({
-      top: Math.max(0, top - element.clientHeight * 0.35),
-      behavior: reduced ? "auto" : "smooth",
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const box = element.getBoundingClientRect();
+      // Pinch arrives as ctrl+wheel with small deltas; a mouse wheel as larger steps.
+      const factor = Math.exp(-event.deltaY * (event.ctrlKey ? 0.01 : 0.0018));
+      setSmooth(false);
+      zoomAround(factor, event.clientX - box.left, event.clientY - box.top);
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+    // zoomAround only reads state through the updater; re-binding on every render isn't needed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routineKey, boxWidth]);
+
+  // Follow the running box: pan it into view when it is off screen.
+  useEffect(() => {
+    if (!activeCell || !boxHeight) return;
+    const top = view.y + activeCell.y * view.zoom;
+    const bottom = top + activeCell.height * view.zoom;
+    const left = view.x + activeCell.x * view.zoom;
+    const right = left + activeCell.width * view.zoom;
+    const fitsVertically = top >= 8 && Math.min(bottom, top + boxHeight * 0.6) <= boxHeight - 8;
+    const fitsHorizontally = left >= 0 && right <= boxWidth;
+    if (fitsVertically && fitsHorizontally) return;
+    setSmooth(!reduced);
+    setViewport({
+      zoom: view.zoom,
+      x: fitsHorizontally ? view.x : boxWidth / 2 - (activeCell.x + activeCell.width / 2) * view.zoom,
+      y: fitsVertically ? view.y : boxHeight * 0.35 - activeCell.y * view.zoom,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCell?.id, step]);
+
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    drag.current = { startX: event.clientX, startY: event.clientY, origin: view, moved: false, pointer: event.pointerId };
+  };
+  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const current = drag.current;
+    if (!current || current.pointer !== event.pointerId) return;
+    const dx = event.clientX - current.startX;
+    const dy = event.clientY - current.startY;
+    if (!current.moved) {
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      current.moved = true;
+      setSmooth(false);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    setViewport({ zoom: current.origin.zoom, x: current.origin.x + dx, y: current.origin.y + dy });
+  };
+  const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (drag.current?.moved) swallowClick.current = true;
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    drag.current = null;
+  };
+
+  const control =
+    "grid h-[26px] min-w-[26px] place-items-center rounded-[6px] px-1 text-white/55 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-2 focus-visible:outline-[#86F0C4]";
 
   return (
     <div className="relative h-full w-full">
@@ -310,22 +410,40 @@ export default function NassiDiagram({
       )}
       <div
         ref={scrollRef}
-        className="h-full w-full overflow-auto"
+        className={`h-full w-full touch-none overflow-hidden select-none ${drag.current?.moved ? "cursor-grabbing" : "cursor-grab"}`}
         data-testid="nassi-diagram"
+        onClickCapture={(event) => {
+          // A drag that ends over a box must not also count as a click on it.
+          if (swallowClick.current) {
+            swallowClick.current = false;
+            event.stopPropagation();
+          }
+        }}
+        onPointerCancel={onPointerUp}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
         style={{
           backgroundImage: "radial-gradient(circle, #22292D 1.4px, transparent 1.5px)",
-          backgroundSize: "22px 22px",
+          backgroundSize: `${22 * view.zoom}px ${22 * view.zoom}px`,
+          backgroundPosition: `${view.x}px ${view.y}px`,
         }}
       >
         {routine && (
           <svg
             aria-label={routine.label}
-            height={height + TOP_GUTTER + 56}
+            height="100%"
             role="img"
             style={{ display: "block", overflow: "visible" }}
-            width={Math.max(boxWidth, width + offsetX + SIDE_GUTTER)}
+            width="100%"
           >
-            <g transform={`translate(${offsetX} ${TOP_GUTTER}) scale(${scale})`}>
+            <g
+              style={{
+                transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`,
+                transformOrigin: "0 0",
+                transition: smooth && !reduced ? "transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)" : "none",
+              }}
+            >
               {routine.cells.map((cell, index) => (
                 <CellView
                   key={keys[index]}
@@ -343,6 +461,28 @@ export default function NassiDiagram({
           </svg>
         )}
       </div>
+      {routine && (
+        <div className="absolute right-3 bottom-3 z-10 flex items-center gap-px rounded-[8px] bg-black/30 p-[2px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] backdrop-blur">
+          <button aria-label={zoomLabels.out} className={control} onClick={() => zoomFromCenter(1 / 1.2)} title={zoomLabels.out} type="button">
+            <Minus size={13} />
+          </button>
+          <button
+            aria-label={zoomLabels.fit}
+            className={`${control} text-[11px] tabular-nums`}
+            onClick={fitView}
+            title={zoomLabels.fit}
+            type="button"
+          >
+            {Math.round(view.zoom * 100)}%
+          </button>
+          <button aria-label={zoomLabels.in} className={control} onClick={() => zoomFromCenter(1.2)} title={zoomLabels.in} type="button">
+            <Plus size={13} />
+          </button>
+          <button aria-label={zoomLabels.fit} className={control} onClick={fitView} title={zoomLabels.fit} type="button">
+            <LocateFixed size={13} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

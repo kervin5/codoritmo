@@ -42,7 +42,7 @@ export function VariableDock({
   if (!shown.length) return null;
 
   return (
-    <div className="pointer-events-none absolute right-3 bottom-3 z-10 flex gap-2" aria-hidden>
+    <div className="pointer-events-none absolute right-3 bottom-12 z-10 flex gap-2" aria-hidden>
       <AnimatePresence initial={false} mode="popLayout">
         {shown.map((v) => {
           const hot = changed.has(v.name);

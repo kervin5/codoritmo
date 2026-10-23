@@ -895,6 +895,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
       <div className="relative min-h-0 flex-1">
         {prefs.sideTab === "diagrama" && prefs.diagramKind === "nassi" && (
           <NassiDiagram
+            zoomLabels={{ in: t.blocks.zoomIn, out: t.blocks.zoomOut, fit: dictionary.diagram.fitView }}
             activeLine={activeLine}
             onPickLine={reveal}
             onRoutineChange={(id) => {
