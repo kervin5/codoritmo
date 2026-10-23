@@ -198,6 +198,53 @@ function Divider({
   );
 }
 
+/**
+ * A Material 3 Expressive style button: a flat tonal shape that morphs on
+ * hover (rounder) and press (squarer, slightly squashed) with a spring.
+ * The primary one is larger and uses the accent colour.
+ */
+function ShapeButton({
+  children,
+  primary,
+  disabled,
+  onClick,
+  ariaLabel,
+  ariaDescribedBy,
+  title,
+}: {
+  children: React.ReactNode;
+  primary?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  ariaLabel: string;
+  ariaDescribedBy?: string;
+  title?: string;
+}) {
+  const radius = primary ? { rest: 18, hover: 26, press: 12 } : { rest: 20, hover: 13, press: 9 };
+  return (
+    <motion.button
+      animate={{ borderRadius: radius.rest }}
+      aria-describedby={ariaDescribedBy}
+      aria-label={ariaLabel}
+      className={`relative grid place-items-center outline-offset-2 transition-colors focus-visible:outline-2 focus-visible:outline-[#86F0C4] disabled:pointer-events-none disabled:opacity-35 ${
+        primary
+          ? "h-12 w-[60px] bg-[#86F0C4] text-[#05241A] hover:bg-[#9AF5D2]"
+          : "h-10 w-10 bg-white/[0.07] text-white/80 hover:bg-white/[0.11] hover:text-white"
+      }`}
+      disabled={disabled}
+      initial={false}
+      onClick={onClick}
+      title={title}
+      transition={spring.bouncy}
+      type="button"
+      whileHover={{ borderRadius: radius.hover }}
+      whileTap={{ borderRadius: radius.press, scale: 0.93 }}
+    >
+      {children}
+    </motion.button>
+  );
+}
+
 interface TabItem<T extends string> {
   id: T;
   label: string;
@@ -1256,24 +1303,23 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           </div>
         )}
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <div className="flex shrink-0 items-center">
-            <button aria-label={t.run.stepBack} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white transition-transform active:scale-90 disabled:opacity-30" disabled={player.frameCount === 0} onClick={player.stepBack} title={`${t.run.stepBack} (⇧F10)`} type="button">
-              <SkipBack fill="currentColor" size={14} />
-            </button>
-            <div className="group relative mx-2">
-              {/* Before the first run, a soft ring breathes around the button to invite a press. */}
-              {player.frameCount === 0 && !player.wantPlay && (
-                <span aria-hidden className="pointer-events-none absolute inset-0 animate-ping rounded-full bg-[#86F0C4]/25 [animation-duration:2.2s] motion-reduce:hidden" />
-              )}
-              <motion.button
-                aria-describedby="run-hint"
-                aria-label={player.wantPlay ? t.run.pause : player.status === "paused" ? t.run.continue : t.run.run}
-                className="relative grid h-12 w-12 place-items-center rounded-full bg-[radial-gradient(circle_at_35%_30%,#D2FFEC_0%,#97F3CC_38%,#6CD9AE_100%)] text-[#08291D] shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_3px_0_#2F9472,0_10px_30px_rgba(134,240,196,0.38)] ring-4 ring-[#86F0C4]/15 transition-shadow duration-150 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white active:shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_1px_0_#2F9472,0_4px_14px_rgba(134,240,196,0.28)]"
+          {/* Playback controls as one connected group (Material 3 Expressive): flat tonal shapes that
+              morph when touched, with the primary action larger and in the accent colour. */}
+          <div className="flex shrink-0 items-center gap-1.5">
+            <ShapeButton
+              ariaLabel={t.run.stepBack}
+              disabled={player.frameCount === 0}
+              onClick={player.stepBack}
+              title={`${t.run.stepBack} (⇧F10)`}
+            >
+              <SkipBack fill="currentColor" size={15} />
+            </ShapeButton>
+            <div className="group relative">
+              <ShapeButton
+                ariaDescribedBy="run-hint"
+                ariaLabel={player.wantPlay ? t.run.pause : player.status === "paused" ? t.run.continue : t.run.run}
                 onClick={togglePlay}
-                transition={spring.snappy}
-                type="button"
-                whileHover={{ scale: 1.07 }}
-                whileTap={{ scale: 0.93, y: 2 }}
+                primary
               >
                 <AnimatePresence initial={false} mode="popLayout">
                   <motion.span
@@ -1284,13 +1330,13 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                     initial={{ opacity: 0, scale: 0.5, rotate: player.wantPlay ? -90 : 90 }}
                     transition={spring.snappy}
                   >
-                    {player.wantPlay ? <Pause fill="currentColor" size={19} /> : <Play className="ml-[3px]" fill="currentColor" size={19} />}
+                    {player.wantPlay ? <Pause fill="currentColor" size={20} /> : <Play className="ml-[2px]" fill="currentColor" size={20} />}
                   </motion.span>
                 </AnimatePresence>
-              </motion.button>
+              </ShapeButton>
               {/* What the button does, shown after a short hover. */}
               <div
-                className="pointer-events-none absolute bottom-[calc(100%+12px)] left-1/2 z-30 w-[260px] -translate-x-1/2 translate-y-1 rounded-[10px] bg-[#262B2E]/95 px-3 py-2.5 text-[12.5px] leading-[18px] text-white/75 opacity-0 shadow-[0_14px_36px_rgba(0,0,0,0.5)] ring-1 ring-white/[0.08] backdrop-blur-xl transition-[opacity,translate] duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-hover:delay-500 group-has-[:focus-visible]:translate-y-0 group-has-[:focus-visible]:opacity-100"
+                className="pointer-events-none absolute bottom-[calc(100%+12px)] left-1/2 z-30 w-[260px] -translate-x-1/2 translate-y-1 rounded-[14px] bg-[#2B3134] px-3 py-2.5 text-[12.5px] leading-[18px] text-white/75 opacity-0 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-[opacity,translate] duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-hover:delay-500 group-has-[:focus-visible]:translate-y-0 group-has-[:focus-visible]:opacity-100"
                 id="run-hint"
                 role="tooltip"
               >
@@ -1301,12 +1347,12 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                 {player.wantPlay ? t.pauseHint : t.runHint}
               </div>
             </div>
-            <button aria-label={t.run.stepNext} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white transition-transform active:scale-90" onClick={player.stepForward} title={`${t.run.stepNext} (F10)`} type="button">
-              <SkipForward fill="currentColor" size={14} />
-            </button>
-            <button aria-label={t.run.stop} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white transition-transform active:scale-90 disabled:opacity-30" disabled={!player.live} onClick={player.stop} title={`${t.run.stop} (Esc)`} type="button">
-              <Square fill="currentColor" size={12} />
-            </button>
+            <ShapeButton ariaLabel={t.run.stepNext} onClick={player.stepForward} title={`${t.run.stepNext} (F10)`}>
+              <SkipForward fill="currentColor" size={15} />
+            </ShapeButton>
+            <ShapeButton ariaLabel={t.run.stop} disabled={!player.live} onClick={player.stop} title={`${t.run.stop} (Esc)`}>
+              <Square fill="currentColor" size={13} />
+            </ShapeButton>
           </div>
           <span className="w-8 shrink-0 text-right text-[11px] text-white/40 tabular-nums">{player.frameCount ? player.viewIndex + 1 : 0}</span>
           <div className="relative flex min-w-[60px] flex-1 items-center">

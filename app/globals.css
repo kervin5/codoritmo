@@ -166,29 +166,36 @@ body {
   border-radius: 8px;
 }
 
+/* Material 3 Expressive slider: a thick rounded track and a slim upright handle. */
 .workspace-range {
   appearance: none;
   -webkit-appearance: none;
-  height: 3px;
+  height: 12px;
   border-radius: 999px;
   outline: none;
 }
 
 .workspace-range::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
+  width: 4px;
+  height: 26px;
+  border-radius: 2px;
   background: #f2f7f4;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 4px #1d2124;
+  transition: transform 0.15s cubic-bezier(0.34, 1.36, 0.64, 1);
+}
+
+.workspace-range:active::-webkit-slider-thumb {
+  transform: scaleX(0.6);
 }
 
 .workspace-range::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
+  width: 4px;
+  height: 26px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 2px;
   background: #f2f7f4;
+  box-shadow: 0 0 0 4px #1d2124;
 }
 
 .workspace-range:focus-visible {
