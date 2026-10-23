@@ -4,13 +4,13 @@
   "description": "A modern, browser-based pseudocode workspace for learning programming, inspired by PSeInt",
   "author": "Codoritmo Contributors",
   "license": "CC-BY-NC-4.0",
-  "homepage": "https://github.com/yourusername/codoritmo",
+  "homepage": "https://github.com/kervin5/codoritmo",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/codoritmo.git"
+    "url": "https://github.com/kervin5/codoritmo.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/codoritmo/issues"
+    "url": "https://github.com/kervin5/codoritmo/issues"
   },
   "keywords": [
     "pseudocode",

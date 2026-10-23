@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { Locale } from '@/src/i18n/config';
 import type { Dictionary } from '@/src/i18n/types';
 import { examplesIndexPath } from '@/src/lib/example-urls';
+import { GitHubMark, LogoMark, REPOSITORY_URL } from '@/src/components/brand/logo-mark';
 
 interface ExamplesShellProps {
   children: ReactNode;
@@ -45,9 +46,7 @@ export default function ExamplesShell({ children, dictionary, locale, alternateH
       </a>
       <header className="sticky top-0 z-10 flex h-[34px] items-center gap-2 border-b border-black/40 bg-[#1D2124] px-3 shadow-[inset_0_-1px_0_rgba(255,255,255,0.04)]">
         <Link className="flex shrink-0 items-center gap-2 text-[13px] text-white/85 hover:text-white" href={`/${locale}`}>
-          <span className="grid h-[18px] w-[18px] place-items-center rounded-[5px] bg-gradient-to-br from-[#7FE0B8] to-[#2F8F6E] text-[10.5px] font-bold text-[#0E1214]">
-            C
-          </span>
+          <LogoMark className="shrink-0" />
           <span className="hidden sm:inline">{dictionary.metadata.siteName}</span>
         </Link>
         <span aria-hidden="true" className="text-white/25">/</span>
@@ -76,6 +75,16 @@ export default function ExamplesShell({ children, dictionary, locale, alternateH
         >
           {dictionary.appShell.workspace} →
         </Link>
+        <a
+          aria-label={dictionary.appShell.repository}
+          className="grid h-[24px] w-[24px] shrink-0 place-items-center rounded-[6px] text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white"
+          href={REPOSITORY_URL}
+          rel="noopener noreferrer"
+          target="_blank"
+          title={dictionary.appShell.repository}
+        >
+          <GitHubMark size={14} />
+        </a>
       </header>
       <div className="px-4 pb-16 pt-6 sm:px-8 sm:pt-10" id="contenido">
         {children}

@@ -42,6 +42,7 @@ export const esDictionary: Dictionary = {
     },
   },
   appShell: {
+    repository: "Código fuente en GitHub",
     about: "Acerca de",
     collapseNavigation: "Contraer navegación",
     examples: "Ejemplos",
@@ -578,7 +579,7 @@ export const esDictionary: Dictionary = {
       deskCheck: "Prueba de escritorio", problems: "Problemas", translateTo: "Traducir a", comingSoon: "pronto",
       zoomIn: "Aumentar texto", zoomOut: "Reducir texto", fullscreen: "Pantalla completa",
     },
-    help: { palette: "Buscar acciones y comandos…", reference: "Referencia del lenguaje", shortcuts: "Atajos de teclado", about: "Acerca de Codoritmo", officialSite: "Sitio oficial de PSeInt" },
+    help: { palette: "Buscar acciones y comandos…", reference: "Referencia del lenguaje", shortcuts: "Atajos de teclado", about: "Acerca de Codoritmo", officialSite: "Sitio oficial de PSeInt", repository: "Código fuente en GitHub" },
     status: { idle: "Listo", playing: "Ejecutando", paused: "En pausa", input: "Esperando tu respuesta", done: "Terminado", error: "Error en ejecución", stopped: "Detenido", rewound: "Rebobinado · paso {n}" },
     search: "Buscar",
     noErrors: "Sin errores",

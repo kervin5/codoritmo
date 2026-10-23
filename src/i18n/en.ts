@@ -43,6 +43,7 @@ export const enDictionary: Dictionary = {
     },
   },
   appShell: {
+    repository: "Source code on GitHub",
     about: "About",
     collapseNavigation: "Collapse navigation",
     examples: "Examples",
@@ -578,7 +579,7 @@ export const enDictionary: Dictionary = {
       deskCheck: "Desk Check", problems: "Problems", translateTo: "Translate To", comingSoon: "soon",
       zoomIn: "Increase Font Size", zoomOut: "Decrease Font Size", fullscreen: "Full Screen",
     },
-    help: { palette: "Search Actions and Commands…", reference: "Language Reference", shortcuts: "Keyboard Shortcuts", about: "About Codoritmo", officialSite: "Official PSeInt Website" },
+    help: { palette: "Search Actions and Commands…", reference: "Language Reference", shortcuts: "Keyboard Shortcuts", about: "About Codoritmo", officialSite: "Official PSeInt Website", repository: "Source Code on GitHub" },
     status: { idle: "Ready", playing: "Running", paused: "Paused", input: "Waiting for your answer", done: "Finished", error: "Runtime error", stopped: "Stopped", rewound: "Rewound · step {n}" },
     search: "Search",
     noErrors: "No errors",

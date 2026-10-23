@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { LogoArt } from "@/src/components/brand/logo-mark";
 import { defaultLocale, hasLocale } from "@/src/i18n/config";
 
 export const runtime = "nodejs";
@@ -104,32 +105,8 @@ export default async function Image({
           }}
         >
           {/* Icon */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "110px",
-              height: "110px",
-              borderRadius: "22px",
-              background: "rgba(255, 255, 255, 0.7)",
-              marginBottom: "36px",
-              boxShadow: "0 12px 40px rgba(43, 36, 28, 0.12)",
-            }}
-          >
-            <svg
-              width="56"
-              height="56"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#2f816b"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="16 18 22 12 16 6" />
-              <polyline points="8 6 2 12 8 18" />
-            </svg>
+          <div style={{ display: "flex", marginBottom: "36px", borderRadius: "24px", boxShadow: "0 12px 40px rgba(43, 36, 28, 0.18)" }}>
+            {LogoArt({ size: 110, id: "og" })}
           </div>
 
           {/* Title */}

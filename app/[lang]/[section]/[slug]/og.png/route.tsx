@@ -5,6 +5,7 @@ import { examplePrograms } from '@/src/engine';
 import { locales } from '@/src/i18n/config';
 import { getDictionary } from '@/src/i18n/server';
 import { exampleSlug, examplesSection } from '@/src/lib/example-urls';
+import { LogoArt } from '@/src/components/brand/logo-mark';
 
 // Per-example Open Graph image: /es/ejemplos/<slug>/og.png. Prerendered for
 // every example, like the pages themselves.
@@ -93,22 +94,7 @@ export async function GET(
         <div style={{ display: 'flex', flexDirection: 'column', width: '470px', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '44px',
-                  height: '44px',
-                  borderRadius: '11px',
-                  background: 'linear-gradient(135deg, #7FE0B8, #2F8F6E)',
-                  color: '#0E1214',
-                  fontSize: '26px',
-                  fontWeight: 700,
-                }}
-              >
-                C
-              </div>
+              {LogoArt({ size: 44, id: 'og' })}
               <div style={{ display: 'flex', fontSize: '26px', color: 'rgba(230,236,233,0.85)' }}>
                 {dictionary.metadata.siteName}
               </div>

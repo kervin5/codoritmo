@@ -89,6 +89,7 @@ const BlocksView = dynamic(() => import("./blocks/blocks-view").then((m) => m.Bl
   loading: () => <div className="h-full w-full bg-[#141719]" />,
 });
 import { ComplexityPanel } from "./complexity-panel";
+import { GitHubMark, LogoMark, REPOSITORY_URL } from "@/src/components/brand/logo-mark";
 import { ExamplesBrowser } from "./examples-browser";
 import { ConsolePanel, DeskCheckPanel, formatValue, TranslationPanel, type TraceRow } from "./panels";
 import { profileLabel, ProfileDialog } from "./profile-dialog";
@@ -668,6 +669,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
         { label: t.help.shortcuts, shortcut: k("?"), onSelect: () => setShortcutsOpen(true) },
         { separator: true },
         { label: t.help.about, onSelect: () => router.push(`/${locale}/about`) },
+        { label: t.help.repository, onSelect: () => window.open(REPOSITORY_URL, "_blank", "noopener") },
         { label: t.help.officialSite, onSelect: () => window.open("https://pseint.sourceforge.net", "_blank", "noopener") },
       ],
     },
@@ -796,9 +798,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           <MenuBar
             compact={phone}
             leading={
-              <div className="mr-1.5 ml-1 grid h-[18px] w-[18px] place-items-center rounded-[5px] bg-gradient-to-br from-[#7FE0B8] to-[#2F8F6E] text-[10.5px] font-bold text-[#0E1214]">
-                C
-              </div>
+              <LogoMark className="mr-1.5 ml-1 shrink-0" />
             }
             menus={menus}
           />
@@ -829,6 +829,16 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           {!narrow && t.search}
           <span className="text-white/30">{k("K")}</span>
         </button>
+        <a
+          aria-label={t.help.repository}
+          className="grid h-[24px] w-[24px] shrink-0 place-items-center rounded-[6px] text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white"
+          href={REPOSITORY_URL}
+          rel="noopener noreferrer"
+          target="_blank"
+          title={t.help.repository}
+        >
+          <GitHubMark size={14} />
+        </a>
       </div>
 
       {/* Workspace */}

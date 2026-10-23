@@ -33,6 +33,8 @@ export interface Dictionary {
   };
   appShell: {
     about: string;
+    /** Label for the link to the source repository. */
+    repository: string;
     collapseNavigation: string;
     examples: string;
     expandNavigation: string;
@@ -219,7 +221,7 @@ export interface Dictionary {
       diagram: string; code: string; reference: string; bottomPanel: string; console: string; deskCheck: string; problems: string;
       translateTo: string; comingSoon: string; zoomIn: string; zoomOut: string; fullscreen: string;
     };
-    help: { palette: string; reference: string; shortcuts: string; about: string; officialSite: string };
+    help: { palette: string; reference: string; shortcuts: string; about: string; officialSite: string; repository: string };
     status: { idle: string; playing: string; paused: string; input: string; done: string; error: string; stopped: string; rewound: string };
     search: string;
     noErrors: string;
