@@ -138,29 +138,54 @@ function useWidth<T extends HTMLElement>() {
   return [ref, width] as const;
 }
 
-function Divider({ axis, onDrag }: { axis: "x" | "y"; onDrag: (delta: number) => void }) {
+/**
+ * A drag handle between panes. Sizes are computed from where the drag started
+ * (not from props captured at pointer-down, which would go stale mid-drag).
+ * `size` grows as the pointer moves left/up, which suits panels docked right or bottom.
+ */
+function Divider({
+  axis,
+  size,
+  min,
+  max,
+  onResize,
+}: {
+  axis: "x" | "y";
+  size: number;
+  min: number;
+  /** Upper bound, or a function read when the drag starts (e.g. from the window size). */
+  max: number | (() => number);
+  onResize: (size: number) => void;
+}) {
   return (
     <div
-      className={`group relative z-10 shrink-0 ${axis === "x" ? "w-px cursor-col-resize" : "h-px cursor-row-resize"} bg-white/[0.07]`}
+      aria-orientation={axis === "x" ? "vertical" : "horizontal"}
+      className={`group relative z-20 shrink-0 touch-none ${axis === "x" ? "w-px cursor-col-resize" : "h-px cursor-row-resize"} bg-white/[0.07]`}
+      role="separator"
       onPointerDown={(event) => {
         event.preventDefault();
-        let last = axis === "x" ? event.clientX : event.clientY;
+        const start = axis === "x" ? event.clientX : event.clientY;
+        const startSize = size;
+        const limit = typeof max === "function" ? max() : max;
         const move = (e: PointerEvent) => {
           const now = axis === "x" ? e.clientX : e.clientY;
-          onDrag(now - last);
-          last = now;
+          onResize(Math.round(Math.min(limit, Math.max(min, startSize - (now - start)))));
         };
         const up = () => {
           window.removeEventListener("pointermove", move);
           window.removeEventListener("pointerup", up);
+          window.removeEventListener("pointercancel", up);
           document.body.style.cursor = "";
+          document.body.style.userSelect = "";
         };
         document.body.style.cursor = axis === "x" ? "col-resize" : "row-resize";
+        document.body.style.userSelect = "none";
         window.addEventListener("pointermove", move);
         window.addEventListener("pointerup", up);
+        window.addEventListener("pointercancel", up);
       }}
     >
-      <div className={`absolute ${axis === "x" ? "inset-y-0 -left-[3px] w-[7px]" : "inset-x-0 -top-[3px] h-[7px]"} group-hover:bg-[#4FB892]/40`} />
+      <div className={`absolute ${axis === "x" ? "inset-y-0 -left-[3px] w-[7px]" : "inset-x-0 -top-[3px] h-[7px]"} transition-colors group-hover:bg-[#4FB892]/40 group-active:bg-[#4FB892]/60`} />
     </div>
   );
 }
@@ -868,7 +893,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                 <Plus size={13} />
               </button>
             </div>
-            {/* View control: how this document is edited. Icons, not words, so it never reads as a tab. */}
+            {/* View control: how this document is edited. A segmented control, so it never reads as a tab. */}
             <div className="ml-auto flex h-full shrink-0 items-center pr-2">
               <div className="flex rounded-[7px] bg-black/30 p-[2px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]" role="radiogroup" aria-label={t.blocks.modeHint}>
                 {(
@@ -892,7 +917,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                       type="button"
                     >
                       <Icon size={13} strokeWidth={1.9} />
-                      {on && !narrow && label}
+                      {label}
                     </button>
                   );
                 })}
@@ -981,7 +1006,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           </div>
 
           {/* Bottom panel */}
-          {prefs.bottomOpen && <Divider axis="y" onDrag={(d) => updatePrefs({ bottomHeight: Math.min(560, Math.max(110, prefs.bottomHeight - d)) })} />}
+          {prefs.bottomOpen && <Divider axis="y" max={() => Math.max(160, Math.round(window.innerHeight * 0.7))} min={110} onResize={(bottomHeight) => updatePrefs({ bottomHeight })} size={prefs.bottomHeight} />}
           <div className="flex shrink-0 flex-col bg-[#141719]" style={{ height: prefs.bottomOpen ? prefs.bottomHeight : 30 }}>
             <div className="flex h-[30px] shrink-0 items-center gap-2 border-b border-white/[0.05] px-2">
               <Tabs<BottomTab>
@@ -1048,7 +1073,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
         {/* Side panel */}
         {sideOpen && docked && (
           <>
-            <Divider axis="x" onDrag={(d) => updatePrefs({ sideWidth: Math.min(760, Math.max(300, prefs.sideWidth - d)) })} />
+            <Divider axis="x" max={760} min={300} onResize={(sideWidth) => updatePrefs({ sideWidth })} size={prefs.sideWidth} />
             <div className="shrink-0" style={{ width: sideWidth }}>
               {sidePanel}
             </div>
