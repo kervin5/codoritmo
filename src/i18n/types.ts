@@ -1,5 +1,6 @@
 import type { EngineMessageCode } from "../engine/messages";
 import type { StaticType } from "../engine/types";
+import type { ReferenceGuide } from "./reference-guide/types";
 
 /** Localized text for one example program (keyed by example id). */
 export interface ExampleCopy {
@@ -145,6 +146,8 @@ export interface Dictionary {
     sectionLabel: string;
     title: string;
   };
+  /** Beginner explanations for the language reference, keyed by snippet id. */
+  referenceGuide: ReferenceGuide;
   snippets: {
     defaultHelpBody: string;
     defaultHelpTitle: string;
@@ -258,6 +261,7 @@ export interface Dictionary {
     speedLabel: string;
     reference: {
       atCursor: string; selected: string; followCursor: string; cursorHint: string; search: string; insert: string; insertHint: string;
+      example: string; result: string; tip: string; inFlowchart: string; insideCondition: string; insideProcess: string; template: string;
     };
     palette: { placeholder: string; actions: string; noResults: string; referencePath: string };
     shortcuts: {

@@ -133,31 +133,57 @@ export function registerLanguageServices(monaco: Monaco, getCatalog: () => Langu
     },
   });
 
+  /** Whether a position falls inside a "string" or 'string' literal, or a // comment. */
+  function inString(line: string, index: number): boolean {
+    let quote = "";
+    for (let i = 0; i < index; i++) {
+      const char = line[i];
+      if (quote) {
+        if (char === quote) quote = "";
+      } else if (char === '"' || char === "'") {
+        quote = char;
+      } else if (char === "/" && line[i + 1] === "/") {
+        return true;
+      }
+    }
+    return quote !== "";
+  }
+
+  /** The operator under the cursor (hovering "<=" or "<-" has no word to look up). */
+  function operatorAt(line: string, column: number): { text: string; start: number; end: number } | null {
+    const index = column - 1;
+    for (const op of ["<-", "<=", ">=", "<>", "!=", "==", "&&", "||", "=", "<", ">", "+", "-", "*", "/", "^", "%", "~"]) {
+      for (let from = Math.max(0, index - op.length + 1); from <= index; from++) {
+        if (line.startsWith(op, from) && !inString(line, from)) return { text: op, start: from + 1, end: from + op.length + 1 };
+      }
+    }
+    return null;
+  }
+
   monaco.languages.registerHoverProvider("codoritmo", {
     provideHover(model, position) {
-      const word = model.getWordAtPosition(position);
-      if (!word) return null;
-      const range = {
-        startLineNumber: position.lineNumber,
-        endLineNumber: position.lineNumber,
-        startColumn: word.startColumn,
-        endColumn: word.endColumn,
-      };
       const catalog = getCatalog();
+      const word = model.getWordAtPosition(position);
+      const operator = word ? null : operatorAt(model.getLineContent(position.lineNumber), position.column);
+      if (!word && !operator) return null;
+      const range = word
+        ? { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn }
+        : { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: operator!.start, endColumn: operator!.end };
       const text = catalog?.text;
-      const variable = scanVariables(model.getValue(), text?.counter ?? "").find(
-        (v) => v.name.toLowerCase() === word.word.toLowerCase()
-      );
-      const entry = catalog?.lookup(word.word);
-      if (entry) {
-        return {
-          range,
-          contents: [
-            { value: `**${entry.label}** — ${entry.title}` },
-            { value: entry.body },
-            { value: `\`\`\`\n${entry.example}\n\`\`\`` },
-          ],
-        };
+      const variable = word
+        ? scanVariables(model.getValue(), text?.counter ?? "").find((v) => v.name.toLowerCase() === word.word.toLowerCase())
+        : undefined;
+      const entry = catalog?.lookup(word ? word.word : operator!.text);
+      if (entry && !variable) {
+        const heading = entry.title.toLowerCase() === entry.label.toLowerCase() ? `**${entry.label}**` : `**${entry.label}** — ${entry.title}`;
+        const contents = [{ value: heading }, { value: entry.body }];
+        const shape = entry.shapeUri();
+        if (shape) contents.push({ value: `![](${shape})` });
+        if (entry.sample) {
+          contents.push({ value: `\`\`\`\n${entry.sample}\n\`\`\`${entry.outcome ? `\n\n→ ${entry.outcome}` : ""}` });
+        }
+        if (entry.tip) contents.push({ value: `_${entry.tip}_` });
+        return { range, contents };
       }
       if (variable) {
         return {

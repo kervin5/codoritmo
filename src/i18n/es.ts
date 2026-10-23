@@ -1,4 +1,5 @@
 import { esExamples } from "./examples-es";
+import { esReferenceGuide } from "./reference-guide/es";
 import type { Dictionary } from "./types";
 
 export const esDictionary: Dictionary = {
@@ -269,6 +270,7 @@ export const esDictionary: Dictionary = {
     sectionLabel: "Comandos",
     title: "Insertar código",
   },
+  referenceGuide: esReferenceGuide,
   snippets: {
     defaultHelpBody:
       "Selecciona una estructura u operador en la barra lateral derecha para insertarlo en el cursor. La salida y los problemas permanecen debajo del editor.",
@@ -618,6 +620,7 @@ export const esDictionary: Dictionary = {
       atCursor: "En el cursor", selected: "Seleccionado", followCursor: "Seguir el cursor",
       cursorHint: "Coloca el cursor sobre una palabra clave (por ejemplo Para o Leer) y aquí verás qué hace y cómo se usa.",
       search: "Buscar en la referencia", insert: "Insertar", insertHint: "Doble clic para insertar",
+      example: "Ejemplo", result: "Resultado", tip: "Ojo", inFlowchart: "En el diagrama de flujo", insideCondition: "Va dentro de una condición", insideProcess: "Va dentro de un cálculo", template: "Plantilla",
     },
     palette: { placeholder: "Busca una acción o un comando: ejecutar, para, raíz…", actions: "Acciones", noResults: "Sin resultados", referencePath: "Referencia" },
     shortcuts: {

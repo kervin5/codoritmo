@@ -1,5 +1,6 @@
 import { engineMessageTemplates, engineTypeNames } from "../engine/messages";
 import { enExamples } from "./examples-en";
+import { enReferenceGuide } from "./reference-guide/en";
 import type { Dictionary } from "./types";
 
 export const enDictionary: Dictionary = {
@@ -265,6 +266,7 @@ export const enDictionary: Dictionary = {
     sectionLabel: "Commands",
     title: "Insert code",
   },
+  referenceGuide: enReferenceGuide,
   snippets: {
     defaultHelpBody:
       "Select a structure or operator from the right sidebar to insert it at the cursor. Output and problems stay below the editor.",
@@ -618,6 +620,7 @@ export const enDictionary: Dictionary = {
       atCursor: "At cursor", selected: "Selected", followCursor: "Follow cursor",
       cursorHint: "Put the cursor on a keyword (for example Para or Leer) to see what it does and how to use it.",
       search: "Search the reference", insert: "Insert", insertHint: "Double-click to insert",
+      example: "Example", result: "Result", tip: "Watch out", inFlowchart: "In the flowchart", insideCondition: "Used inside a condition", insideProcess: "Used inside a calculation", template: "Template",
     },
     palette: { placeholder: "Search an action or command: run, para, raiz…", actions: "Actions", noResults: "No results", referencePath: "Reference" },
     shortcuts: {
