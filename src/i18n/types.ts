@@ -302,6 +302,14 @@ export interface Dictionary {
       worst: string;
       theoryNote: string;
     };
+    blocks: {
+      modeCode: string;
+      modeBlocks: string;
+      modeHint: string;
+      cannotConvert: string;
+      fixFirst: string;
+      categories: Record<"io" | "variables" | "control" | "operators" | "text" | "arrays" | "screen", string>;
+    };
     examples: {
       title: string;
       menu: string;

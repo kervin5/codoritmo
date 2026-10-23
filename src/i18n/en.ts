@@ -671,6 +671,22 @@ export const enDictionary: Dictionary = {
       worst: "Worst case",
       theoryNote: "The measurement uses random data, so it usually resembles the average case.",
     },
+    blocks: {
+      modeCode: "Code",
+      modeBlocks: "Blocks",
+      modeHint: "Build your algorithm with blocks; the code writes itself.",
+      cannotConvert: "I can't turn this code into blocks.",
+      fixFirst: "Fix the errors in the code view and try again.",
+      categories: {
+        io: "Input & output",
+        variables: "Variables",
+        control: "Control",
+        operators: "Operators",
+        text: "Text & functions",
+        arrays: "Arrays",
+        screen: "Screen & more",
+      },
+    },
     examples: {
       title: "Examples",
       menu: "Examples…",

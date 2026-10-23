@@ -35,6 +35,8 @@ export interface WorkspacePrefs {
   bottomHeight: number;
   sideWidth: number;
   speedIndex: number;
+  /** PROTOTYPE: edit as text or as Scratch-style blocks. */
+  editorMode?: "code" | "blocks";
 }
 
 export interface WorkspaceSnapshot {

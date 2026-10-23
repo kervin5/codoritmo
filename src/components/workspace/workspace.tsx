@@ -29,6 +29,7 @@ import {
   X,
 } from "lucide-react";
 import type { editor } from "monaco-editor";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
@@ -71,6 +72,12 @@ import FlowDiagram from "./flow-diagram";
 import { registerLanguageServices, type LanguageCatalog } from "./language-services";
 import { MenuBar, type Menu, type MenuItem } from "./menu-bar";
 import { ArrayView } from "./array-view";
+
+// PROTOTYPE: Blockly is large, so the blocks mode loads only when first opened.
+const BlocksView = dynamic(() => import("./blocks/blocks-view").then((m) => m.BlocksView), {
+  ssr: false,
+  loading: () => <div className="h-full w-full bg-[#141719]" />,
+});
 import { ComplexityPanel } from "./complexity-panel";
 import { ExamplesBrowser } from "./examples-browser";
 import { ConsolePanel, DeskCheckPanel, formatValue, TranslationPanel, type TraceRow } from "./panels";
@@ -237,6 +244,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
   const language = (exportLanguages[prefs.language as ExportLanguage] ? prefs.language : "c") as ExportLanguage;
   const langName = LANGUAGE_NAMES[language] ?? language;
   const dirty = doc.source !== doc.savedSource;
+  const blocksMode = prefs.editorMode === "blocks";
   const customized = !settingsEqual(settings, profileSettings(doc.profileId));
   const showPlayhead = player.live || player.scrubbing;
   const activeLine = showPlayhead ? player.frame?.line ?? null : null;
@@ -818,6 +826,22 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
               </button>
             </div>
             <div className="ml-auto flex h-full min-w-0 shrink items-center gap-2 overflow-hidden pr-2 text-[11.5px] whitespace-nowrap">
+              <div className="flex shrink-0 rounded-[6px] bg-black/25 p-0.5" role="radiogroup" title={t.blocks.modeHint}>
+                {(["code", "blocks"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    aria-checked={(prefs.editorMode ?? "code") === mode}
+                    className={`h-[20px] rounded-[4px] px-2 text-[11.5px] ${
+                      (prefs.editorMode ?? "code") === mode ? "bg-white/[0.12] text-white" : "text-white/45 hover:text-white/80"
+                    }`}
+                    onClick={() => updatePrefs({ editorMode: mode })}
+                    role="radio"
+                    type="button"
+                  >
+                    {mode === "code" ? t.blocks.modeCode : t.blocks.modeBlocks}
+                  </button>
+                ))}
+              </div>
               <button
                 className={`flex items-center gap-1.5 ${errors.length ? "text-[#F0A48C]" : "text-white/40"}`}
                 onClick={() => errors.length && openBottom("problemas")}
@@ -876,6 +900,16 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
             </div>
           )}
           <div className="min-h-[120px] flex-1 select-text">
+            {blocksMode ? (
+              <BlocksView
+                activeLine={activeLine}
+                dictionary={dictionary}
+                locale={locale}
+                onChange={setSource}
+                settings={settings}
+                source={source}
+              />
+            ) : (
             <CodeEditor
               currentLine={activeLine}
               diagnostics={diagnostics}
@@ -892,6 +926,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
               readOnly={player.live}
               value={source}
             />
+            )}
           </div>
 
           {/* Bottom panel */}

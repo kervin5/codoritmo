@@ -671,6 +671,22 @@ export const esDictionary: Dictionary = {
       worst: "Peor caso",
       theoryNote: "La medición usa datos aleatorios, así que suele parecerse al caso promedio.",
     },
+    blocks: {
+      modeCode: "Código",
+      modeBlocks: "Bloques",
+      modeHint: "Arma tu algoritmo con bloques; el código se escribe solo.",
+      cannotConvert: "No puedo convertir este código en bloques.",
+      fixFirst: "Corrige los errores en la vista de código y vuelve a intentarlo.",
+      categories: {
+        io: "Entrada y salida",
+        variables: "Variables",
+        control: "Control",
+        operators: "Operadores",
+        text: "Texto y funciones",
+        arrays: "Arreglos",
+        screen: "Pantalla y más",
+      },
+    },
     examples: {
       title: "Ejemplos",
       menu: "Ejemplos…",
