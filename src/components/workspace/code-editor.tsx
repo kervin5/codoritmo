@@ -2,9 +2,12 @@
 
 import Editor, { type Monaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { Diagnostic } from "@/src/engine";
+import { prefersReducedMotion } from "@/src/lib/motion";
+
+import { EditorPlayhead, shakeEditorLine, usePlayheadLayer } from "./motion/editor-playhead";
 
 const KEYWORDS = [
   "Algoritmo", "FinAlgoritmo", "Proceso", "FinProceso", "SubProceso", "FinSubProceso", "SubAlgoritmo", "FinSubAlgoritmo",
@@ -112,16 +115,22 @@ export default function CodeEditor({
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const decorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null);
+  const [instance, setInstance] = useState<editor.IStandaloneCodeEditor | null>(null);
+  // The running line is drawn by <EditorPlayhead> (it glides); decorations are the fallback.
+  const playheadLayer = usePlayheadLayer(instance);
+  const lineHeight = Math.round(fontSize * 1.7);
 
   useEffect(() => {
     const instance = editorRef.current;
     if (!instance) return;
     const decorations: editor.IModelDeltaDecoration[] = [];
     if (currentLine) {
-      decorations.push({
-        range: { startLineNumber: currentLine, startColumn: 1, endLineNumber: currentLine, endColumn: 1 },
-        options: { isWholeLine: true, className: "codoritmo-play-line", glyphMarginClassName: "codoritmo-play-glyph" },
-      });
+      if (!playheadLayer) {
+        decorations.push({
+          range: { startLineNumber: currentLine, startColumn: 1, endLineNumber: currentLine, endColumn: 1 },
+          options: { isWholeLine: true, className: "codoritmo-play-line", glyphMarginClassName: "codoritmo-play-glyph" },
+        });
+      }
       instance.revealLineInCenterIfOutsideViewport(currentLine);
     }
     if (highlightLine) {
@@ -131,7 +140,44 @@ export default function CodeEditor({
       });
     }
     decorationsRef.current?.set(decorations);
-  }, [currentLine, highlightLine]);
+  }, [currentLine, highlightLine, playheadLayer]);
+
+  // A new error shakes its line once. Errors that appear while typing wait
+  // until the typing pauses (and are dropped if the edit fixed them).
+  const editedAtRef = useRef(0);
+  const seenErrorsRef = useRef<Set<string> | null>(null);
+  const pendingErrorsRef = useRef(new Map<string, number>());
+  useEffect(() => {
+    editedAtRef.current = performance.now();
+  }, [value]);
+  useEffect(() => {
+    const errors = diagnostics.filter((d) => d.severity !== "warning");
+    const keys = new Map(errors.map((d) => [`${d.line}:${d.message}`, d.line]));
+    const seen = seenErrorsRef.current;
+    seenErrorsRef.current = new Set(keys.keys());
+    if (!seen) return; // the errors already there when the editor opened
+    const pending = pendingErrorsRef.current;
+    for (const key of [...pending.keys()]) if (!keys.has(key)) pending.delete(key);
+    const fresh = [...keys].filter(([key]) => !seen.has(key));
+    fresh.forEach(([key, line]) => pending.set(key, line));
+    if (pending.size === 0) return;
+    const reduced = prefersReducedMotion();
+    const each = (lines: Iterable<number>, effect: { shake: boolean; fade: boolean }) => {
+      const instance = editorRef.current;
+      if (instance) new Set(lines).forEach((line) => shakeEditorLine(instance, line, lineHeight, effect));
+    };
+    // The squiggle fades in as soon as Monaco draws it; the shake waits for typing to pause.
+    const fadeTimer = window.setTimeout(() => each(fresh.map(([, line]) => line), { shake: false, fade: true }), 60);
+    const typing = performance.now() - editedAtRef.current < 1200;
+    const shakeTimer = window.setTimeout(() => {
+      each(pending.values(), { shake: !reduced, fade: false });
+      pending.clear();
+    }, typing ? 1500 : 90);
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(shakeTimer);
+    };
+  }, [diagnostics, lineHeight]);
 
   useEffect(() => {
     const monaco = monacoRef.current;
@@ -155,6 +201,7 @@ export default function CodeEditor({
   }, [diagnostics]);
 
   return (
+    <>
     <Editor
       beforeMount={(monaco) => {
         configure(monaco);
@@ -166,13 +213,14 @@ export default function CodeEditor({
         editorRef.current = instance;
         monacoRef.current = monaco;
         decorationsRef.current = instance.createDecorationsCollection([]);
+        setInstance(instance);
         onReady?.(instance);
       }}
       options={{
         automaticLayout: true,
         fontFamily: 'var(--font-geist-mono), "SFMono-Regular", Consolas, monospace',
         fontSize,
-        lineHeight: Math.round(fontSize * 1.7),
+        lineHeight,
         glyphMargin: true,
         lineNumbersMinChars: 3,
         minimap: { enabled: false },
@@ -193,5 +241,9 @@ export default function CodeEditor({
       theme="codoritmo-night"
       value={value}
     />
+    {instance && playheadLayer && (
+      <EditorPlayhead instance={instance} layer={playheadLayer} line={currentLine} lineHeight={lineHeight} />
+    )}
+    </>
   );
 }

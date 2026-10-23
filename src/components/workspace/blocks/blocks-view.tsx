@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import type { EngineSettings } from "@/src/engine";
 import type { Locale } from "@/src/i18n/config";
 import type { Dictionary } from "@/src/i18n/types";
+import { prefersReducedMotion } from "@/src/lib/motion";
 import { codeToBlocksState, lineToBlockMap } from "./blocks-from-code";
 import { buildToolbox, defineBlocks } from "./blocks-defs";
 import { pseudocode } from "./blocks-generator";
@@ -212,7 +213,10 @@ export function BlocksView({
     workspace.highlightBlock(id);
     if (id) {
       const block = workspace.getBlockById(id);
-      if (block) workspace.centerOnBlock(id, true);
+      if (block) {
+        workspace.centerOnBlock(id, true);
+        pulseBlock(block);
+      }
     }
   }, [activeLine]);
 
@@ -280,4 +284,39 @@ export function BlocksView({
       )}
     </div>
   );
+}
+
+/**
+ * The running block "catches" the playhead: a mint ring that swells off its
+ * outline and fades (an overlay copy of the outline, so Blockly's own
+ * transforms are never touched).
+ */
+function pulseBlock(block: Blockly.BlockSvg) {
+  if (prefersReducedMotion()) return;
+  const root = block.getSvgRoot?.();
+  const outline = root?.querySelector<SVGPathElement>(":scope > .blocklyPath");
+  const d = outline?.getAttribute("d");
+  if (!root || !d || typeof root.animate !== "function") return;
+  const ring = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  ring.setAttribute("d", d);
+  ring.setAttribute("fill", "none");
+  ring.setAttribute("stroke", MINT);
+  ring.setAttribute("stroke-width", "2");
+  ring.setAttribute("pointer-events", "none");
+  ring.style.transformBox = "fill-box";
+  ring.style.transformOrigin = "center";
+  root.appendChild(ring);
+  // Swell by ~7px whatever the block's size (a tall Si block must not balloon).
+  const box = outline!.getBBox?.();
+  const grow = box && box.width > 0 && box.height > 0 ? `${1 + 14 / box.width}, ${1 + 14 / box.height}` : "1.05";
+  const animation = ring.animate(
+    [
+      { opacity: 0.85, transform: "scale(1)" },
+      { opacity: 0, transform: `scale(${grow})` },
+    ],
+    { duration: 480, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }
+  );
+  const remove = () => ring.remove();
+  animation.onfinish = remove;
+  animation.oncancel = remove;
 }

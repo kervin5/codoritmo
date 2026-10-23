@@ -766,6 +766,9 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
             routineName={showPlayhead ? player.frame?.routine ?? null : null}
             settings={settings}
             source={source}
+            step={player.viewIndex}
+            stepMs={player.wantPlay ? SPEEDS[player.speedIndex].ms : null}
+            finished={player.status === "done"}
             visitedLines={visitedLines}
           />
         )}

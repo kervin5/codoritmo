@@ -1,0 +1,36 @@
+/* Live flowchart motion that has to reach into React Flow's own elements. */
+
+/* After an edit re-lays the chart out, blocks and connectors glide to their new places. */
+.canvas :global(.react-flow__node) {
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.edgePath {
+  transition:
+    d 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    stroke 260ms ease-out;
+}
+
+.edgeLabel {
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Colour changes as a block lights up or settles (the glow itself is an opacity layer). */
+.shape {
+  transition:
+    fill 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    stroke 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    stroke-width 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.token {
+  transition: color 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas :global(.react-flow__node),
+  .edgePath,
+  .edgeLabel {
+    transition: none;
+  }
+}
