@@ -200,8 +200,8 @@ function MenuPanel({
 }) {
   return (
     <div
-      className={`absolute z-[200] min-w-[248px] rounded-[9px] ${scroll ? "max-h-[75vh] overflow-y-auto" : ""} border border-white/[0.09] bg-[#262B2E]/[0.92] p-[5px] text-[13px] text-[#E6ECE9] shadow-[0_18px_50px_rgba(0,0,0,0.55),0_0_0_0.5px_rgba(0,0,0,0.6)] backdrop-blur-xl ${
-        nested ? "top-[-6px] left-full ml-[2px]" : "top-[30px] left-0"
+      className={`codoritmo-pop-in absolute z-[200] min-w-[248px] rounded-[9px] ${scroll ? "max-h-[75vh] overflow-y-auto" : ""} border border-white/[0.09] bg-[#262B2E]/[0.92] p-[5px] text-[13px] text-[#E6ECE9] shadow-[0_18px_50px_rgba(0,0,0,0.55),0_0_0_0.5px_rgba(0,0,0,0.6)] backdrop-blur-xl ${
+        nested ? "top-[-6px] left-full ml-[2px] origin-top-left" : "top-[30px] left-0 origin-top-left"
       }`}
       onMouseDown={(event) => event.preventDefault()}
       role="menu"

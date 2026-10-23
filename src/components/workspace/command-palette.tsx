@@ -89,9 +89,9 @@ export function CommandPalette({
   };
 
   return (
-    <div className="fixed inset-0 z-[300] flex justify-center bg-black/30 pt-[14vh]" onMouseDown={onClose}>
+    <div className="codoritmo-fade-in fixed inset-0 z-[300] flex justify-center bg-black/30 pt-[14vh]" onMouseDown={onClose}>
       <div
-        className="h-fit w-[600px] overflow-hidden rounded-[12px] border border-white/[0.1] bg-[#23282B]/[0.94] shadow-[0_30px_80px_rgba(0,0,0,0.6)] backdrop-blur-2xl"
+        className="codoritmo-dialog-in h-fit w-[600px] overflow-hidden rounded-[12px] border border-white/[0.1] bg-[#23282B]/[0.94] shadow-[0_30px_80px_rgba(0,0,0,0.6)] backdrop-blur-2xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex h-[48px] items-center gap-3 border-b border-white/[0.07] px-4">

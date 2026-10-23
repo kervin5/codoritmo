@@ -64,9 +64,9 @@ export function ProfileDialog({
   const definitions = new Map(editableEngineSettingDefinitions.map((d) => [d.key, d]));
 
   return (
-    <div className="fixed inset-0 z-[300] grid place-items-center bg-black/45 p-4" onMouseDown={onClose}>
+    <div className="codoritmo-fade-in fixed inset-0 z-[300] grid place-items-center bg-black/45 p-4" onMouseDown={onClose}>
       <div
-        className="flex h-[min(640px,90vh)] w-[min(920px,96vw)] flex-col overflow-hidden rounded-[12px] border border-white/10 bg-[#1F2427] text-[#E6ECE9] shadow-[0_30px_80px_rgba(0,0,0,0.6)]"
+        className="codoritmo-dialog-in flex h-[min(640px,90vh)] w-[min(920px,96vw)] flex-col overflow-hidden rounded-[12px] border border-white/10 bg-[#1F2427] text-[#E6ECE9] shadow-[0_30px_80px_rgba(0,0,0,0.6)]"
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
         aria-label={t.title}

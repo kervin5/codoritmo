@@ -28,7 +28,8 @@ import {
   SkipBack,
   SkipForward,
   SlidersHorizontal,
-  Sparkles,
+  GraduationCap,
+  LibraryBig,
   Square,
   SquareTerminal,
   Table2,
@@ -39,9 +40,10 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { editor } from "monaco-editor";
+import { AnimatePresence, LayoutGroup, MotionConfig, motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { buildFlowDiagram, exportRoutineToPng, exportRoutineToSvg, layoutFlowDiagram } from "@/src/diagram";
 import {
@@ -60,6 +62,7 @@ import { formatDiagnostic } from "@/src/i18n/diagnostics";
 import { formatMessage, formatPlural } from "@/src/i18n/format";
 import type { Dictionary } from "@/src/i18n/types";
 import { workspaceExampleFromSearch } from "@/src/lib/example-urls";
+import { spring } from "@/src/lib/motion";
 import { isExamplesNewWorkspaceTabIntent } from "@/src/lib/workspace-deeplink";
 import CodeEditor from "./code-editor";
 import { CommandPalette } from "./command-palette";
@@ -178,9 +181,11 @@ function Divider({
           window.removeEventListener("pointercancel", up);
           document.body.style.cursor = "";
           document.body.style.userSelect = "";
+          delete document.body.dataset.resizing;
         };
         document.body.style.cursor = axis === "x" ? "col-resize" : "row-resize";
         document.body.style.userSelect = "none";
+        document.body.dataset.resizing = "";
         window.addEventListener("pointermove", move);
         window.addEventListener("pointerup", up);
         window.addEventListener("pointercancel", up);
@@ -201,7 +206,7 @@ interface TabItem<T extends string> {
   dot?: boolean;
 }
 
-/** Segmented tabs: icon + label, or icon only (with tooltip) when compact. */
+/** Segmented tabs: icon + label, or icon only (with tooltip) when compact. The selection pill slides between tabs. */
 function Tabs<T extends string>({
   tabs,
   value,
@@ -213,32 +218,48 @@ function Tabs<T extends string>({
   onChange: (id: T) => void;
   compact?: boolean;
 }) {
+  const group = useId();
   return (
-    <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" role="tablist">
-      {tabs.map(({ id, label, icon: Icon, badge, dot }) => (
-        <button
-          key={id}
-          aria-label={label}
-          aria-selected={value === id}
-          className={`relative flex h-[24px] shrink-0 items-center gap-1.5 rounded-[6px] text-[12px] whitespace-nowrap transition-colors ${
-            compact ? "w-[28px] justify-center" : "px-2"
-          } ${value === id ? "bg-white/[0.09] text-white" : "text-white/50 hover:bg-white/[0.04] hover:text-white/85"}`}
-          onClick={() => onChange(id)}
-          role="tab"
-          title={compact ? label : undefined}
-          type="button"
-        >
-          {Icon && <Icon className={value === id ? "text-[#86F0C4]" : ""} size={13} strokeWidth={1.9} />}
-          {!compact && label}
-          {!!badge && (
-            <span className={`${compact ? "absolute -top-0.5 -right-0.5" : ""} min-w-[15px] rounded-full bg-[#E5735A] px-1 text-center text-[9.5px] leading-[15px] font-semibold text-white`}>
-              {badge}
-            </span>
-          )}
-          {dot && <span className="absolute top-[3px] right-[3px] h-[6px] w-[6px] animate-pulse rounded-full bg-[#86F0C4] shadow-[0_0_6px_#86F0C4]" />}
-        </button>
-      ))}
-    </div>
+    <LayoutGroup id={group}>
+      <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" role="tablist">
+        {tabs.map(({ id, label, icon: Icon, badge, dot }) => (
+          <motion.button
+            key={id}
+            aria-label={label}
+            aria-selected={value === id}
+            className={`relative flex h-[24px] shrink-0 items-center gap-1.5 rounded-[6px] text-[12px] whitespace-nowrap transition-colors ${
+              compact ? "w-[28px] justify-center" : "px-2"
+            } ${value === id ? "text-white" : "text-white/50 hover:bg-white/[0.04] hover:text-white/85"}`}
+            onClick={() => onChange(id)}
+            role="tab"
+            title={compact ? label : undefined}
+            type="button"
+            whileTap={{ scale: 0.96 }}
+          >
+            {value === id && (
+              <motion.span className="absolute inset-0 rounded-[6px] bg-white/[0.09]" layoutId="tab-selection" transition={spring.snappy} />
+            )}
+            {Icon && <Icon className={`relative ${value === id ? "text-[#86F0C4]" : ""}`} size={13} strokeWidth={1.9} />}
+            {!compact && <span className="relative">{label}</span>}
+            <AnimatePresence>
+              {!!badge && (
+                <motion.span
+                  key={badge}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className={`${compact ? "absolute -top-0.5 -right-0.5" : "relative"} min-w-[15px] rounded-full bg-[#E5735A] px-1 text-center text-[9.5px] leading-[15px] font-semibold text-white`}
+                  exit={{ scale: 0.4, opacity: 0 }}
+                  initial={{ scale: 0.4, opacity: 0 }}
+                  transition={spring.bouncy}
+                >
+                  {badge}
+                </motion.span>
+              )}
+            </AnimatePresence>
+            {dot && <span className="codoritmo-attention-dot absolute top-[3px] right-[3px] h-[6px] w-[6px] rounded-full bg-[#86F0C4]" />}
+          </motion.button>
+        ))}
+      </div>
+    </LayoutGroup>
   );
 }
 
@@ -773,6 +794,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
   );
 
   return (
+    <MotionConfig reducedMotion="user">
     <div
       className="flex h-[100dvh] flex-col overflow-hidden bg-[#141719] text-[#E6ECE9] select-none"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", var(--font-geist-sans), sans-serif' }}
@@ -817,7 +839,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           title={`${t.examples.menu} (${k("E")})`}
           type="button"
         >
-          <Sparkles size={13} />
+          <LibraryBig size={13} />
           {!phone && t.examples.title}
         </button>
         <button
@@ -914,21 +936,35 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                 ).map(([mode, Icon, label]) => {
                   const on = (prefs.editorMode ?? "code") === mode;
                   return (
-                    <button
+                    <motion.button
                       key={mode}
                       aria-checked={on}
                       aria-label={label}
-                      className={`flex h-[22px] items-center gap-1.5 rounded-[5px] px-2 text-[11.5px] transition-colors ${
-                        on ? "bg-white/[0.12] text-white shadow-[0_1px_2px_rgba(0,0,0,0.4)]" : "text-white/45 hover:text-white/85"
+                      className={`relative flex h-[22px] items-center gap-1.5 rounded-[5px] px-2 text-[11.5px] transition-colors ${
+                        on ? "text-white" : "text-white/45 hover:text-white/85"
                       }`}
                       onClick={() => updatePrefs({ editorMode: mode })}
                       role="radio"
                       title={`${label} — ${t.blocks.modeHint}`}
                       type="button"
+                      whileTap={{ scale: 0.95 }}
                     >
-                      <Icon size={13} strokeWidth={1.9} />
-                      {label}
-                    </button>
+                      {on && (
+                        <motion.span
+                          className="absolute inset-0 rounded-[5px] bg-white/[0.12] shadow-[0_1px_2px_rgba(0,0,0,0.4)]"
+                          layoutId="editor-mode-thumb"
+                          transition={spring.snappy}
+                        />
+                      )}
+                      <motion.span
+                        animate={on ? { rotate: [0, -8, 0], scale: [1, 1.15, 1] } : { rotate: 0, scale: 1 }}
+                        className="relative"
+                        transition={{ duration: 0.35 }}
+                      >
+                        <Icon size={13} strokeWidth={1.9} />
+                      </motion.span>
+                      <span className="relative">{label}</span>
+                    </motion.button>
                   );
                 })}
               </div>
@@ -938,7 +974,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           {guide && (
             <div className="shrink-0 border-b border-white/[0.06] bg-gradient-to-r from-[#7FE0B8]/[0.07] to-transparent text-[12.5px] leading-[19px]">
               <div className="flex h-[34px] items-center gap-2.5 px-3">
-                <Sparkles className="shrink-0 text-[#7FE0B8]" size={13} />
+                <GraduationCap className="shrink-0 text-[#7FE0B8]" size={14} />
                 <button
                   aria-expanded={guideExpanded}
                   className="flex min-w-0 flex-1 items-center gap-2 text-left"
@@ -962,7 +998,15 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                   <X size={13} />
                 </button>
               </div>
+              <AnimatePresence initial={false}>
               {guideExpanded && (
+                <motion.div
+                  animate={{ height: "auto", opacity: 1 }}
+                  className="overflow-hidden"
+                  exit={{ height: 0, opacity: 0 }}
+                  initial={{ height: 0, opacity: 0 }}
+                  transition={spring.smooth}
+                >
                 <div className="space-y-2 px-3 pb-3 pl-[33px] text-white/70">
                   <p>{guide.copy.learn}</p>
                   <p>
@@ -982,7 +1026,9 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                     </p>
                   )}
                 </div>
+                </motion.div>
               )}
+              </AnimatePresence>
             </div>
           )}
           <div className="min-h-[120px] flex-1 select-text">
@@ -1017,7 +1063,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
 
           {/* Bottom panel */}
           {prefs.bottomOpen && <Divider axis="y" max={() => Math.max(160, Math.round(window.innerHeight * 0.7))} min={110} onResize={(bottomHeight) => updatePrefs({ bottomHeight })} size={prefs.bottomHeight} />}
-          <div className="flex shrink-0 flex-col bg-[#141719]" style={{ height: prefs.bottomOpen ? prefs.bottomHeight : 30 }}>
+          <div className="codoritmo-panel-size flex shrink-0 flex-col bg-[#141719]" style={{ height: prefs.bottomOpen ? prefs.bottomHeight : 30 }}>
             <div className="flex h-[30px] shrink-0 items-center gap-2 border-b border-white/[0.05] px-2">
               <Tabs<BottomTab>
                 onChange={(id) => (prefs.bottomOpen && prefs.bottomTab === id ? updatePrefs({ bottomOpen: false }) : openBottom(id))}
@@ -1089,14 +1135,31 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
             </div>
           </>
         )}
-        {sideOpen && !docked && (
-          <>
-            <div className="absolute inset-0 right-[40px] z-20 bg-black/25" onMouseDown={() => setSideOpen(false)} />
-            <div className="absolute top-0 right-[40px] bottom-0 z-30 border-l border-white/[0.08] shadow-[-20px_0_50px_rgba(0,0,0,0.45)]" style={{ width: sideWidth }}>
-              {sidePanel}
-            </div>
-          </>
-        )}
+        <AnimatePresence>
+          {sideOpen && !docked && (
+            <>
+              <motion.div
+                key="side-scrim"
+                animate={{ opacity: 1 }}
+                className="absolute inset-0 right-[40px] z-20 bg-black/25"
+                exit={{ opacity: 0 }}
+                initial={{ opacity: 0 }}
+                onMouseDown={() => setSideOpen(false)}
+              />
+              <motion.div
+                key="side-sheet"
+                animate={{ x: 0, opacity: 1 }}
+                className="absolute top-0 right-[40px] bottom-0 z-30 border-l border-white/[0.08] shadow-[-20px_0_50px_rgba(0,0,0,0.45)]"
+                exit={{ x: 40, opacity: 0 }}
+                initial={{ x: 40, opacity: 0 }}
+                style={{ width: sideWidth }}
+                transition={spring.smooth}
+              >
+                {sidePanel}
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
 
         {/* Activity strip */}
         <div className="z-30 flex w-[40px] shrink-0 flex-col items-center gap-1 border-l border-white/[0.06] bg-[#181B1D] pt-2">
@@ -1107,21 +1170,25 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
               ["referencia", BookOpen, t.activity.reference, "3"],
             ] as const
           ).map(([id, Icon, label, key]) => (
-            <button
+            <motion.button
               key={id}
               aria-label={label}
               aria-pressed={sideOpen && prefs.sideTab === id}
-              className={`group relative grid h-8 w-8 place-items-center rounded-[7px] ${
-                sideOpen && prefs.sideTab === id ? "bg-white/[0.1] text-white" : "text-white/45 hover:bg-white/[0.05] hover:text-white/85"
+              className={`group relative grid h-8 w-8 place-items-center rounded-[7px] transition-colors ${
+                sideOpen && prefs.sideTab === id ? "text-white" : "text-white/45 hover:bg-white/[0.05] hover:text-white/85"
               }`}
               onClick={() => toggleSide(id)}
               type="button"
+              whileTap={{ scale: 0.9 }}
             >
-              <Icon size={16} strokeWidth={1.8} />
-              <span className="pointer-events-none absolute top-1/2 right-[38px] hidden -translate-y-1/2 rounded-[6px] border border-white/10 bg-[#2A3033] px-2 py-1 text-[12px] whitespace-nowrap text-white shadow-lg group-hover:block">
+              {sideOpen && prefs.sideTab === id && (
+                <motion.span className="absolute inset-0 rounded-[7px] bg-white/[0.1]" layoutId="activity-selection" transition={spring.snappy} />
+              )}
+              <Icon className="relative" size={16} strokeWidth={1.8} />
+              <span className="codoritmo-tooltip pointer-events-none absolute top-1/2 right-[38px] -translate-y-1/2 rounded-[6px] border border-white/10 bg-[#2A3033] px-2 py-1 text-[12px] whitespace-nowrap text-white shadow-lg">
                 {label} <span className="text-white/40">{k(key)}</span>
               </span>
-            </button>
+            </motion.button>
           ))}
         </div>
       </div>
@@ -1130,7 +1197,18 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
       <div className="flex h-[56px] shrink-0 items-center gap-4 border-t border-black/50 bg-[#1D2124] px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         {!narrow && (
           <div className="w-[26%] min-w-0" aria-live="polite">
-            <div className="text-[10.5px] font-semibold tracking-[0.08em] text-white/40 uppercase">{statusLabel}</div>
+            <AnimatePresence initial={false} mode="popLayout">
+              <motion.div
+                key={statusLabel}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-[10.5px] font-semibold tracking-[0.08em] text-white/40 uppercase"
+                exit={{ opacity: 0, y: -6 }}
+                initial={{ opacity: 0, y: 6 }}
+                transition={spring.snappy}
+              >
+                {statusLabel}
+              </motion.div>
+            </AnimatePresence>
             <div className="truncate font-mono text-[13px] text-white/90">
               {nowText ?? (player.status === "done" ? t.programFinished : t.pressPlay)}
               {activeLine && <span className="ml-2 font-sans text-[11.5px] text-white/35">{formatMessage(t.line, { n: activeLine })}</span>}
@@ -1139,29 +1217,44 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
         )}
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <div className="flex shrink-0 items-center">
-            <button aria-label={t.run.stepBack} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white disabled:opacity-30" disabled={player.frameCount === 0} onClick={player.stepBack} title={`${t.run.stepBack} (⇧F10)`} type="button">
+            <button aria-label={t.run.stepBack} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white transition-transform active:scale-90 disabled:opacity-30" disabled={player.frameCount === 0} onClick={player.stepBack} title={`${t.run.stepBack} (⇧F10)`} type="button">
               <SkipBack fill="currentColor" size={14} />
             </button>
-            <button
+            <motion.button
               aria-label={player.wantPlay ? t.run.pause : t.run.run}
-              className="mx-1 grid h-9 w-9 place-items-center rounded-full bg-[#F2F7F4] text-[#0E1214] shadow-[0_2px_8px_rgba(0,0,0,0.4)] active:scale-95"
+              className="relative mx-1 grid h-9 w-9 place-items-center rounded-full bg-[#F2F7F4] text-[#0E1214] shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
               onClick={togglePlay}
               title={`${player.wantPlay ? t.run.pause : t.run.run} (${k("↵")})`}
+              transition={spring.snappy}
               type="button"
+              whileHover={{ scale: 1.06 }}
+              whileTap={{ scale: 0.9 }}
             >
-              {player.wantPlay ? <Pause fill="currentColor" size={15} /> : <Play className="ml-0.5" fill="currentColor" size={15} />}
-            </button>
-            <button aria-label={t.run.stepNext} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white" onClick={player.stepForward} title={`${t.run.stepNext} (F10)`} type="button">
+              <AnimatePresence initial={false} mode="popLayout">
+                <motion.span
+                  key={player.wantPlay ? "pause" : "play"}
+                  animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                  className="grid place-items-center"
+                  exit={{ opacity: 0, scale: 0.5, rotate: player.wantPlay ? 90 : -90 }}
+                  initial={{ opacity: 0, scale: 0.5, rotate: player.wantPlay ? -90 : 90 }}
+                  transition={spring.snappy}
+                >
+                  {player.wantPlay ? <Pause fill="currentColor" size={15} /> : <Play className="ml-0.5" fill="currentColor" size={15} />}
+                </motion.span>
+              </AnimatePresence>
+            </motion.button>
+            <button aria-label={t.run.stepNext} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white transition-transform active:scale-90" onClick={player.stepForward} title={`${t.run.stepNext} (F10)`} type="button">
               <SkipForward fill="currentColor" size={14} />
             </button>
-            <button aria-label={t.run.stop} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white disabled:opacity-30" disabled={!player.live} onClick={player.stop} title={`${t.run.stop} (Esc)`} type="button">
+            <button aria-label={t.run.stop} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white transition-transform active:scale-90 disabled:opacity-30" disabled={!player.live} onClick={player.stop} title={`${t.run.stop} (Esc)`} type="button">
               <Square fill="currentColor" size={12} />
             </button>
           </div>
           <span className="w-8 shrink-0 text-right text-[11px] text-white/40 tabular-nums">{player.frameCount ? player.viewIndex + 1 : 0}</span>
+          <div className="relative flex min-w-[60px] flex-1 items-center">
           <input
             aria-label={statusLabel}
-            className="workspace-range min-w-[60px] flex-1"
+            className="workspace-range w-full"
             disabled={player.frameCount < 2}
             max={Math.max(0, player.frameCount - 1)}
             min={0}
@@ -1170,6 +1263,22 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
             type="range"
             value={Math.max(0, player.viewIndex)}
           />
+            <AnimatePresence>
+              {player.status === "done" && !player.scrubbing && (
+                <motion.span
+                  key={`done-${player.frameCount}`}
+                  aria-hidden
+                  animate={{ x: "100%", opacity: [0, 1, 1, 0] }}
+                  className="pointer-events-none absolute inset-y-[calc(50%-5px)] left-0 h-[10px] w-full overflow-hidden"
+                  exit={{ opacity: 0 }}
+                  initial={{ x: "-30%", opacity: 0 }}
+                  transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <span className="block h-full w-[30%] rounded-full bg-[radial-gradient(closest-side,rgba(198,255,230,0.9),rgba(134,240,196,0))]" />
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </div>
           <span className="w-8 shrink-0 text-[11px] text-white/40 tabular-nums">{player.frameCount}</span>
         </div>
         {workspaceWidth >= 1000 && (
@@ -1178,10 +1287,16 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
               const now = player.frame?.variables.find((v) => v.name === name);
               const before = player.previous?.variables.find((v) => v.name === name);
               return (
-                <span key={name} className="shrink-0 rounded-[5px] bg-[#7FE0B8]/10 px-2 py-0.5 font-mono text-[11.5px] whitespace-nowrap text-[#CFF5E4]">
+                <motion.span
+                  key={`${name}:${player.viewIndex}`}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  className="shrink-0 rounded-[5px] bg-[#7FE0B8]/10 px-2 py-0.5 font-mono text-[11.5px] whitespace-nowrap text-[#CFF5E4]"
+                  initial={{ opacity: 0, y: 6, scale: 0.92 }}
+                  transition={spring.bouncy}
+                >
                   {name} <span className="text-white/35">{before?.initialized ? formatValue(before.value) : "∅"}→</span>
                   {now ? formatValue(now.value) : ""}
-                </span>
+                </motion.span>
               );
             })}
           </div>
@@ -1193,10 +1308,15 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
               key={speed.id}
               aria-label={t.run.speeds[speed.id]}
               aria-pressed={index === player.speedIndex}
-              className={`rounded-full ${index === player.speedIndex ? "h-2 w-2 bg-[#7FE0B8]" : "h-1.5 w-1.5 bg-white/25 hover:bg-white/50"}`}
+              className="group relative grid h-3 w-3 place-items-center"
               onClick={() => player.setSpeedIndex(index)}
               type="button"
-            />
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-white/25 transition-transform group-hover:scale-125 group-hover:bg-white/50" />
+              {index === player.speedIndex && (
+                <motion.span className="absolute h-2 w-2 rounded-full bg-[#7FE0B8]" layoutId="speed-dot" transition={spring.bouncy} />
+              )}
+            </button>
           ))}
           <Rabbit size={13} />
         </div>
@@ -1219,22 +1339,41 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
             {customized && ` · ${dictionary.workspace.customProfile}`}
           </span>
         </button>
-        {asking && (
-          <span className="flex items-center gap-1.5 text-[#A9F0D2]">
-            <span className="h-[6px] w-[6px] animate-pulse rounded-full bg-[#86F0C4]" />
-            {t.askingInput}
-          </span>
-        )}
+        <AnimatePresence>
+          {asking && (
+            <motion.span
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-1.5 text-[#A9F0D2]"
+              exit={{ opacity: 0, x: -6 }}
+              initial={{ opacity: 0, x: -6 }}
+              transition={spring.snappy}
+            >
+              <span className="codoritmo-attention-dot h-[6px] w-[6px] rounded-full bg-[#86F0C4]" />
+              {t.askingInput}
+            </motion.span>
+          )}
+        </AnimatePresence>
         <span className="ml-auto truncate">
           {dirty ? t.unsaved : ""}
         </span>
       </div>
 
-      {toast && (
-        <div className="pointer-events-none fixed bottom-[72px] left-1/2 z-[250] max-w-[90vw] -translate-x-1/2 rounded-[8px] border border-white/10 bg-[#2A3033]/95 px-3.5 py-2 text-center text-[12.5px] text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur" role="status">
-          {toast}
-        </div>
-      )}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key={toast}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="pointer-events-none fixed bottom-[72px] left-1/2 z-[250] max-w-[90vw] rounded-[8px] border border-white/10 bg-[#2A3033]/95 px-3.5 py-2 text-center text-[12.5px] text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur"
+            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+            initial={{ opacity: 0, y: 14, scale: 0.94 }}
+            role="status"
+            style={{ x: "-50%" }}
+            transition={spring.bouncy}
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {examplesOpen && (
         <ExamplesBrowser dictionary={dictionary} locale={locale} onClose={() => setExamplesOpen(false)} onOpen={openExample} />
@@ -1264,8 +1403,8 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
       )}
 
       {shortcutsOpen && (
-        <div className="fixed inset-0 z-[300] grid place-items-center bg-black/40 p-4" onMouseDown={() => setShortcutsOpen(false)}>
-          <div className="w-[520px] max-w-[92vw] rounded-[12px] border border-white/10 bg-[#23282B] p-5 shadow-2xl" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label={t.shortcuts.title}>
+        <div className="codoritmo-fade-in fixed inset-0 z-[300] grid place-items-center bg-black/40 p-4" onMouseDown={() => setShortcutsOpen(false)}>
+          <div className="codoritmo-dialog-in w-[520px] max-w-[92vw] rounded-[12px] border border-white/10 bg-[#23282B] p-5 shadow-2xl" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label={t.shortcuts.title}>
             <div className="mb-3 text-[15px] font-semibold">{t.shortcuts.title}</div>
             {[
               [t.shortcuts.runPause, k("↵")],
@@ -1287,5 +1426,6 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
         </div>
       )}
     </div>
+    </MotionConfig>
   );
 }
