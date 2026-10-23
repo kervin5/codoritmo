@@ -207,6 +207,7 @@ function Divider({
 function ShapeButton({
   children,
   primary,
+  compact,
   disabled,
   onClick,
   ariaLabel,
@@ -215,6 +216,8 @@ function ShapeButton({
 }: {
   children: React.ReactNode;
   primary?: boolean;
+  /** Smaller, for phones. */
+  compact?: boolean;
   disabled?: boolean;
   onClick: () => void;
   ariaLabel: string;
@@ -229,8 +232,8 @@ function ShapeButton({
       aria-label={ariaLabel}
       className={`relative grid place-items-center outline-offset-2 transition-colors focus-visible:outline-2 focus-visible:outline-[#86F0C4] disabled:pointer-events-none disabled:opacity-35 ${
         primary
-          ? "h-11 w-[54px] bg-[#86F0C4]/[0.16] text-[#9AF5CF] hover:bg-[#86F0C4]/[0.24]"
-          : "h-10 w-10 bg-white/[0.07] text-white/80 hover:bg-white/[0.11] hover:text-white"
+          ? `${compact ? "h-10 w-12" : "h-11 w-[54px]"} bg-[#86F0C4]/[0.16] text-[#9AF5CF] hover:bg-[#86F0C4]/[0.24]`
+          : `${compact ? "h-9 w-9" : "h-10 w-10"} bg-white/[0.07] text-white/80 hover:bg-white/[0.11] hover:text-white`
       }`}
       disabled={disabled}
       initial={false}
@@ -1149,108 +1152,111 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                 </motion.div>
               )}
             </AnimatePresence>
-            {/* Run toolbar: floats over the bottom of the code, between the program and what it prints. */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center px-4 select-none">
-              <div className="pointer-events-auto flex w-full max-w-[780px] items-center gap-3 rounded-[24px] bg-[#252A2D]/95 p-1.5 pr-4 shadow-[0_12px_32px_rgba(0,0,0,0.45)] ring-1 ring-white/[0.06] backdrop-blur-xl">
-                {/* Playback controls as one connected group (Material 3 Expressive): flat tonal shapes that
-                    morph when touched, with the primary action larger and in the accent colour. */}
-                <div className="flex shrink-0 items-center gap-1.5">
+          </div>
+
+          {/* Run toolbar (docked): its own strip between the program and what it prints, never over the code. */}
+          <div className="flex shrink-0 select-none justify-center border-t border-white/[0.05] bg-[#181B1D] px-2 py-1.5 sm:px-3">
+            <div className={`flex w-full max-w-[880px] items-center ${phone ? "gap-2" : "gap-3"}`}>
+              {/* Playback controls as one connected group (Material 3 Expressive): flat tonal shapes that
+                  morph when touched, with the primary action larger and in the accent colour. */}
+              <div className="flex shrink-0 items-center gap-1.5">
+                <ShapeButton
+                compact={phone}
+                  ariaLabel={t.run.stepBack}
+                  disabled={player.frameCount === 0}
+                  onClick={player.stepBack}
+                  title={`${t.run.stepBack} (⇧F10)`}
+                >
+                  <SkipBack fill="currentColor" size={15} />
+                </ShapeButton>
+                <div className="group relative">
                   <ShapeButton
-                    ariaLabel={t.run.stepBack}
-                    disabled={player.frameCount === 0}
-                    onClick={player.stepBack}
-                    title={`${t.run.stepBack} (⇧F10)`}
+                compact={phone}
+                    ariaDescribedBy="run-hint"
+                    ariaLabel={player.wantPlay ? t.run.pause : player.status === "paused" ? t.run.continue : t.run.run}
+                    onClick={togglePlay}
+                    primary
                   >
-                    <SkipBack fill="currentColor" size={15} />
-                  </ShapeButton>
-                  <div className="group relative">
-                    <ShapeButton
-                      ariaDescribedBy="run-hint"
-                      ariaLabel={player.wantPlay ? t.run.pause : player.status === "paused" ? t.run.continue : t.run.run}
-                      onClick={togglePlay}
-                      primary
-                    >
-                      <AnimatePresence initial={false} mode="popLayout">
-                        <motion.span
-                          key={player.wantPlay ? "pause" : "play"}
-                          animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                          className="grid place-items-center"
-                          exit={{ opacity: 0, scale: 0.5, rotate: player.wantPlay ? 90 : -90 }}
-                          initial={{ opacity: 0, scale: 0.5, rotate: player.wantPlay ? -90 : 90 }}
-                          transition={spring.snappy}
-                        >
-                          {player.wantPlay ? <Pause fill="currentColor" size={20} /> : <Play className="ml-[2px]" fill="currentColor" size={20} />}
-                        </motion.span>
-                      </AnimatePresence>
-                    </ShapeButton>
-                    {/* What the button does, shown after a short hover. */}
-                    <div
-                      className="pointer-events-none absolute bottom-[calc(100%+12px)] left-1/2 z-30 w-[260px] -translate-x-1/2 translate-y-1 rounded-[14px] bg-[#2B3134] px-3 py-2.5 text-[12.5px] leading-[18px] text-white/75 opacity-0 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-[opacity,translate] duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-hover:delay-500 group-has-[:focus-visible]:translate-y-0 group-has-[:focus-visible]:opacity-100"
-                      id="run-hint"
-                      role="tooltip"
-                    >
-                      <div className="mb-0.5 flex items-center justify-between font-medium text-white/95">
-                        {player.wantPlay ? t.run.pause : player.status === "paused" ? t.run.continue : t.run.run}
-                        <span className="font-normal text-white/40">{k("↵")}</span>
-                      </div>
-                      {player.wantPlay ? t.pauseHint : t.runHint}
-                    </div>
-                  </div>
-                  <ShapeButton ariaLabel={t.run.stepNext} onClick={player.stepForward} title={`${t.run.stepNext} (F10)`}>
-                    <SkipForward fill="currentColor" size={15} />
-                  </ShapeButton>
-                  <ShapeButton ariaLabel={t.run.stop} disabled={!player.live} onClick={player.stop} title={`${t.run.stop} (Esc)`}>
-                    <Square fill="currentColor" size={13} />
-                  </ShapeButton>
-                </div>
-                {!compactToolbar && (
-                  <div className="w-[150px] min-w-0 shrink-0 leading-tight" aria-live="polite">
                     <AnimatePresence initial={false} mode="popLayout">
-                      <motion.div
-                        key={statusLabel}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-[12px] font-medium text-white/50"
-                        exit={{ opacity: 0, y: -6 }}
-                        initial={{ opacity: 0, y: 6 }}
+                      <motion.span
+                        key={player.wantPlay ? "pause" : "play"}
+                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                        className="grid place-items-center"
+                        exit={{ opacity: 0, scale: 0.5, rotate: player.wantPlay ? 90 : -90 }}
+                        initial={{ opacity: 0, scale: 0.5, rotate: player.wantPlay ? -90 : 90 }}
                         transition={spring.snappy}
                       >
-                        {statusLabel}
-                      </motion.div>
+                        {player.wantPlay ? <Pause fill="currentColor" size={20} /> : <Play className="ml-[2px]" fill="currentColor" size={20} />}
+                      </motion.span>
                     </AnimatePresence>
-                    <div className="truncate text-[12.5px] text-white/85" title={nowText ?? undefined}>
-                      {activeLine ? formatMessage(t.line, { n: activeLine }) : player.status === "done" ? t.programFinished : t.pressPlay}
+                  </ShapeButton>
+                  {/* What the button does, shown after a short hover. */}
+                  <div
+                    className="pointer-events-none absolute bottom-[calc(100%+12px)] left-0 z-30 w-[260px] translate-y-1 rounded-[14px] bg-[#2B3134] px-3 py-2.5 text-[12.5px] leading-[18px] text-white/75 opacity-0 shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-[opacity,translate] duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-hover:delay-500 group-has-[:focus-visible]:translate-y-0 group-has-[:focus-visible]:opacity-100"
+                    id="run-hint"
+                    role="tooltip"
+                  >
+                    <div className="mb-0.5 flex items-center justify-between font-medium text-white/95">
+                      {player.wantPlay ? t.run.pause : player.status === "paused" ? t.run.continue : t.run.run}
+                      <span className="font-normal text-white/40">{k("↵")}</span>
                     </div>
+                    {player.wantPlay ? t.pauseHint : t.runHint}
                   </div>
-                )}
-                <RunTimeline
-                  disabled={player.frameCount < 2}
-                  frameCount={player.frameCount}
-                  frames={player.frames}
-                  label={statusLabel}
-                  onSeek={player.seek}
-                  sourceLines={sourceLines}
-                  stepLabel={(step, line) => formatMessage(t.stepAtLine, { step, line })}
-                  viewIndex={player.viewIndex}
-                />
-                <div className="flex shrink-0 items-center gap-1.5 text-white/40" title={formatMessage(t.speedLabel, { speed: speedLabel })}>
-                  <Turtle size={13} />
-                  {SPEEDS.map((speed, index) => (
-                    <button
-                      key={speed.id}
-                      aria-label={t.run.speeds[speed.id]}
-                      aria-pressed={index === player.speedIndex}
-                      className="group relative grid h-3 w-3 place-items-center"
-                      onClick={() => player.setSpeedIndex(index)}
-                      type="button"
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full bg-white/25 transition-transform group-hover:scale-125 group-hover:bg-white/50" />
-                      {index === player.speedIndex && (
-                        <motion.span className="absolute h-2 w-2 rounded-full bg-white/80" layoutId="speed-dot" transition={spring.bouncy} />
-                      )}
-                    </button>
-                  ))}
-                  <Rabbit size={13} />
                 </div>
+                <ShapeButton compact={phone} ariaLabel={t.run.stepNext} onClick={player.stepForward} title={`${t.run.stepNext} (F10)`}>
+                  <SkipForward fill="currentColor" size={15} />
+                </ShapeButton>
+                <ShapeButton compact={phone} ariaLabel={t.run.stop} disabled={!player.live} onClick={player.stop} title={`${t.run.stop} (Esc)`}>
+                  <Square fill="currentColor" size={13} />
+                </ShapeButton>
+              </div>
+              {!compactToolbar && (
+                <div className="w-[150px] min-w-0 shrink-0 leading-tight" aria-live="polite">
+                  <AnimatePresence initial={false} mode="popLayout">
+                    <motion.div
+                      key={statusLabel}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-[12px] font-medium text-white/50"
+                      exit={{ opacity: 0, y: -6 }}
+                      initial={{ opacity: 0, y: 6 }}
+                      transition={spring.snappy}
+                    >
+                      {statusLabel}
+                    </motion.div>
+                  </AnimatePresence>
+                  <div className="truncate text-[12.5px] text-white/85" title={nowText ?? undefined}>
+                    {activeLine ? formatMessage(t.line, { n: activeLine }) : player.status === "done" ? t.programFinished : t.pressPlay}
+                  </div>
+                </div>
+              )}
+              <RunTimeline
+                disabled={player.frameCount < 2}
+                frameCount={player.frameCount}
+                frames={player.frames}
+                label={statusLabel}
+                onSeek={player.seek}
+                sourceLines={sourceLines}
+                stepLabel={(step, line) => formatMessage(t.stepAtLine, { step, line })}
+                viewIndex={player.viewIndex}
+              />
+              <div className="flex shrink-0 items-center gap-1.5 text-white/40" title={formatMessage(t.speedLabel, { speed: speedLabel })}>
+                {!phone && <Turtle size={13} />}
+                {SPEEDS.map((speed, index) => (
+                  <button
+                    key={speed.id}
+                    aria-label={t.run.speeds[speed.id]}
+                    aria-pressed={index === player.speedIndex}
+                    className="group relative grid h-3 w-3 place-items-center"
+                    onClick={() => player.setSpeedIndex(index)}
+                    type="button"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-white/25 transition-transform group-hover:scale-125 group-hover:bg-white/50" />
+                    {index === player.speedIndex && (
+                      <motion.span className="absolute h-2 w-2 rounded-full bg-white/80" layoutId="speed-dot" transition={spring.bouncy} />
+                    )}
+                  </button>
+                ))}
+                {!phone && <Rabbit size={13} />}
               </div>
             </div>
           </div>

@@ -83,7 +83,7 @@ function FinishedCard({
   return (
     <motion.div
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      className="mt-3 flex w-fit items-center gap-3 rounded-[12px] bg-[#7FE0B8]/[0.08] py-2 pr-2 pl-3 font-sans ring-1 ring-[#7FE0B8]/20"
+      className="mt-3 flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-[12px] bg-[#7FE0B8]/[0.08] py-2 pr-2 pl-3 font-sans ring-1 ring-[#7FE0B8]/20"
       initial={fresh ? { opacity: 0, y: 8, scale: 0.97 } : false}
       transition={spring.bouncy}
     >
@@ -101,7 +101,7 @@ function FinishedCard({
       </span>
       {onRun && (
         <button
-          className="ml-1 flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] text-[#A9F0D2] transition-colors hover:bg-white/[0.06]"
+          className="flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] whitespace-nowrap text-[#A9F0D2] transition-colors hover:bg-white/[0.06]"
           onClick={onRun}
           type="button"
         >
