@@ -1,7 +1,7 @@
 import { useId } from "react";
 
-/** The project's public repository. */
-export const REPOSITORY_URL = "https://github.com/kervin5/codoritmo";
+/** The source repository linked from the app; forks can point it at their own with NEXT_PUBLIC_REPOSITORY_URL. */
+export const REPOSITORY_URL = process.env.NEXT_PUBLIC_REPOSITORY_URL || "https://github.com/kervin5/codoritmo";
 
 /**
  * Codoritmo's mark: a mint tile with a "C" drawn as a flow path (it starts at

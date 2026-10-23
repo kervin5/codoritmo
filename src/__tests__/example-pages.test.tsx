@@ -10,7 +10,7 @@ import TopicPage, {
   generateMetadata as topicMetadata,
   generateStaticParams as topicStaticParams,
 } from "../../app/[lang]/[section]/[slug]/[topic]/page";
-import sitemap from "../../app/sitemap";
+import { renderUrlset, sitemapEntries } from "../seo/sitemaps";
 import { runExample, runExampleUncached } from "../components/examples-site/content";
 import { examplePrograms, exampleTopics } from "../engine";
 import { locales, type Locale } from "../i18n/config";
@@ -50,23 +50,26 @@ afterEach(cleanup);
 
 describe("static params", () => {
   it("generates only each locale's own section, so the wrong-locale section has no page", () => {
-    expect(sectionStaticParams({ params: { lang: "es" } })).toEqual([{ section: "ejemplos" }]);
-    expect(sectionStaticParams({ params: { lang: "en" } })).toEqual([{ section: "examples" }]);
+    expect(sectionStaticParams({ params: { lang: "es" } })).toContainEqual({ section: "ejemplos" });
+    expect(sectionStaticParams({ params: { lang: "es" } })).not.toContainEqual({ section: "examples" });
+    expect(sectionStaticParams({ params: { lang: "en" } })).toContainEqual({ section: "examples" });
+    expect(sectionStaticParams({ params: { lang: "en" } })).not.toContainEqual({ section: "ejemplos" });
   });
 
   it.each(locales)("generates every example and topic page for %s", (locale) => {
-    const examples = exampleStaticParams({ params: sectionParams(locale) });
+    const section = sectionParams(locale).section;
+    const examples = exampleStaticParams({ params: { lang: locale } }).filter((p) => p.section === section);
     expect(examples).toHaveLength(examplePrograms.length);
-    expect(examples).toContainEqual({ slug: exampleSlug(locale, "bubble-sort") });
+    expect(examples).toContainEqual({ lang: locale, section, slug: exampleSlug(locale, "bubble-sort") });
 
-    const topics = topicStaticParams({ params: sectionParams(locale) });
+    const topics = topicStaticParams({ params: { lang: locale } }).filter((p) => p.slug === topicSection[locale]);
     expect(topics).toHaveLength(exampleTopics.length);
-    expect(topics).toContainEqual({ slug: topicSection[locale], topic: topicSlug(locale, "sorting") });
+    expect(topics).toContainEqual({ lang: locale, section, slug: topicSection[locale], topic: topicSlug(locale, "sorting") });
   });
 
   it("generates nothing under a wrong-locale section", () => {
-    expect(exampleStaticParams({ params: { lang: "en", section: "ejemplos" } })).toEqual([]);
-    expect(topicStaticParams({ params: { lang: "es", section: "examples" } })).toEqual([]);
+    expect(exampleStaticParams({ params: { lang: "en" } }).some((p) => p.section === "ejemplos")).toBe(false);
+    expect(topicStaticParams({ params: { lang: "es" } }).some((p) => p.section === "examples")).toBe(false);
   });
 });
 
@@ -225,16 +228,22 @@ describe("metadata", () => {
 
 describe("sitemap", () => {
   it("lists every index, topic and example page in both locales, with translations", () => {
-    const entries = sitemap();
+    const entries = sitemapEntries("examples");
     const urls = new Set(entries.map((entry) => entry.url));
     for (const locale of locales) {
       expect(urls).toContain(abs(examplesIndexPath(locale)));
       for (const topic of exampleTopics) expect(urls).toContain(abs(topicPath(locale, topic)));
       for (const example of examplePrograms) expect(urls).toContain(abs(examplePath(locale, example.id)));
     }
-    expect(entries.length).toBe(4 + 2 * (1 + exampleTopics.length + examplePrograms.length));
+    expect(entries.length).toBe(2 * (1 + exampleTopics.length + examplePrograms.length));
     const bubble = entries.find((entry) => entry.url === abs(examplePath("es", "bubble-sort")));
     expect(bubble?.alternates?.languages).toMatchObject({ en: abs(examplePath("en", "bubble-sort")) });
+  });
+
+  it("writes hreflang alternates into the XML", () => {
+    const xml = renderUrlset(sitemapEntries("examples"));
+    expect(xml).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"');
+    expect(xml).toContain(`<xhtml:link rel="alternate" hreflang="en" href="${abs(examplePath("en", "bubble-sort"))}" />`);
   });
 });
 

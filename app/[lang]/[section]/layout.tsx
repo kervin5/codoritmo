@@ -1,16 +1,16 @@
 import { notFound } from 'next/navigation';
 
-import { sectionLocale, sectionParams } from '@/src/components/examples-site/content';
+import { allSectionParams, resolveSection } from '@/src/seo/sections';
 
-// /es/ejemplos and /en/examples. Only each locale's own section name is
-// generated, and nothing else is served: /en/ejemplos and /es/examples 404.
+// Every public section and feature page under /[lang]. Only the segments in
+// src/seo/sections.ts are generated, and nothing else is served.
 export const dynamicParams = false;
 
 export function generateStaticParams({ params }: { params: { lang: string } }) {
-  return sectionParams(params.lang);
+  return allSectionParams(params.lang);
 }
 
-export default async function ExamplesSectionLayout({
+export default async function SectionLayout({
   children,
   params,
 }: {
@@ -18,6 +18,6 @@ export default async function ExamplesSectionLayout({
   params: Promise<{ lang: string; section: string }>;
 }) {
   const { lang, section } = await params;
-  if (!sectionLocale(lang, section)) notFound();
+  if (!resolveSection(lang, section)) notFound();
   return children;
 }

@@ -5,7 +5,7 @@ import AboutPage, {
 } from "../../app/[lang]/about/page";
 import { generateMetadata as generateHomeMetadata } from "../../app/[lang]/page";
 import robots from "../../app/robots";
-import sitemap from "../../app/sitemap";
+import { renderSitemapIndex, SITEMAP_IDS, sitemapEntries, sitemapUrl } from "../seo/sitemaps";
 import { siteUrl } from "../seo/site";
 
 describe("SEO surfaces", () => {
@@ -56,10 +56,12 @@ describe("SEO surfaces", () => {
 
     expect(robots()).toMatchObject({
       host: siteUrl,
-      sitemap: `${siteUrl}/sitemap.xml`,
+      sitemap: [`${siteUrl}/sitemap.xml`, ...SITEMAP_IDS.map(sitemapUrl)],
     });
 
-    expect(sitemap()).toEqual(
+    for (const id of SITEMAP_IDS) expect(renderSitemapIndex()).toContain(`<loc>${sitemapUrl(id)}</loc>`);
+
+    expect(sitemapEntries("core")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ url: `${siteUrl}/es` }),
         expect.objectContaining({ url: `${siteUrl}/en/about` }),
