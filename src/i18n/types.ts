@@ -235,12 +235,21 @@ export interface Dictionary {
     togglePanel: string;
     askingInput: string;
     consoleEmpty: string;
+    consoleInvite: string;
+    runHint: string;
+    pauseHint: string;
+    blankTitle: string;
+    blankBody: string;
+    blankExamples: string;
+    blankReference: string;
+    finishedTitle: string;
+    runAgain: string;
     inputPlaceholder: string;
     programFinished: string;
     pressPlay: string;
     line: string;
     mainRoutine: string;
-    stepsRun: string;
+    stepsRun: { one: string; other: string };
     endOfProgram: string;
     stoppedLine: string;
     pressEnter: string;
@@ -321,6 +330,8 @@ export interface Dictionary {
     };
     examples: {
       title: string;
+      /** The menu-bar invitation, with the number of examples. */
+      explore: string;
       menu: string;
       search: string;
       all: string;

@@ -2,13 +2,14 @@
 
 // Panel contents for the workspace: console, desk check, and code translation.
 
-import { Check, Copy, CornerDownLeft } from "lucide-react";
+import { Check, Copy, CornerDownLeft, RotateCcw } from "lucide-react";
 import { AnimatePresence, motion, useAnimate, useReducedMotion } from "motion/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { generateExport, Parser, type EngineSettings, type ExportLanguage } from "@/src/engine";
 import type { Diagnostic, VariableSnapshot } from "@/src/engine/types";
 import { formatDiagnostic } from "@/src/i18n/diagnostics";
+import { formatPlural } from "@/src/i18n/format";
 import type { Dictionary } from "@/src/i18n/types";
 import { duration, easeOut, spring } from "@/src/lib/motion";
 import consoleMotion from "./motion/console-motion.module.css";
@@ -67,7 +68,60 @@ function EchoLine({ text, flight, fresh }: { text: string; flight: AnswerFlight 
   );
 }
 
-export function ConsolePanel({ player, dictionary }: { player: Player; dictionary: Dictionary }) {
+/** The end of a run: a clear, kind confirmation with a way to go again. */
+function FinishedCard({
+  fresh,
+  onRun,
+  steps,
+  t,
+}: {
+  fresh: boolean;
+  onRun?: () => void;
+  steps: number;
+  t: Dictionary["studio"];
+}) {
+  return (
+    <motion.div
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      className="mt-3 flex w-fit items-center gap-3 rounded-[12px] bg-[#7FE0B8]/[0.08] py-2 pr-2 pl-3 font-sans ring-1 ring-[#7FE0B8]/20"
+      initial={fresh ? { opacity: 0, y: 8, scale: 0.97 } : false}
+      transition={spring.bouncy}
+    >
+      <motion.span
+        animate={{ scale: 1, rotate: 0 }}
+        className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#7FE0B8] text-[#0B2A20]"
+        initial={fresh ? { scale: 0, rotate: -45 } : false}
+        transition={{ ...spring.bouncy, delay: 0.08 }}
+      >
+        <Check size={14} strokeWidth={3} />
+      </motion.span>
+      <span className="text-[13.5px] leading-5">
+        <span className="font-medium text-white/90">{t.finishedTitle}</span>
+        <span className="ml-2 text-white/45">{formatPlural(t.stepsRun, steps)}</span>
+      </span>
+      {onRun && (
+        <button
+          className="ml-1 flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] text-[#A9F0D2] transition-colors hover:bg-white/[0.06]"
+          onClick={onRun}
+          type="button"
+        >
+          <RotateCcw size={12} /> {t.runAgain}
+        </button>
+      )}
+    </motion.div>
+  );
+}
+
+export function ConsolePanel({
+  player,
+  dictionary,
+  onRun,
+}: {
+  player: Player;
+  dictionary: Dictionary;
+  /** Starts the program from the empty console's invitation. */
+  onRun?: () => void;
+}) {
   const t = dictionary.studio;
   const [draft, setDraft] = useState("");
   const [flight, setFlight] = useState<AnswerFlight | null>(null);
@@ -85,11 +139,18 @@ export function ConsolePanel({ player, dictionary }: { player: Player; dictionar
 
   return (
     <div className="workspace-scroll relative h-full overflow-auto px-5 py-4 font-mono text-[14px] leading-7 text-[#DCE3E0]">
-      {lines.length === 0 && !asking && <p className="font-sans text-[13px] text-[#5E6A66]">{t.consoleEmpty}</p>}
+      {lines.length === 0 && !asking && (
+        <div className="font-sans">
+          <p className="text-[14px] text-white/75">{t.consoleInvite}</p>
+          <p className="mt-0.5 text-[13px] text-white/40">{t.consoleEmpty}</p>
+        </div>
+      )}
       {lines.map((line, index) => {
         const fresh = index >= freshFrom;
         return line.kind === "in" ? (
           <EchoLine key={index} flight={index === echoIndex ? flight : null} fresh={fresh} text={line.text} />
+        ) : line.kind === "sys" && line.text === t.endOfProgram ? (
+          <FinishedCard key={index} fresh={fresh} onRun={onRun} steps={player.frameCount} t={t} />
         ) : line.kind === "sys" ? (
           <div key={index} className={`mt-1 font-sans text-[12px] text-[#5E6A66] ${fresh ? consoleMotion.lineEnter : ""}`}>
             {line.text}

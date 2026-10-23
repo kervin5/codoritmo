@@ -116,7 +116,7 @@ describe("Workspace", () => {
     useInstantSpeed();
     fireEvent.click(transport(t.run.run));
     await waitFor(() => expect(consoleText()).toContain("Hola Mundo!"));
-    await waitFor(() => expect(consoleText()).toContain(t.endOfProgram));
+    await waitFor(() => expect(consoleText()).toContain(t.finishedTitle));
   });
 
   it("asks for input inline and resumes after the answer", async () => {

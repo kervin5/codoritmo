@@ -94,8 +94,9 @@ const BlocksView = dynamic(() => import("./blocks/blocks-view").then((m) => m.Bl
 import { ComplexityPanel } from "./complexity-panel";
 import { GitHubMark, REPOSITORY_URL } from "@/src/components/brand/logo-mark";
 import { ExamplesBrowser } from "./examples-browser";
+import { VariableDock } from "./variable-dock";
 import { LogoMarkAnimated } from "./motion/logo-mark-animated";
-import { ConsolePanel, DeskCheckPanel, formatValue, TranslationPanel, type TraceRow } from "./panels";
+import { ConsolePanel, DeskCheckPanel, TranslationPanel, type TraceRow } from "./panels";
 import { profileLabel, ProfileDialog } from "./profile-dialog";
 import { ReferencePanel, useReferenceCatalog, type ReferenceEntry } from "./reference-panel";
 import { SPEEDS, usePlayer } from "./use-player";
@@ -757,7 +758,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           <X size={13} />
         </button>
       </div>
-      <div className="min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1">
         {prefs.sideTab === "diagrama" && (
           <FlowDiagram
             activeLine={activeLine}
@@ -773,6 +774,9 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
             finished={player.status === "done"}
             visitedLines={visitedLines}
           />
+        )}
+        {prefs.sideTab === "diagrama" && showPlayhead && (
+          <VariableDock changed={player.changed} step={player.viewIndex} variables={player.variables} />
         )}
         {prefs.sideTab === "traduccion" && (
           <div className="flex h-full flex-col">
@@ -839,14 +843,14 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           )}
         </div>
         <button
-          className="flex h-[24px] shrink-0 items-center gap-1.5 rounded-[6px] px-2 text-[12px] text-white/55 hover:bg-white/[0.06] hover:text-white"
+          className="flex h-[24px] shrink-0 items-center gap-1.5 rounded-full bg-white/[0.06] px-3 text-[12px] text-white/75 ring-1 ring-white/[0.06] transition-colors hover:bg-white/[0.1] hover:text-white"
           ref={examplesButtonRef}
           onClick={() => setExamplesOpen(true)}
           title={`${t.examples.menu} (${k("E")})`}
           type="button"
         >
-          <LibraryBig size={13} />
-          {!phone && t.examples.title}
+          <LibraryBig className="text-[#7FE0B8]" size={13} />
+          {!phone && (narrow ? t.examples.title : formatMessage(t.examples.explore, { n: examplePrograms.length }))}
         </button>
         <button
           className="flex h-[24px] shrink-0 items-center gap-2 rounded-[6px] border border-white/[0.07] bg-black/20 px-2 text-[12px] text-white/45 hover:text-white/75"
@@ -1037,7 +1041,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
               </AnimatePresence>
             </div>
           )}
-          <div className="min-h-[120px] flex-1 select-text">
+          <div className="relative min-h-[120px] flex-1 select-text">
             {blocksMode ? (
               <BlocksView
                 activeLine={activeLine}
@@ -1065,6 +1069,36 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
               value={source}
             />
             )}
+            <AnimatePresence>
+              {!blocksMode && source.trim() === BLANK_PROGRAM.trim() && (
+                <motion.div
+                  animate={{ opacity: 1, y: 0 }}
+                  className="absolute right-6 bottom-6 left-16 z-10 max-w-[460px] rounded-[14px] bg-[#1D2124]/95 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.45)] ring-1 ring-white/[0.07] backdrop-blur-md"
+                  exit={{ opacity: 0, y: 8 }}
+                  initial={{ opacity: 0, y: 12 }}
+                  transition={spring.smooth}
+                >
+                  <p className="text-[14.5px] font-medium text-white/90">{t.blankTitle}</p>
+                  <p className="mt-1 text-[13px] leading-[19px] text-white/55">{t.blankBody}</p>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      className="flex h-[28px] items-center gap-1.5 rounded-full bg-[#7FE0B8]/[0.14] px-3 text-[12.5px] text-[#C9FBE5] transition-colors hover:bg-[#7FE0B8]/[0.22]"
+                      onClick={() => setExamplesOpen(true)}
+                      type="button"
+                    >
+                      <LibraryBig size={13} /> {t.blankExamples}
+                    </button>
+                    <button
+                      className="flex h-[28px] items-center gap-1.5 rounded-full px-3 text-[12.5px] text-white/65 transition-colors hover:bg-white/[0.06] hover:text-white"
+                      onClick={() => openSide("referencia")}
+                      type="button"
+                    >
+                      <BookOpen size={13} /> {t.blankReference}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Bottom panel */}
@@ -1095,7 +1129,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
             </div>
             {prefs.bottomOpen && (
               <div className="min-h-0 flex-1 select-text">
-                {prefs.bottomTab === "consola" && <ConsolePanel dictionary={dictionary} player={player} />}
+                {prefs.bottomTab === "consola" && <ConsolePanel dictionary={dictionary} onRun={player.play} player={player} />}
                 {prefs.bottomTab === "prueba" && <DeskCheckPanel dictionary={dictionary} onPickStep={player.seek} trace={trace} />}
                 {prefs.bottomTab === "arreglos" && (
                   <ArrayView
@@ -1207,7 +1241,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
               <motion.div
                 key={statusLabel}
                 animate={{ opacity: 1, y: 0 }}
-                className="text-[10.5px] font-semibold tracking-[0.08em] text-white/40 uppercase"
+                className="text-[12.5px] font-semibold text-white/55"
                 exit={{ opacity: 0, y: -6 }}
                 initial={{ opacity: 0, y: 6 }}
                 transition={spring.snappy}
@@ -1226,29 +1260,46 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
             <button aria-label={t.run.stepBack} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white transition-transform active:scale-90 disabled:opacity-30" disabled={player.frameCount === 0} onClick={player.stepBack} title={`${t.run.stepBack} (⇧F10)`} type="button">
               <SkipBack fill="currentColor" size={14} />
             </button>
-            <motion.button
-              aria-label={player.wantPlay ? t.run.pause : t.run.run}
-              className="relative mx-1 grid h-9 w-9 place-items-center rounded-full bg-[#F2F7F4] text-[#0E1214] shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
-              onClick={togglePlay}
-              title={`${player.wantPlay ? t.run.pause : t.run.run} (${k("↵")})`}
-              transition={spring.snappy}
-              type="button"
-              whileHover={{ scale: 1.06 }}
-              whileTap={{ scale: 0.9 }}
-            >
-              <AnimatePresence initial={false} mode="popLayout">
-                <motion.span
-                  key={player.wantPlay ? "pause" : "play"}
-                  animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                  className="grid place-items-center"
-                  exit={{ opacity: 0, scale: 0.5, rotate: player.wantPlay ? 90 : -90 }}
-                  initial={{ opacity: 0, scale: 0.5, rotate: player.wantPlay ? -90 : 90 }}
-                  transition={spring.snappy}
-                >
-                  {player.wantPlay ? <Pause fill="currentColor" size={15} /> : <Play className="ml-0.5" fill="currentColor" size={15} />}
-                </motion.span>
-              </AnimatePresence>
-            </motion.button>
+            <div className="group relative mx-2">
+              <motion.button
+                aria-describedby="run-hint"
+                aria-label={player.wantPlay ? t.run.pause : t.run.run}
+                className={`relative flex h-11 items-center justify-center gap-2 rounded-full bg-[linear-gradient(180deg,#B4FADD_0%,#86F0C4_50%,#6CD9AE_100%)] text-[14.5px] font-semibold text-[#08291D] shadow-[inset_0_1px_0_rgba(255,255,255,0.65),0_3px_0_#2F9472,0_10px_28px_rgba(134,240,196,0.32)] transition-shadow duration-150 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white active:shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_1px_0_#2F9472,0_4px_14px_rgba(134,240,196,0.24)] ${
+                  narrow ? "w-11" : "min-w-[136px] px-5"
+                }`}
+                onClick={togglePlay}
+                transition={spring.snappy}
+                type="button"
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96, y: 2 }}
+              >
+                <AnimatePresence initial={false} mode="popLayout">
+                  <motion.span
+                    key={player.wantPlay ? "pause" : "play"}
+                    animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                    className="grid place-items-center"
+                    exit={{ opacity: 0, scale: 0.5, rotate: player.wantPlay ? 90 : -90 }}
+                    initial={{ opacity: 0, scale: 0.5, rotate: player.wantPlay ? -90 : 90 }}
+                    transition={spring.snappy}
+                  >
+                    {player.wantPlay ? <Pause fill="currentColor" size={16} /> : <Play className="ml-0.5" fill="currentColor" size={16} />}
+                  </motion.span>
+                </AnimatePresence>
+                {!narrow && <span>{player.wantPlay ? t.run.pause : player.status === "paused" ? t.run.continue : t.run.run}</span>}
+              </motion.button>
+              {/* What the button does, shown after a short hover. */}
+              <div
+                className="pointer-events-none absolute bottom-[calc(100%+12px)] left-1/2 z-30 w-[260px] -translate-x-1/2 translate-y-1 rounded-[10px] bg-[#262B2E]/95 px-3 py-2.5 text-[12.5px] leading-[18px] text-white/75 opacity-0 shadow-[0_14px_36px_rgba(0,0,0,0.5)] ring-1 ring-white/[0.08] backdrop-blur-xl transition-[opacity,translate] duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-hover:delay-500 group-has-[:focus-visible]:translate-y-0 group-has-[:focus-visible]:opacity-100"
+                id="run-hint"
+                role="tooltip"
+              >
+                <div className="mb-0.5 flex items-center justify-between font-medium text-white/95">
+                  {player.wantPlay ? t.run.pause : t.run.run}
+                  <span className="font-normal text-white/40">{k("↵")}</span>
+                </div>
+                {player.wantPlay ? t.pauseHint : t.runHint}
+              </div>
+            </div>
             <button aria-label={t.run.stepNext} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/[0.07] hover:text-white transition-transform active:scale-90" onClick={player.stepForward} title={`${t.run.stepNext} (F10)`} type="button">
               <SkipForward fill="currentColor" size={14} />
             </button>
@@ -1287,26 +1338,6 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           </div>
           <span className="w-8 shrink-0 text-[11px] text-white/40 tabular-nums">{player.frameCount}</span>
         </div>
-        {workspaceWidth >= 1000 && (
-          <div className="flex w-[22%] min-w-0 justify-end gap-1.5 overflow-hidden">
-            {[...player.changed].slice(0, 3).map((name) => {
-              const now = player.frame?.variables.find((v) => v.name === name);
-              const before = player.previous?.variables.find((v) => v.name === name);
-              return (
-                <motion.span
-                  key={`${name}:${player.viewIndex}`}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  className="shrink-0 rounded-[5px] bg-[#7FE0B8]/10 px-2 py-0.5 font-mono text-[11.5px] whitespace-nowrap text-[#CFF5E4]"
-                  initial={{ opacity: 0, y: 6, scale: 0.92 }}
-                  transition={spring.bouncy}
-                >
-                  {name} <span className="text-white/35">{before?.initialized ? formatValue(before.value) : "∅"}→</span>
-                  {now ? formatValue(now.value) : ""}
-                </motion.span>
-              );
-            })}
-          </div>
-        )}
         <div className="flex shrink-0 items-center gap-1.5 text-white/40" title={formatMessage(t.speedLabel, { speed: speedLabel })}>
           <Turtle size={13} />
           {SPEEDS.map((speed, index) => (

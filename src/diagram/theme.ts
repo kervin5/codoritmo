@@ -77,17 +77,17 @@ export function darkPaletteForFlowNodeKind(kind: FlowNodeKind): DiagramNodePalet
     case 'terminator':
       return { fill: '#1B2723', stroke: '#3F7C66', text: '#D3EEE2' };
     case 'input':
-      return { fill: '#18222C', stroke: '#4E7EA3', text: '#D5E4F0' };
+      return { fill: '#172436', stroke: '#5A8FC4', text: '#D5E4F0' };
     case 'output':
-      return { fill: '#172427', stroke: '#4B8E95', text: '#D2EAEC' };
+      return { fill: '#132A2D', stroke: '#4FA3A8', text: '#D2EAEC' };
     case 'decision':
-      return { fill: '#272217', stroke: '#A88546', text: '#F0E1C4' };
+      return { fill: '#2C2414', stroke: '#C49A4E', text: '#F0E1C4' };
     case 'loop':
-      return { fill: '#192620', stroke: '#58A684', text: '#D5EEE2' };
+      return { fill: '#16291F', stroke: '#5DBB8F', text: '#D5EEE2' };
     case 'switch':
-      return { fill: '#261C25', stroke: '#9C7596', text: '#EEDCEA' };
+      return { fill: '#2A1C29', stroke: '#B582AC', text: '#EEDCEA' };
     case 'call':
-      return { fill: '#211D2A', stroke: '#8A78B0', text: '#E2DCF0' };
+      return { fill: '#221C30', stroke: '#9A86C8', text: '#E2DCF0' };
     case 'junction':
       return { fill: '#6B777D', stroke: '#6B777D', text: '#6B777D' };
     case 'process':

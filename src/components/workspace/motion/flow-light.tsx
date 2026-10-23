@@ -146,6 +146,13 @@ export function FlowLight({ handleRef, ripple }: { handleRef: Ref<FlowLightHandl
         style={{ position: "absolute", left: 0, top: 0, overflow: "visible", pointerEvents: "none" }}
         width={1}
       >
+        <defs>
+          <radialGradient cx="35%" cy="30%" id="flow-marble-body" r="75%">
+            <stop offset="0" stopColor="#F2FFF9" />
+            <stop offset="0.45" stopColor="#9AF5CF" />
+            <stop offset="1" stopColor="#2F9472" />
+          </radialGradient>
+        </defs>
         {TRAIL.map(([, width, opacity], index) => (
           <path
             key={index}
@@ -162,8 +169,12 @@ export function FlowLight({ handleRef, ripple }: { handleRef: Ref<FlowLightHandl
         ))}
         <g ref={groupRef} style={{ opacity: 0 }}>
           <g ref={headRef} style={{ transformBox: "fill-box", transformOrigin: "center" }}>
-            <circle fill={DARK_ACTIVE_COLOR} opacity={0.28} r={9} style={{ filter: "blur(3px)" }} />
-            <circle fill="#E9FFF5" r={3.6} stroke={DARK_ACTIVE_COLOR} strokeWidth={1.4} />
+            {/* A glass marble: glow, a soft contact shadow, a lit body and a specular highlight. */}
+            <circle fill={DARK_ACTIVE_COLOR} opacity={0.3} r={13} style={{ filter: "blur(5px)" }} />
+            <ellipse cx={1.2} cy={4.8} fill="#000" opacity={0.35} rx={5.6} ry={2.2} style={{ filter: "blur(1.5px)" }} />
+            <circle fill="url(#flow-marble-body)" r={6.6} />
+            <circle fill="none" r={6.6} stroke="#FFFFFF" strokeOpacity={0.35} strokeWidth={0.8} />
+            <ellipse cx={-2.2} cy={-2.6} fill="#FFFFFF" opacity={0.85} rx={2.1} ry={1.4} transform="rotate(-30 -2.2 -2.6)" />
           </g>
         </g>
       </svg>
