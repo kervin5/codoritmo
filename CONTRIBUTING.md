@@ -147,7 +147,7 @@ Feel free to open an issue with your question or reach out through GitHub Discus
 
 ## License
 
-By contributing to Codoritmo, you agree that your contributions will be licensed under the CC BY-NC 4.0 license.
+By contributing to Codoritmo, you agree that your contributions are licensed under the GNU General Public License, version 2 or later (GPL-2.0-or-later), the same license as the project. See [LICENSE](LICENSE).
 
 ---
 

@@ -1,10 +1,10 @@
 {
   "name": "codoritmo",
   "version": "0.1.0",
-  "description": "A modern, browser-based pseudocode workspace for learning programming, inspired by PSeInt",
-  "author": "Codoritmo Contributors",
-  "license": "CC-BY-NC-4.0",
-  "homepage": "https://github.com/kervin5/codoritmo",
+  "description": "Free, open-source pseudocode IDE in the browser, compatible with PSeInt: flowcharts, block programming, step-by-step execution, desk check and export to C, C++, Java, Python and JavaScript.",
+  "author": "Kervin Vasquez Hernandez",
+  "license": "GPL-2.0-or-later",
+  "homepage": "https://www.codoritmo.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/kervin5/codoritmo.git"
@@ -14,14 +14,21 @@
   },
   "keywords": [
     "pseudocode",
+    "pseudocódigo",
     "pseint",
-    "education",
-    "programming",
-    "learning",
-    "spanish",
+    "pseint-online",
+    "algorithms",
+    "algoritmos",
     "flowchart",
-    "interpreter",
-    "ide"
+    "diagrama-de-flujo",
+    "education",
+    "learn-to-code",
+    "programming",
+    "blocks",
+    "scratch",
+    "desk-check",
+    "nextjs",
+    "typescript"
   ],
   "private": false,
   "scripts": {

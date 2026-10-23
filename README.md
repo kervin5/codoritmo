@@ -1,266 +1,128 @@
 <div align="center">
 
-# 🎓 Codoritmo
+# Codoritmo
 
-**Un espacio de trabajo moderno de pseudocódigo en el navegador para aprender programación**
+**Aprende a programar con pseudocódigo, en el navegador. Compatible con PSeInt, gratis y de código abierto.**
 
-[![Licencia: CC BY-NC 4.0](https://img.shields.io/badge/Licencia-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
+[![Licencia: GPL v2 o posterior](https://img.shields.io/badge/licencia-GPL--2.0--or--later-blue.svg)](LICENSE)
+[![Next.js 16](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
-[![PRs Bienvenidos](https://img.shields.io/badge/PRs-bienvenidos-brightgreen.svg)](CONTRIBUTING.md)
+[![PRs bienvenidos](https://img.shields.io/badge/PRs-bienvenidos-brightgreen.svg)](CONTRIBUTING.md)
 
-[🚀 Versión en Vivo](https://www.codoritmo.com) • [📖 Documentación](docs/) • [🐛 Reportar Error](../../issues) • [✨ Solicitar Función](../../issues) • [🇬🇧 English](README.en.md)
+[Abrir Codoritmo](https://www.codoritmo.com) · [Ejemplos](https://www.codoritmo.com/es/ejemplos) · [Reportar un error](../../issues) · [English](README.en.md)
 
 </div>
 
 ---
 
-## Acerca de
+Codoritmo es un entorno para escribir, ejecutar y entender algoritmos en **pseudocódigo en español**, directamente en el navegador y sin instalar nada. Usa la misma sintaxis que **PSeInt** y trae sus **463 perfiles escolares**, así que puedes seguir tu curso tal como lo enseña tu profesor, en la computadora del colegio, en una Chromebook o en el teléfono.
 
-Codoritmo es un espacio de trabajo de pseudocódigo independiente basado en navegador, inspirado en [PSeInt](http://pseint.sourceforge.net/). Proporciona un entorno moderno y accesible para aprender fundamentos de programación usando un dialecto compatible con PSeInt.
+Está pensado para quien está empezando: cada programa se puede ver correr paso a paso, en el código, en el diagrama de flujo y en la consola a la vez.
 
-**Misión**: Hacer la programación con pseudocódigo accesible para todos, directamente en el navegador, sin necesidad de instalación.
+## Qué puedes hacer
 
-> **Nota**: Aunque está inspirado en el enfoque educativo de PSeInt y mantiene compatibilidad con su dialecto, Codoritmo es un proyecto independiente que puede evolucionar en diferentes direcciones con el tiempo.
-
-## Características Principales
-
-- **Basado en navegador**: No requiere instalación, funciona completamente en tu navegador web
-- **Compatible con PSeInt**: Soporta sintaxis, configuraciones y construcciones del lenguaje PSeInt
-- **Editor moderno**: Editor de código con resaltado de sintaxis basado en Monaco
-- **Visualización de diagramas de flujo**: Genera diagramas de flujo desde tu pseudocódigo
-- **Bilingüe**: Soporte completo para español e inglés
-- **Enfoque educativo**: Diseñado para aprender fundamentos de programación
-- **Perfiles escolares**: Más de 385 perfiles escolares de PSeInt preconfigurados
-- **Personalizable**: Ajusta la configuración según tu estilo de aprendizaje
+- **Escribir pseudocódigo compatible con PSeInt**: `Algoritmo`, `Leer`, `Escribir`, `Si`, `Segun`, `Mientras`, `Repetir`, `Para`, arreglos, funciones y subprocesos, con autocompletado y ayuda al pasar el ratón.
+- **Ver tu programa correr**: ejecución paso a paso, con pausa, avance y retroceso. La línea actual se ilumina en el código y una luz recorre el **diagrama de flujo** de bloque en bloque.
+- **Diagramas de flujo automáticos** con los símbolos estándar, exportables a PNG y SVG.
+- **Programar con bloques**, al estilo de Scratch, sincronizados con el código.
+- **Prueba de escritorio** automática: una tabla con el valor de cada variable en cada paso.
+- **Visualizador de arreglos** para ver cómo se ordenan y recorren, y **análisis de complejidad** (O(n), O(n²)…) medido al ejecutar.
+- **Exportar a C, C++, Java, Python y JavaScript** para dar el siguiente paso.
+- **Perfiles escolares**: los 463 perfiles de PSeInt (reglas de cada colegio o universidad), más ajustes propios por documento.
+- **Biblioteca de ejemplos** por tema, desde "Hola Mundo" hasta algoritmos de ordenamiento, con explicaciones y retos.
+- **Referencia del lenguaje** explicada para principiantes, con ejemplos comprobados.
+- **Español e inglés**, y tus archivos se guardan en tu navegador: no hace falta crear una cuenta.
 
 ## Relación con PSeInt
 
-Codoritmo está inspirado en [PSeInt](http://pseint.sourceforge.net/), una excelente herramienta educativa creada para ayudar a estudiantes hispanohablantes a aprender programación. Aunque Codoritmo mantiene compatibilidad con el dialecto de PSeInt y honra su misión educativa, es un **proyecto separado e independiente**.
+Codoritmo está inspirado en [PSeInt](http://pseint.sourceforge.net/), la herramienta creada por Pablo Novara que ha enseñado a programar a millones de estudiantes hispanohablantes. Es un **proyecto independiente**: no está afiliado a PSeInt ni lo reemplaza. Mantiene compatibilidad con su sintaxis y sus perfiles para que puedas usar lo que aprendes en clase, y agrega herramientas pensadas para entender lo que pasa dentro de cada algoritmo.
 
-**Para la aplicación oficial de escritorio PSeInt**, visita: [http://pseint.sourceforge.net/](http://pseint.sourceforge.net/)
+Para la aplicación oficial de escritorio, visita [pseint.sourceforge.net](http://pseint.sourceforge.net/).
 
-## Filosofía de Desarrollo
+## Empezar
 
-Este proyecto se trata de **aprender y lanzar**. No hay nada más emocionante que construir, ya sea a mano o asistido por IA. Cualquier PR es bienvenido. El orgullo a un lado.
-
-**Pensamiento Crítico Primero**: Enseñar pensamiento algorítmico y resolución de problemas. Escribir código es secundario.
-
-**Construido con IA**: Desarrollado usando herramientas asistidas por IA (Codex/Kiro).
-
-**Iteración sobre Perfección**: Lanzar temprano, recopilar retroalimentación, mejorar continuamente.
-
-**Contribución Accesible**: Un PR de un estudiante de primaria usando IA es tan valioso como uno de un ingeniero veterano.
-
-## Comenzando
-
-### Requisitos Previos
-
-- Node.js 18 o superior
-- npm, yarn, pnpm, o bun
-
-### Instalación
+Requisitos: Node.js 18 o superior y npm (o yarn, pnpm, bun).
 
 ```bash
-# Clonar el repositorio
-git clone https://github.com/yourusername/codoritmo.git
+git clone https://github.com/kervin5/codoritmo.git
 cd codoritmo
-
-# Instalar dependencias
 npm install
-
-# Configurar variables de entorno (opcional)
-cp .env.example .env.local
-# Editar .env.local con tu configuración
-```
-
-### Desarrollo
-
-Ejecutar el servidor de desarrollo:
-
-```bash
+cp .env.example .env.local   # opcional, ver "Configuración"
 npm run dev
 ```
 
-Abre [http://localhost:3000](http://localhost:3000) en tu navegador para ver la aplicación.
+Abre [http://localhost:3000](http://localhost:3000).
 
-### Compilar para Producción
+| Comando | Qué hace |
+|---|---|
+| `npm run dev` | Servidor de desarrollo |
+| `npm run build` y `npm start` | Compilar y servir en producción |
+| `npm test` | Todas las pruebas (Jest) |
+| `npm run lint` | ESLint |
 
-```bash
-# Compilar la aplicación
-npm run build
+## Configuración
 
-# Iniciar el servidor de producción
-npm start
+Ningún dominio está escrito en el código. Copia `.env.example` a `.env.local`:
+
+```env
+# Dirección pública del sitio: enlaces canónicos, hreflang, sitemap, robots.txt y datos estructurados.
+# En Vercel se usa el dominio de producción automáticamente si no la defines.
+NEXT_PUBLIC_SITE_URL=https://www.tu-dominio.com
+
+# Repositorio enlazado desde la app (por defecto, este repositorio). Útil para forks.
+# NEXT_PUBLIC_REPOSITORY_URL=https://github.com/tu-usuario/codoritmo
 ```
 
-### Ejecutar Pruebas
-
-```bash
-# Ejecutar todas las pruebas
-npm test
-
-# Ejecutar pruebas en modo observación
-npm test:watch
-
-# Ejecutar linting
-npm run lint
-```
-
-## Estructura del Proyecto
+## Cómo está hecho
 
 ```
 codoritmo/
-├── app/                    # Páginas y layouts del app router de Next.js
+├── app/                      # Rutas de Next.js (app, páginas estáticas, sitemaps)
 ├── src/
-│   ├── engine/            # Intérprete de pseudocódigo, parser y generador de código
-│   ├── components/ide/    # Componentes del IDE (editor, workspace, paneles)
-│   ├── diagram/           # Generación y visualización de diagramas de flujo
-│   ├── i18n/              # Internacionalización (español e inglés)
-│   └── seo/               # SEO y datos estructurados
-├── fixtures/              # Fixtures de prueba y programas de ejemplo
-├── public/                # Recursos estáticos
-└── scripts/               # Scripts de compilación y utilidades
+│   ├── engine/               # Lexer, parser, intérprete, perfiles y generadores de C/C++/Java/Python/JS
+│   ├── diagram/              # Modelo, distribución y dibujo de los diagramas de flujo
+│   ├── components/workspace/ # El editor: código, bloques, diagrama, consola, paneles
+│   ├── components/site/      # Páginas públicas: perfiles, referencia, conceptos, funciones
+│   ├── i18n/                 # Textos en español e inglés
+│   └── seo/                  # Secciones, sitemaps y datos estructurados
+└── scripts/                  # Utilidades (por ejemplo, importar los perfiles de PSeInt)
 ```
-
-## Arquitectura del Motor
 
 ```mermaid
-graph TD
-    A[Código Fuente] --> B[Lexer]
-    B --> C[Parser]
-    C --> D[AST]
-    D --> E[Interpreter]
-    E --> F[Runtime]
-    F --> G[Salida]
-
-    D --> H[Diagram Builder]
-    H --> I[Diagrama de Flujo]
-
-    D --> J[Generator]
-    J --> K[JavaScript]
-
-    L[Settings] --> E
-
-    style A fill:#e1f5ff
-    style G fill:#d4edda
-    style I fill:#d4edda
-    style K fill:#d4edda
+graph LR
+    A[Código fuente] --> B[Lexer] --> C[Parser] --> D[AST]
+    D --> E[Intérprete] --> F[Consola, prueba de escritorio, arreglos]
+    D --> G[Diagrama de flujo]
+    D --> H[Bloques]
+    D --> I[C, C++, Java, Python, JavaScript]
+    J[Perfil escolar] --> C
+    J --> E
 ```
 
-**Flujo de Ejecución:**
-
-1. **Lexer**: Tokeniza el código fuente
-2. **Parser**: Construye el Árbol de Sintaxis Abstracta (AST)
-3. **Interpreter**: Ejecuta el AST con el runtime
-4. **Runtime**: Maneja variables, entrada/salida y estado de ejecución
-5. **Diagram Builder**: Convierte el AST en diagramas de flujo visuales
-6. **Generator**: Convierte el AST en código JavaScript ejecutable
-
-## Stack Tecnológico
-
-- **Framework**: [Next.js 16](https://nextjs.org/) con App Router
-- **Lenguaje**: [TypeScript 5](https://www.typescriptlang.org/)
-- **Editor**: [Monaco Editor](https://microsoft.github.io/monaco-editor/)
-- **Estilos**: [Tailwind CSS 4](https://tailwindcss.com/)
-- **Diagramas**: [React Flow](https://reactflow.dev/) con [ELK.js](https://eclipse.dev/elk/)
-- **Pruebas**: [Jest](https://jestjs.io/) + [React Testing Library](https://testing-library.com/react)
-- **Animación**: [Motion](https://motion.dev/)
-
-## Variables de Entorno
-
-Crea un archivo `.env.local` en el directorio raíz:
-
-```env
-# URL del sitio (usado para SEO, sitemaps y URLs canónicas)
-NEXT_PUBLIC_SITE_URL=https://tu-dominio.com
-```
-
-## Hoja de Ruta
-
-Las funciones futuras dependen de la retroalimentación y solicitudes de los usuarios. Las adiciones potenciales incluyen:
-
-- **Cuentas de usuario**: Guarda tu trabajo entre sesiones y dispositivos
-- **Compartir código**: Comparte programas con compañeros y profesores mediante enlaces
-- **Compartir perfiles**: Exporta e importa perfiles escolares personalizados
-- **Edición colaborativa**: Trabaja en programas juntos en tiempo real
-- **Sistema de tareas**: Los profesores pueden crear y distribuir ejercicios
-- **Seguimiento de progreso**: Rastrea el progreso de aprendizaje y ejercicios completados
-- **Tablas de clasificación**: Competencia amistosa y reconocimiento de logros
-- **Insignias y logros**: Gamificación para motivar el aprendizaje
-- **Biblioteca de fragmentos de código**: Guarda y reutiliza patrones comunes
-- **Modo embebido**: Incrusta el editor en sitios web educativos
-- **Aplicación móvil**: Experiencia móvil nativa para tabletas y teléfonos
-
-¿Tienes una solicitud de función? [Abre un issue](../../issues) y cuéntanos qué te ayudaría a aprender mejor.
+Tecnologías: [Next.js 16](https://nextjs.org/), [TypeScript](https://www.typescriptlang.org/), [Monaco Editor](https://microsoft.github.io/monaco-editor/), [Blockly](https://developers.google.com/blockly), [React Flow](https://reactflow.dev/) con [ELK.js](https://eclipse.dev/elk/), [Tailwind CSS 4](https://tailwindcss.com/), [Motion](https://motion.dev/) y [Jest](https://jestjs.io/).
 
 ## Contribuir
 
-¡Las contribuciones son bienvenidas! Apreciamos tu ayuda para mejorar Codoritmo.
+Toda ayuda es bienvenida, venga de quien venga: un estudiante que arregla un error de ortografía con ayuda de una IA aporta tanto como alguien con años de experiencia.
 
-**Todos los Contribuyentes son Bienvenidos**: Ya seas un estudiante de primaria con un editor de IA o un ingeniero experimentado con décadas de experiencia, tus contribuciones son igualmente valiosas. Este proyecto trata sobre hacer la programación accesible, y eso incluye hacer la contribución accesible también.
+1. Haz un fork y crea una rama (`git checkout -b mejora/lo-que-sea`).
+2. Haz tus cambios con pruebas cuando aplique, y verifica que `npm test` y `npm run lint` pasen.
+3. Abre un Pull Request explicando qué cambia y por qué.
 
-### Cómo Contribuir
-
-1. Haz un fork del repositorio
-2. Crea una rama de función (`git checkout -b feature/funcion-increible`)
-3. Haz commit de tus cambios (`git commit -m 'Agregar alguna función increíble'`)
-4. Haz push a la rama (`git push origin feature/funcion-increible`)
-5. Abre un Pull Request
-
-**¡No te intimides!** Si estás aprendiendo y quieres contribuir con la ayuda de herramientas de IA, eso no solo está bien, está alentado. Valoramos la contribución, no el método.
-
-Lee [CONTRIBUTING.md](CONTRIBUTING.md) para detalles sobre nuestro código de conducta y proceso de desarrollo.
-
-### Guías de Desarrollo
-
-- Escribe pruebas para nuevas funciones
-- Sigue el estilo de código existente
-- Actualiza la documentación según sea necesario
-- Asegúrate de que todas las pruebas pasen antes de enviar el PR
-- ¡Usa las herramientas que te ayuden a contribuir efectivamente (asistentes de IA incluidos)!
+Ideas para empezar: nuevos ejemplos, traducciones, mejoras de accesibilidad, reportes de diferencias con PSeInt. Detalles en [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licencia
 
-Este proyecto está licenciado bajo la **Licencia Creative Commons Atribución-NoComercial 4.0 Internacional (CC BY-NC 4.0)**.
+Codoritmo es software libre bajo la **Licencia Pública General de GNU, versión 2 o posterior** ([GPL-2.0-or-later](LICENSE)). Puedes usarlo, estudiarlo, modificarlo y compartirlo, también con fines comerciales, siempre que las versiones que distribuyas sigan siendo libres bajo la misma licencia.
 
-**Eres libre de:**
-
-- Compartir: copiar y redistribuir el material
-- Adaptar: remezclar, transformar y construir sobre el material
-
-**Bajo estos términos:**
-
-- **Atribución**: Debes dar el crédito apropiado
-- **NoComercial**: No puedes usar el material con fines comerciales
-
-Consulta el archivo [LICENSE](LICENSE) para más detalles o visita [https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)
+Los perfiles escolares de `src/engine/school-profiles.ts` provienen de PSeInt (`bin/perfiles`), distribuido bajo GPL v2, y conservan los créditos de quienes los enviaron.
 
 ## Agradecimientos
 
-**Este proyecto no existiría sin [PSeInt](http://pseint.sourceforge.net/).**
-
-PSeInt, creado por Pablo Novara, ha sido fundamental para enseñar programación a estudiantes hispanohablantes durante más de una década. Fue pionero en el uso de pseudocódigo en español para la educación, haciendo la programación accesible a millones de estudiantes. Codoritmo se apoya en los hombros de ese increíble trabajo.
-
-Visita el proyecto oficial de PSeInt: [http://pseint.sourceforge.net/](http://pseint.sourceforge.net/)
-
-Agradecimientos especiales también a:
-
-- Todos los contribuyentes que ayudan a mejorar Codoritmo
-- La comunidad de código abierto por las increíbles herramientas que hacen posible este proyecto
-
-## Soporte
-
-- [Documentación](docs/)
-- [Rastreador de Issues](../../issues)
-- [Discusiones](../../discussions)
-
----
+A **Pablo Novara** y a la comunidad de [PSeInt](http://pseint.sourceforge.net/), sin cuyo trabajo este proyecto no existiría; a los docentes que compartieron sus perfiles; y a quienes mantienen las herramientas de código abierto sobre las que está construido.
 
 <div align="center">
 
-**Hecho con ❤️ para estudiantes aprendiendo programación**
-
-[⭐ Dale estrella a este repo](../../stargazers) • [🍴 Haz un fork](../../fork) • [📢 Compártelo](https://twitter.com/intent/tweet?text=¡Mira%20Codoritmo%20-%20Un%20espacio%20de%20trabajo%20moderno%20de%20pseudocódigo%20en%20el%20navegador!&url=https://github.com/yourusername/codoritmo)
+[Abrir Codoritmo](https://www.codoritmo.com) · [Dale una estrella](../../stargazers) · [Reportar un error](../../issues)
 
 </div>
