@@ -237,6 +237,7 @@ export interface Dictionary {
     consoleEmpty: string;
     consoleInvite: string;
     runHint: string;
+    stepAtLine: string;
     pauseHint: string;
     blankTitle: string;
     blankBody: string;

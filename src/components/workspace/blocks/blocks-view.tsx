@@ -250,7 +250,7 @@ export function BlocksView({
   return (
     <div className="relative h-full w-full">
       <div ref={hostRef} className="codoritmo-blocks absolute inset-0" />
-      <div className="absolute bottom-4 right-5 z-10 flex items-center gap-px rounded-[9px] border border-white/[0.06] bg-[#1D2124]/90 p-[3px] shadow-[0_6px_20px_rgba(0,0,0,0.35)] backdrop-blur-md">
+      <div className="absolute top-4 right-5 z-10 flex items-center gap-px rounded-[9px] border border-white/[0.06] bg-[#1D2124]/90 p-[3px] shadow-[0_6px_20px_rgba(0,0,0,0.35)] backdrop-blur-md">
         <button aria-label={labels.zoomOut} className={control} onClick={() => zoomBy(-1)} title={labels.zoomOut} type="button">
           <Minus size={14} strokeWidth={2} />
         </button>

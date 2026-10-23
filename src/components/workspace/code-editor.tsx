@@ -224,7 +224,8 @@ export default function CodeEditor({
         glyphMargin: true,
         lineNumbersMinChars: 3,
         minimap: { enabled: false },
-        padding: { top: 16, bottom: 16 },
+        // Room at the bottom so the floating run toolbar never covers the last lines.
+        padding: { top: 16, bottom: 96 },
         renderLineHighlight: "line",
         scrollBeyondLastLine: false,
         overviewRulerLanes: 0,

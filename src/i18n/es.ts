@@ -592,6 +592,7 @@ export const esDictionary: Dictionary = {
     togglePanel: "Mostrar u ocultar panel",
     askingInput: "Tu programa te pregunta algo",
     consoleEmpty: "Pulsa Ejecutar, abajo, para ponerlo en marcha.",
+    stepAtLine: "Paso {step}, línea {line}",
     runHint: "Tu programa corre paso a paso: cada línea se ilumina en el código y en el diagrama.",
     pauseHint: "Detén la marcha aquí para mirar con calma; luego sigue cuando quieras.",
     consoleInvite: "Aquí verás lo que dice tu programa.",

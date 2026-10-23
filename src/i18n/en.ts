@@ -592,6 +592,7 @@ export const enDictionary: Dictionary = {
     togglePanel: "Show or hide panel",
     askingInput: "Your program is asking for input",
     consoleEmpty: "Press Run, below, to set it going.",
+    stepAtLine: "Step {step}, line {line}",
     runHint: "Your program runs step by step: each line lights up in the code and in the diagram.",
     pauseHint: "Stop here to take a closer look; carry on whenever you like.",
     consoleInvite: "This is where your program talks.",
