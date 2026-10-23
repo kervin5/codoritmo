@@ -25,7 +25,8 @@ export async function generateMetadata({
   const dictionary = await getDictionary(lang);
 
   return {
-    title: dictionary.metadata.home.title,
+    // The home page is the app; give it the brand explicitly (the layout template doesn't reach it).
+    title: { absolute: `${dictionary.metadata.home.title} | ${dictionary.metadata.siteName}` },
     description: dictionary.metadata.home.description,
     keywords: dictionary.metadata.home.keywords,
     alternates: {

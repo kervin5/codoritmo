@@ -1,5 +1,6 @@
 import type { EngineMessageCode } from "../engine/messages";
 import type { StaticType } from "../engine/types";
+import type { FeatureId } from "../seo/sections";
 import type { ReferenceGuide } from "./reference-guide/types";
 
 /** Localized text for one example program (keyed by example id). */
@@ -14,6 +15,9 @@ export interface ExampleCopy {
   /** A nudge for the challenge, revealed on demand. */
   hint: string;
 }
+
+/** Where an About-page feature section links: a feature page or a site section. */
+export type AboutLinkTarget = FeatureId | "examples" | "reference" | "profiles";
 
 export interface Dictionary {
   metadata: {
@@ -30,6 +34,8 @@ export interface Dictionary {
       description: string;
       keywords: string[];
       title: string;
+      /** What the app does, one item each, for the WebApplication structured data. */
+      featureList: string[];
     };
   };
   appShell: {
@@ -43,13 +49,29 @@ export interface Dictionary {
     workspace: string;
   };
   aboutPage: {
-    compatibilityBody: string;
-    compatibilityTitle: string;
+    /** The site name as the page's short label (used in structured data). */
     eyebrow: string;
-    officialLinkLabel: string;
-    storyBody: string;
-    storyTitle: string;
+    breadcrumb: string;
     title: string;
+    lead: string;
+    whatTitle: string;
+    whatBody: string[];
+    featuresTitle: string;
+    featuresIntro: string;
+    /** One short section per major feature; `links` point at feature pages or site sections. */
+    features: { title: string; body: string; links: AboutLinkTarget[] }[];
+    compatibilityTitle: string;
+    compatibilityBody: string[];
+    openSourceTitle: string;
+    openSourceBody: string[];
+    repositoryLinkLabel: string;
+    licenseLinkLabel: string;
+    creditsTitle: string;
+    creditsBody: string[];
+    officialLinkLabel: string;
+    ctaTitle: string;
+    ctaBody: string;
+    ctaButton: string;
   };
   bottomDock: {
     collapse: string;
