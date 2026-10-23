@@ -308,6 +308,9 @@ export interface Dictionary {
       modeHint: string;
       cannotConvert: string;
       fixFirst: string;
+      zoomIn: string;
+      zoomOut: string;
+      resetZoom: string;
       categories: Record<"io" | "variables" | "control" | "operators" | "text" | "arrays" | "screen", string>;
     };
     examples: {
@@ -332,6 +335,7 @@ export interface Dictionary {
       open: string;
       learn: string;
       challenge: string;
+      guide: string;
       showHint: string;
       dismiss: string;
       back: string;

@@ -246,6 +246,7 @@ describe("Workspace", () => {
 
     await waitFor(() => expect(screen.queryByRole("dialog", { name: t.examples.title })).not.toBeInTheDocument());
     expect(screen.getByRole("tab", { name: /Ahorcado\.psc/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { expanded: false, name: new RegExp(t.examples.guide) }));
     expect(screen.getByText(enDictionary.examples["hangman"].challenge, { exact: false })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: t.examples.showHint }));
     expect(screen.getByText(enDictionary.examples["hangman"].hint)).toBeInTheDocument();
@@ -318,7 +319,8 @@ describe("Workspace", () => {
     window.history.replaceState(null, "", "/en?ejemplo=quicksort");
     renderWorkspace();
     expect(await screen.findByRole("tab", { name: /Quicksort\.psc/ })).toBeInTheDocument();
-    expect(screen.getByText(enDictionary.examples["quicksort"].challenge, { exact: false })).toBeInTheDocument();
+    // The guide shows collapsed, with the example's summary.
+    expect(screen.getByText(enDictionary.examples["quicksort"].description)).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: t.examples.title })).not.toBeInTheDocument();
     expect(window.location.search).toBe("");
     expect(window.location.pathname).toBe("/en");
@@ -329,7 +331,7 @@ describe("Workspace", () => {
     renderWorkspace();
     // A first visit as usual: the browser opens and no example tab is added.
     expect(await screen.findByRole("dialog", { name: t.examples.title })).toBeInTheDocument();
-    expect(screen.queryByText(enDictionary.examples["quicksort"].challenge, { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Quicksort\.psc/ })).not.toBeInTheDocument();
     expect(window.location.search).toBe("");
   });
 });

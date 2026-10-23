@@ -4,16 +4,31 @@
 
 import * as Blockly from "blockly/core";
 
+/**
+ * Deep, slightly desaturated tones that sit on the dark editor (#141719) and
+ * echo the code editor's syntax colours, so a block and the word it writes
+ * read as the same thing. Every tone keeps white block text above 4.5:1
+ * (WCAG AA); zelos draws shadow blocks 15% darker, which only raises it.
+ */
 export const COLORS = {
-  program: "#FFBF00",
-  io: "#4C97FF",
-  variables: "#FF8C1A",
-  control: "#FFAB19",
-  operators: "#59C059",
-  text: "#CF63CF",
-  arrays: "#FF6680",
-  screen: "#9966FF",
-  raw: "#7A8680",
+  /** Algoritmo … FinAlgoritmo: a calm frame so the blocks inside stand out. 8.0:1 */
+  program: "#34574D",
+  /** Escribir / Leer: types blue #9CC4E4. 5.5:1 */
+  io: "#3A6E96",
+  /** Definir / <- / variables: strings amber #E8BE8C. 5.0:1 */
+  variables: "#93662C",
+  /** Si / Mientras / Para: keyword mint #8FD9B6. 5.2:1 */
+  control: "#2F7A62",
+  /** Numbers, comparisons, logic: operators sage #9AA6A1. 5.0:1 */
+  operators: "#557A3E",
+  /** Text and functions: numbers violet #D2B3F2. 5.8:1 */
+  text: "#7357A3",
+  /** Arrays: a muted rose. 5.9:1 */
+  arrays: "#9A4B65",
+  /** Screen and timing: slate violet. 6.3:1 */
+  screen: "#5C5B90",
+  /** Code kept as text: neutral slate. 7.0:1 */
+  raw: "#4F5B61",
 };
 
 const TYPES = [

@@ -210,3 +210,252 @@ body {
   -webkit-backdrop-filter: blur(14px) saturate(140%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
+
+/* ---------- Blocks editor ---------- */
+/*
+ * Blockly (zelos renderer) restyled for the dark studio. Blockly prepends its
+ * own CSS to <head>, so these rules win on order; where a zelos rule is scoped
+ * to `.zelos-renderer.codoritmo-dark-theme` we add `.injectionDiv.zelos-renderer`
+ * to out-rank it. Blockly sets some colours as inline styles (scrollbar
+ * fill-opacity, toolbox row padding), and only those overrides use !important.
+ * Popups (dropdowns, context menus, tooltips, text editors) live on <body>,
+ * outside .codoritmo-blocks, so they are styled by Blockly's own classes.
+ */
+
+.codoritmo-blocks .injectionDiv.zelos-renderer {
+  --blockly-active-node-color: #86f0c4;
+  --blockly-active-tree-color: rgba(134, 240, 196, 0.45);
+  --blockly-selection-width: 2px;
+  --blocks-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+}
+
+/* The workspace rect has a 1px #c6c6c6 border meant for a white page. */
+.codoritmo-blocks .blocklyMainBackground {
+  stroke: none;
+}
+
+/* ----- Palette (toolbox) ----- */
+
+.codoritmo-blocks .blocklyToolbox {
+  padding: 8px 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: var(--blocks-font);
+}
+
+.codoritmo-blocks .blocklyToolboxCategoryContainer {
+  padding: 0 8px;
+}
+
+.codoritmo-blocks .blocklyToolboxCategory {
+  height: 28px;
+  margin: 0 0 2px;
+  /* Blockly writes padding-left inline for nesting; we have no nested categories. */
+  padding: 0 14px 0 10px !important;
+  border-radius: 6px;
+  line-height: 28px;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.codoritmo-blocks .blocklyToolboxCategory:not(.blocklyToolboxSelected):hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.codoritmo-blocks .blocklyToolboxCategory.blocklyToolboxSelected {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.codoritmo-blocks .blocklyTreeRowContentContainer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 100%;
+}
+
+/* The (unused) expand-arrow sprite becomes the category's colour dot. */
+.codoritmo-blocks .blocklyToolboxCategoryIcon {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--category-colour, #9aa6a1), #ffffff 30%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--category-colour, #9aa6a1) 28%, transparent);
+  visibility: visible;
+}
+
+.codoritmo-blocks .blocklyToolboxCategoryLabel {
+  padding: 0;
+  overflow: hidden;
+  color: rgba(230, 236, 233, 0.68);
+  font: 500 13px/28px var(--blocks-font);
+  letter-spacing: -0.005em;
+  text-overflow: ellipsis;
+  cursor: inherit;
+  transition: color 0.12s ease;
+}
+
+.codoritmo-blocks .blocklyToolboxCategory:hover .blocklyToolboxCategoryLabel {
+  color: rgba(230, 236, 233, 0.88);
+}
+
+.codoritmo-blocks .blocklyToolboxSelected .blocklyToolboxCategoryLabel {
+  color: #e6ece9;
+}
+
+.codoritmo-blocks .blocklyKeyboardNavigation .blocklyToolboxCategoryContainer:focus-visible > .blocklyToolboxCategory {
+  box-shadow: inset 0 0 0 1.5px rgba(134, 240, 196, 0.6);
+}
+
+/* ----- Flyout (the open category's blocks) ----- */
+
+.codoritmo-blocks .blocklyToolboxFlyout {
+  filter: drop-shadow(12px 0 24px rgba(0, 0, 0, 0.35));
+}
+
+.codoritmo-blocks .blocklyFlyoutBackground {
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 1px;
+}
+
+/* ----- Scrollbars ----- */
+
+.codoritmo-blocks .blocklyScrollbarHandle {
+  transition: fill-opacity 0.15s ease;
+}
+
+.codoritmo-blocks .blocklyScrollbarBackground:hover + .blocklyScrollbarHandle,
+.codoritmo-blocks .blocklyScrollbarHandle:hover {
+  fill-opacity: 0.85 !important;
+}
+
+/* Set from blocks-view.tsx when the handle fills its track (nothing to scroll). */
+.codoritmo-blocks .codoritmo-scrollbar-idle {
+  visibility: hidden;
+}
+
+/* ----- Blocks and fields ----- */
+
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklyText {
+  fill: #ffffff;
+}
+
+/* Text, number and dropdown pills: recessed dark pills with light text. The
+   pill fill itself is the renderer's FIELD_BORDER_RECT_COLOUR (blocks-view.tsx). */
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklyEditableField > rect:not(.blocklyDropdownRect),
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklyNonEditableField > rect:not(.blocklyDropdownRect) {
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-width: 1px;
+}
+
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklyEditableField > text,
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklyNonEditableField > text,
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklyEditableField > g > text,
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklyNonEditableField > g > text {
+  fill: #f2f5f3;
+}
+
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklyEditableField > rect.blocklyDropdownRect {
+  fill: rgba(8, 11, 12, 0.26);
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1px;
+}
+
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklyDraggable:not(.blocklyDisabled) .blocklyEditableField:not(.blocklyEditing):hover > rect,
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklyDraggable:not(.blocklyDisabled) .blocklyEditableField:not(.blocklyEditing):hover > .blocklyPath {
+  stroke: rgba(134, 240, 196, 0.65);
+  stroke-width: 1.5px;
+}
+
+/* Selected: a crisp mint outline plus zelos' glow (tinted mint by the theme). */
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklySelected > .blocklyPath:not(.blocklyPathSelected) {
+  stroke: #86f0c4;
+  stroke-width: 1.5px;
+}
+
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklySelected > .blocklyPath.blocklyPathSelected {
+  stroke: #86f0c4;
+  stroke-width: 1px;
+  opacity: 0.5;
+}
+
+/* Playback: the block about to run (workspace.highlightBlock). */
+.codoritmo-blocks .injectionDiv.zelos-renderer .blocklyHighlighted > .blocklyPath {
+  stroke: #86f0c4;
+  stroke-width: 2.5px;
+  filter: drop-shadow(0 0 7px rgba(134, 240, 196, 0.7)) brightness(1.12);
+}
+
+/* ----- Popups (outside .codoritmo-blocks) ----- */
+
+/* Inline text and number editor. */
+.blocklyWidgetDiv.zelos-renderer input.blocklyHtmlInput {
+  background: #101314;
+  color: #f2f5f3;
+  caret-color: #86f0c4;
+  box-shadow: inset 0 0 0 1px rgba(134, 240, 196, 0.55);
+}
+
+/* The page-wide ::selection uses dark text, which vanishes on the dark editor. */
+.blocklyWidgetDiv.zelos-renderer input.blocklyHtmlInput::selection {
+  background: rgba(134, 240, 196, 0.3);
+  color: #ffffff;
+}
+
+.blocklyWidgetDiv.zelos-renderer:has(> input.blocklyHtmlInput) {
+  box-shadow: 0 0 0 3px rgba(134, 240, 196, 0.18) !important;
+}
+
+/* Right-click menu. */
+.blocklyWidgetDiv.zelos-renderer .blocklyMenu {
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: #1d2124;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+  font: 13px var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.blocklyWidgetDiv.zelos-renderer .blocklyMenuItem {
+  padding: 5px 12px;
+  border-radius: 5px;
+  color: #e6ece9;
+}
+
+.blocklyWidgetDiv.zelos-renderer .blocklyMenuItemHighlight {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.blocklyWidgetDiv.zelos-renderer .blocklyMenuItemDisabled {
+  color: rgba(230, 236, 233, 0.35);
+}
+
+.blocklyWidgetDiv.zelos-renderer .blocklyMenuSeparator {
+  margin: 4px 6px;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Dropdown menus keep zelos' block-coloured panel; just round and lift it. */
+.blocklyDropDownDiv.zelos-renderer {
+  border-radius: 9px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+}
+
+.blocklyDropDownDiv.zelos-renderer .blocklyMenuItem {
+  border-radius: 5px;
+}
+
+.blocklyDropDownDiv.zelos-renderer .blocklyMenuItemHighlight {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.blocklyTooltipDiv {
+  max-width: 280px;
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background-color: #1d2124;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  color: #e6ece9;
+  font: 12px/1.45 var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  opacity: 1;
+}

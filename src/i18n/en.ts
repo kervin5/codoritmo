@@ -677,6 +677,9 @@ export const enDictionary: Dictionary = {
       modeHint: "Build your algorithm with blocks; the code writes itself.",
       cannotConvert: "I can't turn this code into blocks.",
       fixFirst: "Fix the errors in the code view and try again.",
+      zoomIn: "Zoom in",
+      zoomOut: "Zoom out",
+      resetZoom: "Reset zoom",
       categories: {
         io: "Input & output",
         variables: "Variables",
@@ -741,6 +744,7 @@ export const enDictionary: Dictionary = {
       open: "Open",
       learn: "What you'll learn",
       challenge: "Challenge",
+      guide: "Guide",
       showHint: "Show hint",
       dismiss: "Got it",
       back: "Back",

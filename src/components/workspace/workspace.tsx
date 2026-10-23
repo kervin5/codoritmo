@@ -11,9 +11,14 @@
 //   speed — with the flowchart and editor following along.
 
 import {
+  Blocks,
   BookOpen,
+  ChartColumn,
   ChevronDown,
+  CircleCheck,
   Code,
+  FileText,
+  Gauge,
   PanelBottom,
   Pause,
   Play,
@@ -22,12 +27,17 @@ import {
   Search,
   SkipBack,
   SkipForward,
+  SlidersHorizontal,
   Sparkles,
   Square,
+  SquareTerminal,
+  Table2,
+  TriangleAlert,
   Turtle,
   Workflow,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { editor } from "monaco-editor";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -155,22 +165,51 @@ function Divider({ axis, onDrag }: { axis: "x" | "y"; onDrag: (delta: number) =>
   );
 }
 
-function Tabs<T extends string>({ tabs, value, onChange }: { tabs: [T, string, number?][]; value: T | null; onChange: (id: T) => void }) {
+interface TabItem<T extends string> {
+  id: T;
+  label: string;
+  icon?: LucideIcon;
+  /** Count shown as a red badge (problems). */
+  badge?: number;
+  /** A pulsing dot: something needs attention here (the program is waiting). */
+  dot?: boolean;
+}
+
+/** Segmented tabs: icon + label, or icon only (with tooltip) when compact. */
+function Tabs<T extends string>({
+  tabs,
+  value,
+  onChange,
+  compact,
+}: {
+  tabs: TabItem<T>[];
+  value: T | null;
+  onChange: (id: T) => void;
+  compact?: boolean;
+}) {
   return (
     <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" role="tablist">
-      {tabs.map(([id, label, badge]) => (
+      {tabs.map(({ id, label, icon: Icon, badge, dot }) => (
         <button
           key={id}
+          aria-label={label}
           aria-selected={value === id}
-          className={`flex h-[22px] shrink-0 items-center gap-1.5 rounded-[5px] px-2.5 text-[12px] whitespace-nowrap ${
-            value === id ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
-          }`}
+          className={`relative flex h-[24px] shrink-0 items-center gap-1.5 rounded-[6px] text-[12px] whitespace-nowrap transition-colors ${
+            compact ? "w-[28px] justify-center" : "px-2"
+          } ${value === id ? "bg-white/[0.09] text-white" : "text-white/50 hover:bg-white/[0.04] hover:text-white/85"}`}
           onClick={() => onChange(id)}
           role="tab"
+          title={compact ? label : undefined}
           type="button"
         >
-          {label}
-          {!!badge && <span className="rounded-full bg-[#F08A6C]/80 px-1.5 text-[10px] leading-4 text-white">{badge}</span>}
+          {Icon && <Icon className={value === id ? "text-[#86F0C4]" : ""} size={13} strokeWidth={1.9} />}
+          {!compact && label}
+          {!!badge && (
+            <span className={`${compact ? "absolute -top-0.5 -right-0.5" : ""} min-w-[15px] rounded-full bg-[#E5735A] px-1 text-center text-[9.5px] leading-[15px] font-semibold text-white`}>
+              {badge}
+            </span>
+          )}
+          {dot && <span className="absolute top-[3px] right-[3px] h-[6px] w-[6px] animate-pulse rounded-full bg-[#86F0C4] shadow-[0_0_6px_#86F0C4]" />}
         </button>
       ))}
     </div>
@@ -236,6 +275,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
   const [paletteQuery, setPaletteQuery] = useState<string | null>(null);
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [hintShown, setHintShown] = useState(false);
+  const [guideExpanded, setGuideExpanded] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [cursorWord, setCursorWord] = useState<string | null>(null);
@@ -657,9 +697,9 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
         <Tabs<SideTab>
           onChange={(tab) => updatePrefs({ sideTab: tab })}
           tabs={[
-            ["diagrama", t.activity.diagram],
-            ["traduccion", formatMessage(t.activity.code, { lang: langName })],
-            ["referencia", t.activity.reference],
+            { id: "diagrama", label: t.activity.diagram, icon: Workflow },
+            { id: "traduccion", label: formatMessage(t.activity.code, { lang: langName }), icon: Code },
+            { id: "referencia", label: t.activity.reference, icon: BookOpen },
           ]}
           value={prefs.sideTab}
         />
@@ -790,9 +830,12 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                         closeDocument(d.id);
                       }
                     }}
+                    aria-label={d.name}
                     role="tab"
+                    title={d.name}
                   >
-                    <span className="truncate">{d.name}</span>
+                    <FileText className={`shrink-0 ${active ? "text-[#86F0C4]" : "text-white/35"}`} size={12} strokeWidth={1.9} />
+                    <span className="truncate">{d.name.replace(/\.psc$/i, "")}</span>
                     <button
                       aria-label={`${t.file.closeTab}: ${d.name}`}
                       className="grid h-4 w-4 shrink-0 place-items-center rounded hover:bg-white/10"
@@ -825,53 +868,69 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                 <Plus size={13} />
               </button>
             </div>
-            <div className="ml-auto flex h-full min-w-0 shrink items-center gap-2 overflow-hidden pr-2 text-[11.5px] whitespace-nowrap">
-              <div className="flex shrink-0 rounded-[6px] bg-black/25 p-0.5" role="radiogroup" title={t.blocks.modeHint}>
-                {(["code", "blocks"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    aria-checked={(prefs.editorMode ?? "code") === mode}
-                    className={`h-[20px] rounded-[4px] px-2 text-[11.5px] ${
-                      (prefs.editorMode ?? "code") === mode ? "bg-white/[0.12] text-white" : "text-white/45 hover:text-white/80"
-                    }`}
-                    onClick={() => updatePrefs({ editorMode: mode })}
-                    role="radio"
-                    type="button"
-                  >
-                    {mode === "code" ? t.blocks.modeCode : t.blocks.modeBlocks}
-                  </button>
-                ))}
+            {/* View control: how this document is edited. Icons, not words, so it never reads as a tab. */}
+            <div className="ml-auto flex h-full shrink-0 items-center pr-2">
+              <div className="flex rounded-[7px] bg-black/30 p-[2px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]" role="radiogroup" aria-label={t.blocks.modeHint}>
+                {(
+                  [
+                    ["code", Code, t.blocks.modeCode],
+                    ["blocks", Blocks, t.blocks.modeBlocks],
+                  ] as const
+                ).map(([mode, Icon, label]) => {
+                  const on = (prefs.editorMode ?? "code") === mode;
+                  return (
+                    <button
+                      key={mode}
+                      aria-checked={on}
+                      aria-label={label}
+                      className={`flex h-[22px] items-center gap-1.5 rounded-[5px] px-2 text-[11.5px] transition-colors ${
+                        on ? "bg-white/[0.12] text-white shadow-[0_1px_2px_rgba(0,0,0,0.4)]" : "text-white/45 hover:text-white/85"
+                      }`}
+                      onClick={() => updatePrefs({ editorMode: mode })}
+                      role="radio"
+                      title={`${label} — ${t.blocks.modeHint}`}
+                      type="button"
+                    >
+                      <Icon size={13} strokeWidth={1.9} />
+                      {on && !narrow && label}
+                    </button>
+                  );
+                })}
               </div>
-              <button
-                className={`flex items-center gap-1.5 ${errors.length ? "text-[#F0A48C]" : "text-white/40"}`}
-                onClick={() => errors.length && openBottom("problemas")}
-                type="button"
-              >
-                <span className={`h-1.5 w-1.5 rounded-full ${errors.length ? "bg-[#F08A6C]" : "bg-[#7FE0B8]"}`} />
-                {errorLabel}
-              </button>
-              {!narrow && (
-                <>
-                  <span className="text-white/25">·</span>
-                  <button className="truncate text-white/40 hover:text-white/75" onClick={() => setProfileOpen(true)} type="button">
-                    {profileLabel(doc.profileId, dictionary)}
-                    {customized && ` · ${dictionary.workspace.customProfile}`}
-                  </button>
-                </>
-              )}
             </div>
           </div>
 
           {guide && (
-            <div className="shrink-0 border-b border-white/[0.06] bg-[#7FE0B8]/[0.05] px-4 py-2.5 text-[12.5px] leading-[19px]">
-              <div className="flex items-start gap-3">
-                <Sparkles className="mt-0.5 shrink-0 text-[#7FE0B8]" size={14} />
-                <div className="min-w-0 flex-1 text-white/70">
-                  <div>
-                    <span className="font-semibold text-white/90">{guide.copy.label}. </span>
-                    {guide.copy.learn}
-                  </div>
-                  <div className="mt-1">
+            <div className="shrink-0 border-b border-white/[0.06] bg-gradient-to-r from-[#7FE0B8]/[0.07] to-transparent text-[12.5px] leading-[19px]">
+              <div className="flex h-[34px] items-center gap-2.5 px-3">
+                <Sparkles className="shrink-0 text-[#7FE0B8]" size={13} />
+                <button
+                  aria-expanded={guideExpanded}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  onClick={() => setGuideExpanded((v) => !v)}
+                  type="button"
+                >
+                  <span className="shrink-0 font-semibold text-white/90">{guide.copy.label}</span>
+                  {!guideExpanded && <span className="min-w-0 truncate text-white/50">{guide.copy.description}</span>}
+                  <span className="ml-auto flex shrink-0 items-center gap-1 text-[12px] text-[#7FE0B8]">
+                    {t.examples.guide}
+                    <ChevronDown className={`transition-transform ${guideExpanded ? "rotate-180" : ""}`} size={13} />
+                  </span>
+                </button>
+                <button
+                  aria-label={t.examples.dismiss}
+                  className="grid h-6 w-6 shrink-0 place-items-center rounded-[5px] text-white/40 hover:bg-white/[0.06] hover:text-white"
+                  onClick={() => updateDoc(doc.id, { guideDismissed: true })}
+                  title={t.examples.dismiss}
+                  type="button"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+              {guideExpanded && (
+                <div className="space-y-2 px-3 pb-3 pl-[33px] text-white/70">
+                  <p>{guide.copy.learn}</p>
+                  <p>
                     <span className="font-medium text-[#A9F0D2]">{t.examples.challenge}: </span>
                     {guide.copy.challenge}{" "}
                     {hintShown ? (
@@ -881,22 +940,14 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                         {t.examples.showHint}
                       </button>
                     )}
-                  </div>
+                  </p>
                   {guide.example.input && (
-                    <div className="mt-1 text-white/45">
+                    <p className="text-white/45">
                       {t.examples.sampleInput} <span className="font-mono text-white/65">{guide.example.input.split("\n").join(" · ")}</span>
-                    </div>
+                    </p>
                   )}
                 </div>
-                <button
-                  aria-label={t.examples.dismiss}
-                  className="shrink-0 rounded px-2 py-0.5 text-[12px] text-white/50 hover:bg-white/[0.06] hover:text-white"
-                  onClick={() => updateDoc(doc.id, { guideDismissed: true })}
-                  type="button"
-                >
-                  {t.examples.dismiss}
-                </button>
-              </div>
+              )}
             </div>
           )}
           <div className="min-h-[120px] flex-1 select-text">
@@ -935,16 +986,16 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
             <div className="flex h-[30px] shrink-0 items-center gap-2 border-b border-white/[0.05] px-2">
               <Tabs<BottomTab>
                 onChange={(id) => (prefs.bottomOpen && prefs.bottomTab === id ? updatePrefs({ bottomOpen: false }) : openBottom(id))}
+                compact={workspaceWidth < 900}
                 tabs={[
-                  ["consola", t.view.console],
-                  ["prueba", t.view.deskCheck],
-                  ["arreglos", t.visualizer.arraysTab],
-                  ["complejidad", t.visualizer.complexityTab],
-                  ["problemas", t.view.problems, errors.length],
+                  { id: "consola", label: t.view.console, icon: SquareTerminal, dot: asking && prefs.bottomTab !== "consola" },
+                  { id: "prueba", label: t.view.deskCheck, icon: Table2 },
+                  { id: "arreglos", label: t.visualizer.arraysTab, icon: ChartColumn },
+                  { id: "complejidad", label: t.visualizer.complexityTab, icon: Gauge },
+                  { id: "problemas", label: t.view.problems, icon: TriangleAlert, badge: errors.length },
                 ]}
                 value={prefs.bottomOpen ? prefs.bottomTab : null}
               />
-              {asking && <span className="shrink-0 truncate rounded-[4px] bg-[#7FE0B8]/15 px-1.5 py-px text-[11px] text-[#A9F0D2]">{t.askingInput}</span>}
               <button
                 aria-label={t.togglePanel}
                 className="ml-auto shrink-0 rounded p-1 text-white/35 hover:text-white/80"
@@ -1114,6 +1165,34 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           ))}
           <Rabbit size={13} />
         </div>
+      </div>
+
+      {/* Status bar: facts about the document, never controls that look like tabs */}
+      <div className="flex h-[24px] shrink-0 items-center gap-4 border-t border-black/40 bg-[#181B1D] px-3 text-[11.5px] text-white/45">
+        <button
+          className={`flex items-center gap-1.5 hover:text-white/80 ${errors.length ? "text-[#F0A48C]" : ""}`}
+          onClick={() => openBottom("problemas")}
+          type="button"
+        >
+          {errors.length ? <TriangleAlert size={12} /> : <CircleCheck className="text-[#7FE0B8]" size={12} />}
+          {errorLabel}
+        </button>
+        <button className="flex min-w-0 items-center gap-1.5 hover:text-white/80" onClick={() => setProfileOpen(true)} type="button">
+          <SlidersHorizontal className="shrink-0" size={12} />
+          <span className="truncate">
+            {profileLabel(doc.profileId, dictionary)}
+            {customized && ` · ${dictionary.workspace.customProfile}`}
+          </span>
+        </button>
+        {asking && (
+          <span className="flex items-center gap-1.5 text-[#A9F0D2]">
+            <span className="h-[6px] w-[6px] animate-pulse rounded-full bg-[#86F0C4]" />
+            {t.askingInput}
+          </span>
+        )}
+        <span className="ml-auto truncate">
+          {dirty ? t.unsaved : ""}
+        </span>
       </div>
 
       {toast && (

@@ -677,6 +677,9 @@ export const esDictionary: Dictionary = {
       modeHint: "Arma tu algoritmo con bloques; el código se escribe solo.",
       cannotConvert: "No puedo convertir este código en bloques.",
       fixFirst: "Corrige los errores en la vista de código y vuelve a intentarlo.",
+      zoomIn: "Acercar",
+      zoomOut: "Alejar",
+      resetZoom: "Restablecer zoom",
       categories: {
         io: "Entrada y salida",
         variables: "Variables",
@@ -741,6 +744,7 @@ export const esDictionary: Dictionary = {
       open: "Abrir",
       learn: "Lo que aprenderás",
       challenge: "Desafío",
+      guide: "Guía",
       showHint: "Ver pista",
       dismiss: "Entendido",
       back: "Volver",
