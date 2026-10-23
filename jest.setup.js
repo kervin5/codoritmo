@@ -1,4 +1,9 @@
 import '@testing-library/jest-dom'
+import { TextDecoder, TextEncoder } from 'util'
+
+// jsdom lacks these; workspace deep links (workspaceProgramHref) encode with them.
+global.TextEncoder ??= TextEncoder
+global.TextDecoder ??= TextDecoder
 
 class ResizeObserverMock {
   observe() {}
