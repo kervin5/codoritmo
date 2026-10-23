@@ -6,7 +6,7 @@
 // ↑/↓ to move, Enter to open, Esc to close. On narrow screens it becomes a
 // full-screen list with the preview sliding over it.
 
-import { ArrowLeft, Check, CornerDownLeft, ExternalLink, RotateCcw, Search, Share2, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, CornerDownLeft, ExternalLink, RotateCcw, Search, Share2, X } from "lucide-react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -25,6 +25,7 @@ import type { Dictionary } from "@/src/i18n/types";
 import { examplePath } from "@/src/lib/example-urls";
 import { duration, easeOut, spring, stagger } from "@/src/lib/motion";
 import CodeEditor from "./code-editor";
+import { TopicIcon } from "./example-topics";
 import FlowDiagram from "./flow-diagram";
 import { playOpenMorph, playSheetEnter, playSheetExit } from "./motion/examples-transitions";
 
@@ -296,6 +297,7 @@ export function ExamplesBrowser({
   const [topic, setTopic] = useState<Topic | null>(null);
   const [level, setLevel] = useState<1 | 2 | 3 | null>(null);
   const [concepts, setConcepts] = useState<Set<string>>(new Set());
+  const [conceptsOpen, setConceptsOpen] = useState(false);
   const [activeId, setActiveId] = useState(examplePrograms[0]?.id ?? "");
   const [tab, setTab] = useState<PreviewTab>("code");
   const [mobilePreview, setMobilePreview] = useState(false);
@@ -445,13 +447,13 @@ export function ExamplesBrowser({
                 value={query}
               />
             </div>
-            <div className="flex items-center gap-1" role="radiogroup" aria-label={t.levels[1]}>
+            <div className="flex items-center rounded-full bg-black/25 p-[3px] ring-1 ring-white/[0.06]" role="radiogroup" aria-label={t.levels[1]}>
               {([1, 2, 3] as const).map((value) => (
                 <motion.button
                   key={value}
                   aria-checked={level === value}
-                  className={`relative h-[28px] rounded-full border px-3 text-[12.5px] transition-colors ${
-                    level === value ? "border-transparent text-white" : "border-white/[0.08] text-white/60 hover:text-white"
+                  className={`relative h-[26px] rounded-full px-3 text-[12.5px] transition-colors ${
+                    level === value ? "text-white" : "text-white/55 hover:text-white"
                   }`}
                   onClick={() => setLevel(level === value ? null : value)}
                   role="radio"
@@ -459,7 +461,7 @@ export function ExamplesBrowser({
                   whileTap={press}
                 >
                   {level === value && (
-                    <motion.span className="absolute -inset-px rounded-full bg-[#2F8F6E]" layoutId="examples-level" transition={spring.snappy} />
+                    <motion.span className="absolute inset-0 rounded-full bg-white/[0.12]" layoutId="examples-level" transition={spring.snappy} />
                   )}
                   <span className="relative">{t.levels[String(value) as "1" | "2" | "3"]}</span>
                 </motion.button>
@@ -484,7 +486,7 @@ export function ExamplesBrowser({
               {[null, ...exampleTopics].map((id) => (
                 <motion.button
                   key={id ?? "all"}
-                  className={`relative flex min-h-[30px] w-full items-center justify-between gap-2 rounded-[6px] px-2.5 py-[5px] text-left text-[13px] leading-[18px] transition-colors ${
+                  className={`relative flex min-h-[34px] w-full items-center justify-between gap-2 rounded-[8px] px-2 py-[5px] text-left text-[13px] leading-[18px] transition-colors ${
                     topic === id ? "text-white" : "text-white/65 hover:bg-white/[0.04] hover:text-white"
                   }`}
                   onClick={() => setTopic(id)}
@@ -492,16 +494,39 @@ export function ExamplesBrowser({
                   whileTap={{ scale: 0.98 }}
                 >
                   {topic === id && (
-                    <motion.span className="absolute inset-0 rounded-[6px] bg-white/[0.1]" layoutId="examples-topic" transition={spring.snappy} />
+                    <motion.span className="absolute inset-0 rounded-[8px] bg-white/[0.09]" layoutId="examples-topic" transition={spring.snappy} />
                   )}
-                  <span className="relative">{id ? t.topics[id] : t.all}</span>
-                  <span className="relative">
+                  <span className="relative flex min-w-0 items-center gap-2.5">
+                    <TopicIcon topic={id ?? "all"} />
+                    <span>{id ? t.topics[id] : t.all}</span>
+                  </span>
+                  <span className="relative text-white/40">
                     <RollingCount value={id ? topicCounts.get(id) ?? 0 : filtered.length} />
                   </span>
                 </motion.button>
               ))}
-              <div className="mt-4 mb-1.5 px-2.5 text-[11px] font-semibold tracking-[0.06em] text-white/35 uppercase">{t.conceptsLabel}</div>
-              <div className="flex flex-wrap gap-1 px-1.5">
+              <button
+                aria-expanded={conceptsOpen}
+                className="mt-3 flex w-full items-center justify-between rounded-[8px] px-2.5 py-1.5 text-left text-[12.5px] text-white/55 transition-colors hover:bg-white/[0.04] hover:text-white/85"
+                onClick={() => setConceptsOpen((v) => !v)}
+                type="button"
+              >
+                <span>
+                  {t.filterByConcept}
+                  {concepts.size > 0 && <span className="ml-1.5 text-[#A9F0D2]">{concepts.size}</span>}
+                </span>
+                <ChevronDown className={`transition-transform ${conceptsOpen ? "rotate-180" : ""}`} size={14} />
+              </button>
+              <AnimatePresence initial={false}>
+              {conceptsOpen && (
+              <motion.div
+                animate={{ height: "auto", opacity: 1 }}
+                className="overflow-hidden"
+                exit={{ height: 0, opacity: 0 }}
+                initial={{ height: 0, opacity: 0 }}
+                transition={spring.smooth}
+              >
+              <div className="flex flex-wrap gap-1 px-1.5 pt-1">
                 {exampleConcepts.map((concept) => (
                   <motion.button
                     key={concept}
@@ -517,6 +542,9 @@ export function ExamplesBrowser({
                   </motion.button>
                 ))}
               </div>
+              </motion.div>
+              )}
+              </AnimatePresence>
               <AnimatePresence initial={false}>
                 {filtersActive && (
                   <motion.button
@@ -548,7 +576,7 @@ export function ExamplesBrowser({
                 {[null, ...exampleTopics].map((id) => (
                   <motion.button
                     key={id ?? "all"}
-                    className={`relative h-[26px] shrink-0 rounded-full px-2.5 text-[12px] ${topic === id ? "text-white" : "text-white/55"}`}
+                    className={`relative h-[28px] shrink-0 rounded-full pr-2.5 pl-1 text-[12px] ${topic === id ? "text-white" : "text-white/55"}`}
                     onClick={() => setTopic(id)}
                     type="button"
                     whileTap={press}
@@ -556,7 +584,10 @@ export function ExamplesBrowser({
                     {topic === id && (
                       <motion.span className="absolute inset-0 rounded-full bg-white/[0.12]" layoutId="examples-topic-chip" transition={spring.snappy} />
                     )}
-                    <span className="relative">{id ? t.topics[id] : t.all}</span>
+                    <span className="relative flex items-center gap-1.5">
+                      <TopicIcon size={18} topic={id ?? "all"} />
+                      {id ? t.topics[id] : t.all}
+                    </span>
                   </motion.button>
                 ))}
               </div>
@@ -590,7 +621,7 @@ export function ExamplesBrowser({
                       key={example.id}
                       animate={{ opacity: 1, y: 0 }}
                       aria-selected={selected}
-                      className="relative cursor-default rounded-[8px] px-3 py-2.5 transition-colors hover:bg-white/[0.04]"
+                      className="relative cursor-default rounded-[10px] px-2.5 py-2.5 transition-colors hover:bg-white/[0.04]"
                       data-id={example.id}
                       initial={{ opacity: 0, y: 8 }}
                       layout="position"
@@ -609,24 +640,29 @@ export function ExamplesBrowser({
                     >
                       {selected && (
                         <motion.div
-                          className="absolute inset-0 rounded-[8px] bg-[#2F8F6E]/90"
+                          className="absolute inset-0 rounded-[10px] bg-white/[0.08] ring-1 ring-white/[0.06]"
                           layoutId="examples-row"
                           transition={spring.snappy}
                         />
                       )}
+                      <div className="relative flex gap-3">
+                      <span className="mt-0.5"><TopicIcon size={28} topic={example.topic} /></span>
+                      <div className="min-w-0 flex-1">
                       <div className="relative flex items-baseline justify-between gap-2">
                         <span className={`truncate text-[13.5px] font-medium transition-colors ${selected ? "text-white" : ""}`}>{titleOf(example)}</span>
                         <span
-                          className={`shrink-0 text-[10px] tracking-[0.15em] transition-colors ${selected ? "text-white/80" : "text-[#7FE0B8]/70"}`}
+                          className="shrink-0 text-[10px] tracking-[0.15em] text-white/40"
                           title={t.levels[String(example.level) as "1"]}
                         >
                           {LEVEL_DOTS[example.level]}
                         </span>
                       </div>
                       <div
-                        className={`relative mt-0.5 line-clamp-2 text-[12px] leading-[17px] transition-colors ${selected ? "text-white/80" : "text-white/45"}`}
+                        className={`relative mt-0.5 line-clamp-2 text-[12px] leading-[17px] transition-colors ${selected ? "text-white/70" : "text-white/45"}`}
                       >
                         {copyOf(example)?.description ?? example.description}
+                      </div>
+                      </div>
                       </div>
                     </motion.div>
                   );
@@ -655,12 +691,16 @@ export function ExamplesBrowser({
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <h2 className="text-[18px] leading-tight font-semibold">{titleOf(active)}</h2>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-white/45">
-                          <span>{t.topics[active.topic]}</span>
-                          <span>·</span>
-                          <span>{t.levels[String(active.level) as "1"]}</span>
-                          <span>·</span>
-                          <span>{formatMessage(t.lines, { n: lineCount })}</span>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-white/55">
+                          <span className="flex items-center gap-1.5">
+                            <TopicIcon size={20} topic={active.topic} />
+                            {t.topics[active.topic]}
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <span aria-hidden className="text-[9px] tracking-[0.15em] text-white/45">{LEVEL_DOTS[active.level]}</span>
+                            {t.levels[String(active.level) as "1"]}
+                          </span>
+                          <span className="text-white/40">{formatMessage(t.lines, { n: lineCount })}</span>
                         </div>
                         {active.complexity && <ComplexityChips complexity={active.complexity} labels={t.complexity} />}
                       </div>
@@ -673,7 +713,7 @@ export function ExamplesBrowser({
                           title={titleOf(active)}
                         />
                         <motion.button
-                          className="flex h-[32px] shrink-0 items-center gap-2 rounded-[8px] bg-[#2F8F6E] px-3.5 text-[13px] font-medium text-white transition-colors hover:bg-[#35A27C] active:bg-[#287A5E]"
+                          className="flex h-[32px] shrink-0 items-center gap-2 rounded-full bg-[#86F0C4]/[0.16] px-4 text-[13px] font-medium text-[#B4F7DA] transition-colors hover:bg-[#86F0C4]/[0.24]"
                           onClick={() => open(active)}
                           type="button"
                           whileHover="hover"

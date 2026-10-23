@@ -746,6 +746,7 @@ export const esDictionary: Dictionary = {
         coloquial: "Condiciones coloquiales",
       },
       conceptsLabel: "Conceptos",
+      filterByConcept: "Filtrar por concepto",
       clearFilters: "Quitar filtros",
       results: { one: "{count} ejemplo", other: "{count} ejemplos" },
       noResults: "Ningún ejemplo coincide. Prueba con otra palabra o quita filtros.",

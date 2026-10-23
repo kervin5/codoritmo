@@ -340,6 +340,7 @@ export interface Dictionary {
       topics: Record<"basics" | "decisions" | "loops" | "arrays" | "sorting" | "text" | "routines" | "math" | "projects", string>;
       concepts: Record<string, string>;
       conceptsLabel: string;
+      filterByConcept: string;
       clearFilters: string;
       results: { one: string; other: string };
       noResults: string;

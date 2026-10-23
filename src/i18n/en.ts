@@ -746,6 +746,7 @@ export const enDictionary: Dictionary = {
         coloquial: "Colloquial conditions",
       },
       conceptsLabel: "Concepts",
+      filterByConcept: "Filter by concept",
       clearFilters: "Clear filters",
       results: { one: "{count} example", other: "{count} examples" },
       noResults: "No examples match. Try another word or clear the filters.",
