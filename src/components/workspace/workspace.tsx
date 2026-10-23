@@ -1261,17 +1261,19 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
               <SkipBack fill="currentColor" size={14} />
             </button>
             <div className="group relative mx-2">
+              {/* Before the first run, a soft ring breathes around the button to invite a press. */}
+              {player.frameCount === 0 && !player.wantPlay && (
+                <span aria-hidden className="pointer-events-none absolute inset-0 animate-ping rounded-full bg-[#86F0C4]/25 [animation-duration:2.2s] motion-reduce:hidden" />
+              )}
               <motion.button
                 aria-describedby="run-hint"
-                aria-label={player.wantPlay ? t.run.pause : t.run.run}
-                className={`relative flex h-11 items-center justify-center gap-2 rounded-full bg-[linear-gradient(180deg,#B4FADD_0%,#86F0C4_50%,#6CD9AE_100%)] text-[14.5px] font-semibold text-[#08291D] shadow-[inset_0_1px_0_rgba(255,255,255,0.65),0_3px_0_#2F9472,0_10px_28px_rgba(134,240,196,0.32)] transition-shadow duration-150 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white active:shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_1px_0_#2F9472,0_4px_14px_rgba(134,240,196,0.24)] ${
-                  narrow ? "w-11" : "min-w-[136px] px-5"
-                }`}
+                aria-label={player.wantPlay ? t.run.pause : player.status === "paused" ? t.run.continue : t.run.run}
+                className="relative grid h-12 w-12 place-items-center rounded-full bg-[radial-gradient(circle_at_35%_30%,#D2FFEC_0%,#97F3CC_38%,#6CD9AE_100%)] text-[#08291D] shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_3px_0_#2F9472,0_10px_30px_rgba(134,240,196,0.38)] ring-4 ring-[#86F0C4]/15 transition-shadow duration-150 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white active:shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_1px_0_#2F9472,0_4px_14px_rgba(134,240,196,0.28)]"
                 onClick={togglePlay}
                 transition={spring.snappy}
                 type="button"
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.96, y: 2 }}
+                whileHover={{ scale: 1.07 }}
+                whileTap={{ scale: 0.93, y: 2 }}
               >
                 <AnimatePresence initial={false} mode="popLayout">
                   <motion.span
@@ -1282,10 +1284,9 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                     initial={{ opacity: 0, scale: 0.5, rotate: player.wantPlay ? -90 : 90 }}
                     transition={spring.snappy}
                   >
-                    {player.wantPlay ? <Pause fill="currentColor" size={16} /> : <Play className="ml-0.5" fill="currentColor" size={16} />}
+                    {player.wantPlay ? <Pause fill="currentColor" size={19} /> : <Play className="ml-[3px]" fill="currentColor" size={19} />}
                   </motion.span>
                 </AnimatePresence>
-                {!narrow && <span>{player.wantPlay ? t.run.pause : player.status === "paused" ? t.run.continue : t.run.run}</span>}
               </motion.button>
               {/* What the button does, shown after a short hover. */}
               <div
@@ -1294,7 +1295,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                 role="tooltip"
               >
                 <div className="mb-0.5 flex items-center justify-between font-medium text-white/95">
-                  {player.wantPlay ? t.run.pause : t.run.run}
+                  {player.wantPlay ? t.run.pause : player.status === "paused" ? t.run.continue : t.run.run}
                   <span className="font-normal text-white/40">{k("↵")}</span>
                 </div>
                 {player.wantPlay ? t.pauseHint : t.runHint}
