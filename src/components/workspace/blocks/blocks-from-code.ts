@@ -486,7 +486,7 @@ const BLOCK_KINDS: Record<string, StatementNode["kind"][]> = {
 
 /**
  * Maps each statement line of `source` (code generated from `workspace` by
- * `pseudocode.workspaceToCode`) to the id of the block that wrote it. Lines
+ * `pseudocode.workspaceToCode` with the same settings) to the id of the block that wrote it. Lines
  * inside a code block (ps_raw, ps_raw_top) map to that block.
  */
 export function lineToBlockMap(
@@ -542,6 +542,7 @@ export function lineToBlockMap(
   };
 
   // Rebuild the layout of workspaceToCode: top blocks in order, separated by a blank line.
+  pseudocode.useSettings(settings);
   pseudocode.init(workspace);
   let start = 1;
   for (const top of workspace.getTopBlocks(true)) {

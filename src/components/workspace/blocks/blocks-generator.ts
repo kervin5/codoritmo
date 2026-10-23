@@ -2,6 +2,8 @@
 
 import * as Blockly from "blockly/core";
 
+import { normalizeEngineSettings, type EngineSettings } from "@/src/engine";
+
 /**
  * Lower binds tighter. PSeInt's NO binds looser than comparisons.
  * Blockly floors both orders before comparing them, so the levels are spaced
@@ -53,10 +55,35 @@ function expressionOrder(code: string): number {
   return atomic ? Order.ATOMIC : Order.NONE;
 }
 
+/**
+ * The parts of a profile that change how the code has to be written. The
+ * defaults are the desktop profile, whose output this generator always wrote.
+ */
+export interface CodeStyle {
+  /** force_semicolon: every sequential instruction ends with `;`. */
+  semicolons: boolean;
+  /** word_operators off: `&&`, `||`, `~` and `%` instead of Y, O, NO and MOD. */
+  symbolOperators: boolean;
+}
+
+export function codeStyle(settings: Partial<EngineSettings> = {}): CodeStyle {
+  // Normalised like the parser does (colloquial conditions bring word operators back).
+  const normalized = normalizeEngineSettings(settings);
+  return { semicolons: normalized.forceSemicolon, symbolOperators: !normalized.wordOperators };
+}
+
 class PseudocodeGenerator extends Blockly.CodeGenerator {
+  /** How the code is being written; set by workspaceToCode, or by useSettings before blockToCode. */
+  style: CodeStyle = codeStyle();
+
   constructor() {
     super("PSeInt");
     this.INDENT = "\t";
+  }
+
+  /** Writes the following blockToCode calls for this profile. */
+  useSettings(settings: Partial<EngineSettings> = {}): void {
+    this.style = codeStyle(settings);
   }
 
   // Chain each statement to the one below it.
@@ -65,9 +92,13 @@ class PseudocodeGenerator extends Blockly.CodeGenerator {
     return thisOnly || !next ? code : code + this.blockToCode(next);
   }
 
-  /** Whole program: the Algoritmo plus any loose code blocks (e.g. SubProcesos), top to bottom. */
-  override workspaceToCode(workspace?: Blockly.Workspace): string {
+  /**
+   * Whole program: the Algoritmo plus any loose code blocks (e.g. SubProcesos),
+   * top to bottom, written the way the document's profile requires.
+   */
+  override workspaceToCode(workspace?: Blockly.Workspace, settings: Partial<EngineSettings> = {}): string {
     if (!workspace) return "";
+    this.useSettings(settings);
     this.init(workspace);
     const parts: string[] = [];
     for (const block of workspace.getTopBlocks(true)) {
@@ -83,18 +114,38 @@ export const pseudocode = new PseudocodeGenerator();
 const g = pseudocode;
 const value = (block: Blockly.Block, name: string, order: number) => g.valueToCode(block, name, order);
 const body = (block: Blockly.Block, name: string) => g.statementToCode(block, name);
+/** Ends a sequential instruction (not a block header or closer, which never take `;`). */
+const end = () => (g.style.semicolons ? ";\n" : "\n");
+const WORD_TO_SYMBOL: Record<string, string> = { Y: "&&", O: "||", MOD: "%" };
+const operator = (op: string) => (g.style.symbolOperators ? WORD_TO_SYMBOL[op] ?? op : op);
+
+/** A control structure kept as code; its own statements carry whatever `;` they were written with. */
+const COMPOUND = /^(si|mientras|repetir|para|paracada|seg[uú]n)(\s|\(|$)/i;
+
+/**
+ * A statement kept as code. Its text never includes the `;` that ended it, so
+ * under force_semicolon a one-line instruction gets it back. Multi-line code
+ * (a Segun) and control structures are written exactly as they are.
+ */
+function rawStatement(code: string): string {
+  const text = code.trimEnd();
+  if (!g.style.semicolons || !text || text.includes("\n") || text.endsWith(";") || COMPOUND.test(text.trimStart())) {
+    return `${code}\n`;
+  }
+  return `${text};\n`;
+}
 
 const forBlock: Record<string, (block: Blockly.Block) => string | [string, number]> = {
   ps_algoritmo: (b) => `Algoritmo ${b.getFieldValue("NAME") || "SinTitulo"}\n${body(b, "BODY")}FinAlgoritmo\n`,
   ps_raw_top: (b) => `${b.getFieldValue("CODE")}\n`,
-  ps_raw: (b) => `${b.getFieldValue("CODE")}\n`,
+  ps_raw: (b) => rawStatement(String(b.getFieldValue("CODE") ?? "")),
 
   ps_escribir: (b) =>
-    `Escribir ${value(b, "VALUE", Order.LIST + 1)}${b.getFieldValue("NEWLINE") === "FALSE" ? " Sin Saltar" : ""}\n`,
-  ps_leer: (b) => `Leer ${value(b, "TARGET", Order.LIST + 1)}\n`,
+    `Escribir ${value(b, "VALUE", Order.LIST + 1)}${b.getFieldValue("NEWLINE") === "FALSE" ? " Sin Saltar" : ""}${end()}`,
+  ps_leer: (b) => `Leer ${value(b, "TARGET", Order.LIST + 1)}${end()}`,
 
-  ps_definir: (b) => `Definir ${b.getFieldValue("NAMES")} Como ${b.getFieldValue("TYPE")}\n`,
-  ps_asignar: (b) => `${value(b, "TARGET", Order.ATOMIC)} <- ${value(b, "VALUE", Order.NONE)}\n`,
+  ps_definir: (b) => `Definir ${b.getFieldValue("NAMES")} Como ${b.getFieldValue("TYPE")}${end()}`,
+  ps_asignar: (b) => `${value(b, "TARGET", Order.ATOMIC)} <- ${value(b, "VALUE", Order.NONE)}${end()}`,
   ps_variable: (b) => [b.getFieldValue("NAME"), Order.ATOMIC],
 
   ps_si: (b) => `Si ${value(b, "COND", Order.NONE)} Entonces\n${body(b, "THEN")}FinSi\n`,
@@ -115,13 +166,13 @@ const forBlock: Record<string, (block: Blockly.Block) => string | [string, numbe
   ps_para_cada: (b) =>
     `Para Cada ${b.getFieldValue("VAR")} de ${b.getFieldValue("ARRAY")} Hacer\n${body(b, "BODY")}FinPara\n`,
 
-  ps_dimension: (b) => `Dimension ${b.getFieldValue("NAME")}[${value(b, "SIZE", Order.NONE)}]\n`,
+  ps_dimension: (b) => `Dimension ${b.getFieldValue("NAME")}[${value(b, "SIZE", Order.NONE)}]${end()}`,
   ps_elemento: (b) => [`${b.getFieldValue("NAME")}[${value(b, "INDEX", Order.NONE)}]`, Order.ATOMIC],
 
-  ps_limpiar: () => "Limpiar Pantalla\n",
-  ps_esperar_tecla: () => "Esperar Tecla\n",
-  ps_esperar: (b) => `Esperar ${value(b, "AMOUNT", Order.NONE)} ${b.getFieldValue("UNIT")}\n`,
-  ps_llamar: (b) => `${b.getFieldValue("NAME")}(${b.getFieldValue("ARGS")})\n`,
+  ps_limpiar: () => `Limpiar Pantalla${end()}`,
+  ps_esperar_tecla: () => `Esperar Tecla${end()}`,
+  ps_esperar: (b) => `Esperar ${value(b, "AMOUNT", Order.NONE)} ${b.getFieldValue("UNIT")}${end()}`,
+  ps_llamar: (b) => `${b.getFieldValue("NAME")}(${b.getFieldValue("ARGS")})${end()}`,
 
   ps_numero: (b) => {
     const n = Number(b.getFieldValue("NUM"));
@@ -137,14 +188,14 @@ const forBlock: Record<string, (block: Blockly.Block) => string | [string, numbe
     // Left-associative: the left side may share our level, the right may not.
     // PSeInt rejects two operators in a row (`a * -1`), so a negative right side needs parentheses.
     const right = value(b, "B", order);
-    return [`${value(b, "A", order + 1)} ${op} ${right.startsWith("-") ? `(${right})` : right}`, order];
+    return [`${value(b, "A", order + 1)} ${operator(op)} ${right.startsWith("-") ? `(${right})` : right}`, order];
   },
   ps_comparar: (b) => [`${value(b, "A", Order.RELATIONAL)} ${b.getFieldValue("OP")} ${value(b, "B", Order.RELATIONAL)}`, Order.RELATIONAL],
   ps_logica: (b) => {
     const order = b.getFieldValue("OP") === "Y" ? Order.AND : Order.OR;
-    return [`${value(b, "A", order + 1)} ${b.getFieldValue("OP")} ${value(b, "B", order + 1)}`, order];
+    return [`${value(b, "A", order + 1)} ${operator(b.getFieldValue("OP"))} ${value(b, "B", order + 1)}`, order];
   },
-  ps_no: (b) => [`NO ${value(b, "A", Order.NOT)}`, Order.NOT],
+  ps_no: (b) => [`${g.style.symbolOperators ? "~" : "NO "}${value(b, "A", Order.NOT)}`, Order.NOT],
   ps_unir: (b) => [`${value(b, "A", Order.LIST + 1)}, ${value(b, "B", Order.LIST + 1)}`, Order.LIST],
   ps_funcion: (b) => [`${b.getFieldValue("NAME")}(${value(b, "A", Order.NONE)})`, Order.CALL],
   ps_funcion2: (b) =>

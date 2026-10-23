@@ -12,7 +12,7 @@ import { LocateFixed, Minus, Plus } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 
-import type { EngineSettings } from "@/src/engine";
+import { settingsEqual, type EngineSettings } from "@/src/engine";
 import type { Locale } from "@/src/i18n/config";
 import type { Dictionary } from "@/src/i18n/types";
 import { prefersReducedMotion } from "@/src/lib/motion";
@@ -131,6 +131,11 @@ export function BlocksView({
   const workspaceRef = useRef<Blockly.WorkspaceSvg | null>(null);
   /** The code we last produced; an incoming source equal to it is our own echo. */
   const emittedRef = useRef<string | null>(null);
+  /**
+   * The settings the code was generated with; null while the code is still the
+   * text that was loaded (which may hold comments the blocks don't keep).
+   */
+  const emittedSettingsRef = useRef<EngineSettings | null>(null);
   const lineMapRef = useRef<Map<number, string>>(new Map());
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -186,10 +191,13 @@ export function BlocksView({
     }
     syncIdleScrollbars(host);
 
+    // Written in the document's profile (semicolons, operator spellings).
     const emit = () => {
-      const code = pseudocode.workspaceToCode(workspace);
+      const settings = settingsRef.current;
+      const code = pseudocode.workspaceToCode(workspace, settings);
       emittedRef.current = code;
-      lineMapRef.current = lineToBlockMap(workspace, code, settingsRef.current);
+      emittedSettingsRef.current = settings;
+      lineMapRef.current = lineToBlockMap(workspace, code, settings);
       onChangeRef.current(code);
     };
     const listener = (event: Blockly.Events.Abstract) => {
@@ -217,15 +225,29 @@ export function BlocksView({
       // A new workspace starts empty, so the next source must be loaded again
       // (React's dev double-mount would otherwise leave it blank).
       emittedRef.current = null;
+      emittedSettingsRef.current = null;
     };
     // The workspace is created once; labels and locale are read at creation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load code into blocks when it changes from outside (opening, switching tabs).
+  // When only the profile changes and the code came from the blocks, it is
+  // rewritten in the new profile's style (semicolons, operator spellings).
   useEffect(() => {
     const workspace = workspaceRef.current;
-    if (!workspace || source === emittedRef.current) return;
+    if (!workspace) return;
+    if (source === emittedRef.current) {
+      const previous = emittedSettingsRef.current;
+      if (!previous || settingsEqual(previous, settings)) return;
+      emittedSettingsRef.current = settings;
+      const code = pseudocode.workspaceToCode(workspace, settings);
+      lineMapRef.current = lineToBlockMap(workspace, code, settings);
+      if (code === source) return;
+      emittedRef.current = code;
+      onChangeRef.current(code);
+      return;
+    }
     const result = codeToBlocksState(source, settings);
     if ("error" in result) {
       setError(result.error);
@@ -239,7 +261,8 @@ export function BlocksView({
       Blockly.Events.enable();
     }
     emittedRef.current = source;
-    lineMapRef.current = lineToBlockMap(workspace, pseudocode.workspaceToCode(workspace), settings);
+    emittedSettingsRef.current = null;
+    lineMapRef.current = lineToBlockMap(workspace, pseudocode.workspaceToCode(workspace, settings), settings);
     workspace.scrollCenter();
   }, [settings, source]);
 
