@@ -7,7 +7,8 @@
 // full-screen list with the preview sliding over it.
 
 import { ArrowLeft, Check, CornerDownLeft, ExternalLink, RotateCcw, Search, Share2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
   exampleConcepts,
@@ -22,8 +23,10 @@ import type { Locale } from "@/src/i18n/config";
 import { formatMessage, formatPlural } from "@/src/i18n/format";
 import type { Dictionary } from "@/src/i18n/types";
 import { examplePath } from "@/src/lib/example-urls";
+import { duration, easeOut, spring, stagger } from "@/src/lib/motion";
 import CodeEditor from "./code-editor";
 import FlowDiagram from "./flow-diagram";
+import { playOpenMorph, playSheetEnter, playSheetExit } from "./motion/examples-transitions";
 
 type Topic = (typeof exampleTopics)[number];
 type PreviewTab = "code" | "diagram" | "output";
@@ -116,6 +119,9 @@ function ComplexityChips({
 
 type ShareState = "idle" | "copied" | "manual";
 
+/** Press feedback shared by every button in the library. */
+const press = { scale: 0.97 };
+
 /**
  * Shares the example's public page: the native share sheet where there is one
  * (phones), otherwise the clipboard. If the clipboard is blocked, the URL is
@@ -166,29 +172,56 @@ function ShareActions({ locale, example, title, text, labels }: {
   return (
     <div className="flex flex-col items-end gap-1.5" data-preview-actions="">
       <div className="flex items-center gap-1.5">
-        <a
+        <motion.a
           aria-label={labels.viewPageHint}
-          className="flex h-[32px] shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 text-[12.5px] text-white/55 hover:bg-white/[0.06] hover:text-white"
+          className="flex h-[32px] shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 text-[12.5px] text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white"
           href={path}
           rel="noopener"
           target="_blank"
           title={labels.viewPageHint}
+          whileHover="hover"
+          whileTap={press}
         >
-          <ExternalLink size={13} /> <span className="hidden sm:inline">{labels.viewPage}</span>
-        </a>
-        <button
-          className="flex h-[32px] shrink-0 items-center gap-1.5 rounded-[8px] border border-white/[0.1] px-3 text-[13px] text-white/80 hover:bg-white/[0.06] hover:text-white"
+          {/* The arrow nudges out: this leaves for another page. */}
+          <motion.span className="flex" transition={spring.snappy} variants={{ hover: { x: 1.5, y: -1.5 } }}>
+            <ExternalLink size={13} />
+          </motion.span>{" "}
+          <span className="hidden sm:inline">{labels.viewPage}</span>
+        </motion.a>
+        <motion.button
+          className="flex h-[32px] shrink-0 items-center gap-1.5 rounded-[8px] border border-white/[0.1] px-3 text-[13px] text-white/80 transition-colors hover:bg-white/[0.06] hover:text-white"
           onClick={() => void share()}
           type="button"
+          whileHover="hover"
+          whileTap={press}
         >
-          {state === "copied" ? <Check size={13} /> : <Share2 size={13} />} {labels.share}
-        </button>
+          <motion.span className="flex" transition={spring.snappy} variants={{ hover: { y: -1.5 } }}>
+            <AnimatePresence initial={false} mode="popLayout">
+              <motion.span
+                key={state === "copied" ? "copied" : "share"}
+                animate={{ scale: 1, opacity: 1 }}
+                className="flex"
+                exit={{ scale: 0.5, opacity: 0 }}
+                initial={{ scale: 0.5, opacity: 0 }}
+                transition={spring.bouncy}
+              >
+                {state === "copied" ? <Check className="text-[#86F0C4]" size={13} /> : <Share2 size={13} />}
+              </motion.span>
+            </AnimatePresence>
+          </motion.span>{" "}
+          {labels.share}
+        </motion.button>
       </div>
       <div aria-live="polite" className="text-[11.5px] text-[#A9F0D2]">
         {state === "copied" && labels.linkCopied}
       </div>
       {state === "manual" && (
-        <label className="flex w-[260px] max-w-full flex-col gap-1 text-[11.5px] text-white/55">
+        <motion.label
+          animate={{ opacity: 1, y: 0 }}
+          className="flex w-[260px] max-w-full flex-col gap-1 text-[11.5px] text-white/55"
+          initial={{ opacity: 0, y: -4 }}
+          transition={spring.smooth}
+        >
           {labels.copyFailed}
           <input
             ref={fieldRef}
@@ -197,9 +230,44 @@ function ShareActions({ locale, example, title, text, labels }: {
             readOnly
             value={typeof window === "undefined" ? path : window.location.origin + path}
           />
-        </label>
+        </motion.label>
       )}
     </div>
+  );
+}
+
+const roll = {
+  enter: (direction: number) => ({ y: direction > 0 ? 8 : -8, opacity: 0 }),
+  center: { y: 0, opacity: 1 },
+  exit: (direction: number) => ({ y: direction > 0 ? -8 : 8, opacity: 0 }),
+};
+
+/**
+ * A count that rolls to its new value (up when it grows, down when it
+ * shrinks), so a filter's effect on each topic is visible at a glance.
+ */
+function RollingCount({ value }: { value: number }) {
+  const [last, setLast] = useState({ value, direction: 1 });
+  if (last.value !== value) setLast({ value, direction: value > last.value ? 1 : -1 });
+  const direction = last.direction;
+  return (
+    <span className="relative inline-flex overflow-hidden text-[11.5px] text-white/35 tabular-nums">
+      <span className="sr-only">{value}</span>
+      <AnimatePresence custom={direction} initial={false} mode="popLayout">
+        <motion.span
+          key={value}
+          animate="center"
+          aria-hidden
+          custom={direction}
+          exit="exit"
+          initial="enter"
+          transition={spring.snappy}
+          variants={roll}
+        >
+          {value}
+        </motion.span>
+      </AnimatePresence>
+    </span>
   );
 }
 
@@ -208,11 +276,17 @@ export function ExamplesBrowser({
   locale,
   onOpen,
   onClose,
+  originRect,
+  getTabTargetRect,
 }: {
   dictionary: Dictionary;
   locale: Locale;
   onOpen: (example: ExampleProgram) => void;
   onClose: () => void;
+  /** Where the library was opened from (the Ejemplos button): the sheet grows out of it and shrinks back into it. */
+  originRect?: DOMRect | null;
+  /** The new document tab's rect, read just after `onOpen`: the preview card flies into it. */
+  getTabTargetRect?: () => DOMRect | null;
 }) {
   const t = dictionary.studio.examples;
   const copyOf = (example: ExampleProgram) => dictionary.examples[example.id];
@@ -227,13 +301,41 @@ export function ExamplesBrowser({
   const [mobilePreview, setMobilePreview] = useState(false);
   const [preview, setPreview] = useState<{ id: string; lines: PreviewLine[] } | null>(null);
   const [runCount, setRunCount] = useState(0);
+  // Without an explicit origin, a click on a trigger button leaves it focused: grow from there.
+  const [origin] = useState<DOMRect | null>(() => {
+    if (originRect) return originRect;
+    if (typeof document === "undefined") return null;
+    const trigger = document.activeElement;
+    return trigger instanceof HTMLButtonElement ? trigger.getBoundingClientRect() : null;
+  });
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLElement>(null);
 
-  const matches = useMemo(() => {
+  useLayoutEffect(() => {
+    if (dialogRef.current && backdropRef.current) playSheetEnter(dialogRef.current, backdropRef.current, origin);
+  }, [origin]);
+
+  const close = () => {
+    playSheetExit(dialogRef.current, backdropRef.current, origin);
+    onClose();
+  };
+  const open = (example: ExampleProgram) => {
+    playOpenMorph({
+      dialog: dialogRef.current,
+      backdrop: backdropRef.current,
+      // On phones the list is showing, not the preview: no card to fly.
+      card: previewRef.current?.offsetParent ? previewRef.current : null,
+      getTarget: getTabTargetRect,
+    });
+    onOpen(example);
+  };
+
+  const matchesQuery = useMemo(() => {
     const q = normalize(query.trim());
-    return examplePrograms.filter((example) => {
-      if (topic && example.topic !== topic) return false;
+    return (example: ExampleProgram) => {
       if (level && example.level !== level) return false;
       if (concepts.size && ![...concepts].every((c) => example.concepts.includes(c as never))) return false;
       if (!q) return true;
@@ -242,19 +344,23 @@ export function ExamplesBrowser({
         [titleOf(example), copy?.description, copy?.learn, example.concepts.map((c) => t.concepts[c]).join(" "), example.source].join(" ")
       );
       return q.split(/\s+/).every((word) => haystack.includes(word));
-    });
+    };
     // copyOf/titleOf only read the dictionary, which is a dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [concepts, dictionary, level, query, topic]);
+  }, [concepts, dictionary, level, query]);
+
+  // Everything but the topic: the topic list counts within these.
+  const filtered = useMemo(() => examplePrograms.filter(matchesQuery), [matchesQuery]);
+  const matches = useMemo(() => (topic ? filtered.filter((e) => e.topic === topic) : filtered), [filtered, topic]);
 
   const active = matches.find((e) => e.id === activeId) ?? matches[0] ?? null;
   const activeCopy = active ? copyOf(active) : undefined;
 
   const topicCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const example of examplePrograms) counts.set(example.topic, (counts.get(example.topic) ?? 0) + 1);
+    for (const example of filtered) counts.set(example.topic, (counts.get(example.topic) ?? 0) + 1);
     return counts;
-  }, []);
+  }, [filtered]);
 
   // Run the preview when the Output tab is visible.
   useEffect(() => {
@@ -290,296 +396,414 @@ export function ExamplesBrowser({
   const lineCount = active ? active.source.trimEnd().split("\n").length : 0;
 
   return (
-    <div
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 sm:p-6"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          if (mobilePreview) setMobilePreview(false);
-          else onClose();
-        } else if (event.key === "ArrowDown") {
-          event.preventDefault();
-          move(1);
-        } else if (event.key === "ArrowUp") {
-          event.preventDefault();
-          move(-1);
-        } else if (
-          event.key === "Enter" &&
-          active &&
-          // Enter belongs to the editor and to the share/view-page controls.
-          !(event.target as HTMLElement).closest(".monaco-editor, [data-preview-actions]")
-        ) {
-          event.preventDefault();
-          onOpen(active);
-        }
-      }}
-      onMouseDown={onClose}
-    >
+    <LayoutGroup id="examples-browser">
       <div
-        aria-label={t.title}
-        aria-modal
-        className="relative flex h-full w-full max-w-[1180px] flex-col overflow-hidden border-white/10 bg-[#1B1F22] text-[#E6ECE9] shadow-[0_30px_90px_rgba(0,0,0,0.6)] sm:h-[min(760px,92vh)] sm:rounded-[14px] sm:border"
-        onMouseDown={(event) => event.stopPropagation()}
-        role="dialog"
+        ref={backdropRef}
+        className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 sm:p-6"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            if (mobilePreview) setMobilePreview(false);
+            else close();
+          } else if (event.key === "ArrowDown") {
+            event.preventDefault();
+            move(1);
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            move(-1);
+          } else if (
+            event.key === "Enter" &&
+            active &&
+            // Enter belongs to the editor and to the share/view-page controls.
+            !(event.target as HTMLElement).closest(".monaco-editor, [data-preview-actions]")
+          ) {
+            event.preventDefault();
+            open(active);
+          }
+        }}
+        onMouseDown={close}
       >
-        {/* Search and level */}
-        <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-white/[0.07] px-4 py-3">
-          <div className="flex h-[34px] min-w-[200px] flex-1 items-center gap-2.5 rounded-[8px] border border-white/[0.08] bg-black/25 px-3 focus-within:border-[#4FB892]/70 focus-within:shadow-[0_0_0_3px_rgba(79,184,146,0.18)]">
-            <Search className="text-white/40" size={15} />
-            <input
-              ref={searchRef}
-              aria-label={t.search}
-              autoFocus
-              className="flex-1 bg-transparent text-[14px] outline-none placeholder:text-white/30"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t.search}
-              value={query}
-            />
-          </div>
-          <div className="flex items-center gap-1" role="radiogroup" aria-label={t.levels[1]}>
-            {([1, 2, 3] as const).map((value) => (
-              <button
-                key={value}
-                aria-checked={level === value}
-                className={`h-[28px] rounded-full px-3 text-[12.5px] ${
-                  level === value ? "bg-[#2F8F6E] text-white" : "border border-white/[0.08] text-white/60 hover:text-white"
-                }`}
-                onClick={() => setLevel(level === value ? null : value)}
-                role="radio"
-                type="button"
-              >
-                {t.levels[String(value) as "1" | "2" | "3"]}
-              </button>
-            ))}
-          </div>
-          <button aria-label={t.back} className="rounded-[6px] p-1.5 text-white/45 hover:bg-white/[0.06] hover:text-white" onClick={onClose} type="button">
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="flex min-h-0 flex-1">
-          {/* Topics and concepts */}
-          <aside className="workspace-scroll hidden w-[210px] shrink-0 overflow-y-auto border-r border-white/[0.07] p-2 md:block">
-            {[null, ...exampleTopics].map((id) => (
-              <button
-                key={id ?? "all"}
-                className={`flex h-[30px] w-full items-center justify-between rounded-[6px] px-2.5 text-left text-[13px] ${
-                  topic === id ? "bg-white/[0.1] text-white" : "text-white/65 hover:bg-white/[0.04] hover:text-white"
-                }`}
-                onClick={() => setTopic(id)}
-                type="button"
-              >
-                {id ? t.topics[id] : t.all}
-                <span className="text-[11.5px] text-white/35 tabular-nums">{id ? topicCounts.get(id) : examplePrograms.length}</span>
-              </button>
-            ))}
-            <div className="mt-4 mb-1.5 px-2.5 text-[11px] font-semibold tracking-[0.06em] text-white/35 uppercase">{t.conceptsLabel}</div>
-            <div className="flex flex-wrap gap-1 px-1.5">
-              {exampleConcepts.map((concept) => (
-                <button
-                  key={concept}
-                  aria-pressed={concepts.has(concept)}
-                  className={`rounded-full px-2 py-[3px] text-[11.5px] ${
-                    concepts.has(concept) ? "bg-[#7FE0B8]/20 text-[#A9F0D2] ring-1 ring-[#7FE0B8]/40" : "bg-white/[0.04] text-white/55 hover:text-white/85"
+        <div
+          ref={dialogRef}
+          aria-label={t.title}
+          aria-modal
+          className="relative flex h-full w-full max-w-[1180px] flex-col overflow-hidden border-white/10 bg-[#1B1F22] text-[#E6ECE9] shadow-[0_30px_90px_rgba(0,0,0,0.6)] sm:h-[min(760px,92vh)] sm:rounded-[14px] sm:border"
+          onMouseDown={(event) => event.stopPropagation()}
+          role="dialog"
+        >
+          {/* Search and level */}
+          <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-white/[0.07] px-4 py-3">
+            <div className="flex h-[34px] min-w-[200px] flex-1 items-center gap-2.5 rounded-[8px] border border-white/[0.08] bg-black/25 px-3 transition-[border-color,box-shadow] duration-200 focus-within:border-[#4FB892]/70 focus-within:shadow-[0_0_0_3px_rgba(79,184,146,0.18)]">
+              <Search className="text-white/40" size={15} />
+              <input
+                ref={searchRef}
+                aria-label={t.search}
+                autoFocus
+                className="flex-1 bg-transparent text-[14px] outline-none placeholder:text-white/30"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={t.search}
+                value={query}
+              />
+            </div>
+            <div className="flex items-center gap-1" role="radiogroup" aria-label={t.levels[1]}>
+              {([1, 2, 3] as const).map((value) => (
+                <motion.button
+                  key={value}
+                  aria-checked={level === value}
+                  className={`relative h-[28px] rounded-full border px-3 text-[12.5px] transition-colors ${
+                    level === value ? "border-transparent text-white" : "border-white/[0.08] text-white/60 hover:text-white"
                   }`}
-                  onClick={() => toggleConcept(concept)}
+                  onClick={() => setLevel(level === value ? null : value)}
+                  role="radio"
                   type="button"
+                  whileTap={press}
                 >
-                  {t.concepts[concept] ?? concept}
-                </button>
+                  {level === value && (
+                    <motion.span className="absolute -inset-px rounded-full bg-[#2F8F6E]" layoutId="examples-level" transition={spring.snappy} />
+                  )}
+                  <span className="relative">{t.levels[String(value) as "1" | "2" | "3"]}</span>
+                </motion.button>
               ))}
             </div>
-            {filtersActive && (
-              <button
-                className="mt-3 ml-2.5 text-[12px] text-[#7FE0B8] hover:underline"
-                onClick={() => {
-                  setTopic(null);
-                  setLevel(null);
-                  setConcepts(new Set());
-                  setQuery("");
-                  searchRef.current?.focus();
-                }}
-                type="button"
-              >
-                {t.clearFilters}
-              </button>
-            )}
-          </aside>
+            <motion.button
+              aria-label={t.back}
+              className="rounded-[6px] p-1.5 text-white/45 transition-colors hover:bg-white/[0.06] hover:text-white"
+              onClick={close}
+              type="button"
+              whileHover={{ rotate: 90 }}
+              whileTap={{ scale: 0.9 }}
+              transition={spring.snappy}
+            >
+              <X size={16} />
+            </motion.button>
+          </div>
 
-          {/* Results */}
-          <div className="flex w-full min-w-0 flex-col border-r border-white/[0.07] md:w-[300px] md:shrink-0">
-            {/* Topic chips replace the sidebar on small screens */}
-            <div className="flex shrink-0 gap-1 overflow-x-auto px-3 pt-2 [scrollbar-width:none] md:hidden">
+          <div className="flex min-h-0 flex-1">
+            {/* Topics and concepts */}
+            <aside className="workspace-scroll hidden w-[210px] shrink-0 overflow-y-auto border-r border-white/[0.07] p-2 md:block">
               {[null, ...exampleTopics].map((id) => (
-                <button
+                <motion.button
                   key={id ?? "all"}
-                  className={`h-[26px] shrink-0 rounded-full px-2.5 text-[12px] ${topic === id ? "bg-white/[0.12] text-white" : "text-white/55"}`}
+                  className={`relative flex min-h-[30px] w-full items-center justify-between gap-2 rounded-[6px] px-2.5 py-[5px] text-left text-[13px] leading-[18px] transition-colors ${
+                    topic === id ? "text-white" : "text-white/65 hover:bg-white/[0.04] hover:text-white"
+                  }`}
                   onClick={() => setTopic(id)}
                   type="button"
+                  whileTap={{ scale: 0.98 }}
                 >
-                  {id ? t.topics[id] : t.all}
-                </button>
+                  {topic === id && (
+                    <motion.span className="absolute inset-0 rounded-[6px] bg-white/[0.1]" layoutId="examples-topic" transition={spring.snappy} />
+                  )}
+                  <span className="relative">{id ? t.topics[id] : t.all}</span>
+                  <span className="relative">
+                    <RollingCount value={id ? topicCounts.get(id) ?? 0 : filtered.length} />
+                  </span>
+                </motion.button>
               ))}
-            </div>
-            <div className="shrink-0 px-4 pt-2.5 pb-1.5 text-[11.5px] text-white/40">{formatPlural(t.results, matches.length)}</div>
-            <div ref={listRef} className="workspace-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-3" role="listbox" aria-label={t.title}>
-              {matches.length === 0 && <p className="px-3 py-6 text-center text-[13px] text-white/40">{t.noResults}</p>}
-              {matches.map((example) => {
-                const selected = example.id === active?.id;
-                return (
-                  <div
-                    key={example.id}
-                    aria-selected={selected}
-                    className={`cursor-default rounded-[8px] px-3 py-2.5 ${selected ? "bg-[#2F8F6E]/90 text-white" : "hover:bg-white/[0.04]"}`}
-                    data-id={example.id}
-                    onClick={() => {
-                      setActiveId(example.id);
-                      setMobilePreview(true);
-                    }}
-                    onDoubleClick={() => onOpen(example)}
-                    role="option"
+              <div className="mt-4 mb-1.5 px-2.5 text-[11px] font-semibold tracking-[0.06em] text-white/35 uppercase">{t.conceptsLabel}</div>
+              <div className="flex flex-wrap gap-1 px-1.5">
+                {exampleConcepts.map((concept) => (
+                  <motion.button
+                    key={concept}
+                    aria-pressed={concepts.has(concept)}
+                    className={`rounded-full px-2 py-[3px] text-[11.5px] transition-[background-color,color,box-shadow] duration-150 ${
+                      concepts.has(concept) ? "bg-[#7FE0B8]/20 text-[#A9F0D2] ring-1 ring-[#7FE0B8]/40" : "bg-white/[0.04] text-white/55 hover:text-white/85"
+                    }`}
+                    onClick={() => toggleConcept(concept)}
+                    type="button"
+                    whileTap={{ scale: 0.94 }}
                   >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-[13.5px] font-medium">{titleOf(example)}</span>
-                      <span className={`shrink-0 text-[10px] tracking-[0.15em] ${selected ? "text-white/80" : "text-[#7FE0B8]/70"}`} title={t.levels[String(example.level) as "1"]}>
-                        {LEVEL_DOTS[example.level]}
-                      </span>
-                    </div>
-                    <div className={`mt-0.5 line-clamp-2 text-[12px] leading-[17px] ${selected ? "text-white/80" : "text-white/45"}`}>
-                      {copyOf(example)?.description ?? example.description}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+                    {t.concepts[concept] ?? concept}
+                  </motion.button>
+                ))}
+              </div>
+              <AnimatePresence initial={false}>
+                {filtersActive && (
+                  <motion.button
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-3 ml-2.5 text-[12px] text-[#7FE0B8] hover:underline"
+                    exit={{ opacity: 0, y: -4, transition: { duration: duration.instant } }}
+                    initial={{ opacity: 0, y: -4 }}
+                    onClick={() => {
+                      setTopic(null);
+                      setLevel(null);
+                      setConcepts(new Set());
+                      setQuery("");
+                      searchRef.current?.focus();
+                    }}
+                    transition={spring.smooth}
+                    type="button"
+                    whileTap={press}
+                  >
+                    {t.clearFilters}
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </aside>
 
-          {/* Preview */}
-          {active && (
-            <section
-              className={`absolute inset-0 z-10 flex min-w-0 flex-col bg-[#1B1F22] md:static md:z-auto md:flex-1 ${mobilePreview ? "flex" : "hidden md:flex"}`}
-            >
-              <div className="shrink-0 px-5 pt-4">
-                <button className="mb-2 flex items-center gap-1 text-[12.5px] text-white/50 md:hidden" onClick={() => setMobilePreview(false)} type="button">
-                  <ArrowLeft size={13} /> {t.back}
-                </button>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h2 className="text-[18px] leading-tight font-semibold">{titleOf(active)}</h2>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-white/45">
-                      <span>{t.topics[active.topic]}</span>
-                      <span>·</span>
-                      <span>{t.levels[String(active.level) as "1"]}</span>
-                      <span>·</span>
-                      <span>{formatMessage(t.lines, { n: lineCount })}</span>
-                    </div>
-                    {active.complexity && <ComplexityChips complexity={active.complexity} labels={t.complexity} />}
-                  </div>
-                  <div className="flex shrink-0 items-start gap-1.5">
-                    <ShareActions
-                      key={active.id}
-                      example={active}
-                      labels={t}
-                      locale={locale}
-                      text={activeCopy?.description ?? active.description}
-                      title={titleOf(active)}
-                    />
-                    <button
-                      className="flex h-[32px] shrink-0 items-center gap-2 rounded-[8px] bg-[#2F8F6E] px-3.5 text-[13px] font-medium text-white hover:bg-[#35A27C] active:bg-[#287A5E]"
-                      onClick={() => onOpen(active)}
-                      type="button"
-                    >
-                      {t.open} <CornerDownLeft size={13} />
-                    </button>
-                  </div>
-                </div>
-                {activeCopy?.learn && (
-                  <p className="mt-3 text-[13px] leading-[20px] text-white/70">
-                    <span className="font-medium text-white/90">{t.learn}: </span>
-                    {activeCopy.learn}
-                  </p>
-                )}
-                <div className="mt-2.5 flex flex-wrap gap-1">
-                  {active.concepts.map((concept) => (
-                    <span key={concept} className="rounded-full bg-white/[0.05] px-2 py-[2px] text-[11px] text-white/50">
-                      {t.concepts[concept] ?? concept}
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-3 flex items-center gap-0.5 border-b border-white/[0.07]" role="tablist">
-                  {(
-                    [
-                      ["code", t.tabCode],
-                      ["diagram", t.tabDiagram],
-                      ["output", t.tabOutput],
-                    ] as [PreviewTab, string][]
-                  ).map(([id, label]) => (
-                    <button
-                      key={id}
-                      aria-selected={tab === id}
-                      className={`relative px-3 pt-1 pb-2 text-[12.5px] ${tab === id ? "text-white" : "text-white/45 hover:text-white/80"}`}
-                      onClick={() => setTab(id)}
-                      role="tab"
-                      type="button"
-                    >
-                      {label}
-                      {tab === id && <span className="absolute inset-x-2 -bottom-px h-[2px] rounded-full bg-[#7FE0B8]" />}
-                    </button>
-                  ))}
-                </div>
+            {/* Results */}
+            <div className="flex w-full min-w-0 flex-col border-r border-white/[0.07] md:w-[300px] md:shrink-0">
+              {/* Topic chips replace the sidebar on small screens */}
+              <div className="flex shrink-0 gap-1 overflow-x-auto px-3 pt-2 [scrollbar-width:none] md:hidden">
+                {[null, ...exampleTopics].map((id) => (
+                  <motion.button
+                    key={id ?? "all"}
+                    className={`relative h-[26px] shrink-0 rounded-full px-2.5 text-[12px] ${topic === id ? "text-white" : "text-white/55"}`}
+                    onClick={() => setTopic(id)}
+                    type="button"
+                    whileTap={press}
+                  >
+                    {topic === id && (
+                      <motion.span className="absolute inset-0 rounded-full bg-white/[0.12]" layoutId="examples-topic-chip" transition={spring.snappy} />
+                    )}
+                    <span className="relative">{id ? t.topics[id] : t.all}</span>
+                  </motion.button>
+                ))}
               </div>
-              <div className="min-h-0 flex-1">
-                {tab === "code" && (
-                  <CodeEditor currentLine={null} diagnostics={[]} fontSize={13} onChange={() => {}} readOnly value={active.source} />
+              <div className="shrink-0 px-4 pt-2.5 pb-1.5 text-[11.5px] text-white/40">{formatPlural(t.results, matches.length)}</div>
+              <motion.div
+                ref={listRef}
+                aria-label={t.title}
+                className="workspace-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-3"
+                layoutScroll
+                role="listbox"
+              >
+                {matches.length === 0 && (
+                  <motion.p
+                    animate={{ opacity: 1 }}
+                    className="px-3 py-6 text-center text-[13px] text-white/40"
+                    initial={{ opacity: 0 }}
+                    transition={{ duration: duration.base, ease: easeOut }}
+                  >
+                    {t.noResults}
+                  </motion.p>
                 )}
-                {tab === "diagram" && (
-                  <FlowDiagram
-                    activeLine={null}
-                    routineName={null}
-                    settings={normalizeEngineSettings(active.settings)}
-                    source={active.source}
-                    visitedLines={new Set()}
-                  />
-                )}
-                {tab === "output" && (
-                  <div className="flex h-full flex-col">
-                    <div className="flex shrink-0 items-center justify-between gap-3 px-5 pt-3 text-[12px] text-white/45">
-                      <span className="truncate">
-                        {active.input ? `${t.sampleInput} ${active.input.split("\n").join(" · ")}` : t.noInput}
-                      </span>
-                      <button
-                        className="flex shrink-0 items-center gap-1.5 text-white/55 hover:text-white"
-                        onClick={() => setRunCount((n) => n + 1)}
-                        type="button"
+                {/*
+                  Rows that stay slide to their new place (layout); new rows cascade in.
+                  Rows that leave go at once instead of fading out, so a filtered list
+                  never holds stale options (for keyboard, screen readers and tests).
+                */}
+                {matches.map((example, index) => {
+                  const selected = example.id === active?.id;
+                  return (
+                    <motion.div
+                      key={example.id}
+                      animate={{ opacity: 1, y: 0 }}
+                      aria-selected={selected}
+                      className="relative cursor-default rounded-[8px] px-3 py-2.5 transition-colors hover:bg-white/[0.04]"
+                      data-id={example.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      layout="position"
+                      onClick={() => {
+                        setActiveId(example.id);
+                        setMobilePreview(true);
+                      }}
+                      onDoubleClick={() => open(example)}
+                      role="option"
+                      transition={{
+                        ...spring.smooth,
+                        delay: stagger(index),
+                        opacity: { duration: duration.base, ease: easeOut, delay: stagger(index) },
+                        layout: spring.smooth,
+                      }}
+                    >
+                      {selected && (
+                        <motion.div
+                          className="absolute inset-0 rounded-[8px] bg-[#2F8F6E]/90"
+                          layoutId="examples-row"
+                          transition={spring.snappy}
+                        />
+                      )}
+                      <div className="relative flex items-baseline justify-between gap-2">
+                        <span className={`truncate text-[13.5px] font-medium transition-colors ${selected ? "text-white" : ""}`}>{titleOf(example)}</span>
+                        <span
+                          className={`shrink-0 text-[10px] tracking-[0.15em] transition-colors ${selected ? "text-white/80" : "text-[#7FE0B8]/70"}`}
+                          title={t.levels[String(example.level) as "1"]}
+                        >
+                          {LEVEL_DOTS[example.level]}
+                        </span>
+                      </div>
+                      <div
+                        className={`relative mt-0.5 line-clamp-2 text-[12px] leading-[17px] transition-colors ${selected ? "text-white/80" : "text-white/45"}`}
                       >
-                        <RotateCcw size={12} /> {t.rerun}
-                      </button>
+                        {copyOf(example)?.description ?? example.description}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </motion.div>
+            </div>
+
+            {/* Preview */}
+            {active && (
+              <section
+                ref={previewRef}
+                className={`absolute inset-0 z-10 flex min-w-0 flex-col bg-[#1B1F22] md:static md:z-auto md:flex-1 ${mobilePreview ? "flex" : "hidden md:flex"}`}
+                data-examples-preview=""
+              >
+                <div className="shrink-0 px-5 pt-4">
+                  <button className="mb-2 flex items-center gap-1 text-[12.5px] text-white/50 md:hidden" onClick={() => setMobilePreview(false)} type="button">
+                    <ArrowLeft size={13} /> {t.back}
+                  </button>
+                  {/* A new selection fades its details in; the area below slides to its new height. */}
+                  <motion.div
+                    key={active.id}
+                    animate={{ opacity: 1, y: 0 }}
+                    initial={{ opacity: 0, y: 4 }}
+                    transition={{ ...spring.smooth, opacity: { duration: duration.fast, ease: easeOut } }}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <h2 className="text-[18px] leading-tight font-semibold">{titleOf(active)}</h2>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-white/45">
+                          <span>{t.topics[active.topic]}</span>
+                          <span>·</span>
+                          <span>{t.levels[String(active.level) as "1"]}</span>
+                          <span>·</span>
+                          <span>{formatMessage(t.lines, { n: lineCount })}</span>
+                        </div>
+                        {active.complexity && <ComplexityChips complexity={active.complexity} labels={t.complexity} />}
+                      </div>
+                      <div className="flex shrink-0 items-start gap-1.5">
+                        <ShareActions
+                          example={active}
+                          labels={t}
+                          locale={locale}
+                          text={activeCopy?.description ?? active.description}
+                          title={titleOf(active)}
+                        />
+                        <motion.button
+                          className="flex h-[32px] shrink-0 items-center gap-2 rounded-[8px] bg-[#2F8F6E] px-3.5 text-[13px] font-medium text-white transition-colors hover:bg-[#35A27C] active:bg-[#287A5E]"
+                          onClick={() => open(active)}
+                          type="button"
+                          whileHover="hover"
+                          whileTap={press}
+                        >
+                          {t.open}{" "}
+                          <motion.span className="flex" transition={spring.snappy} variants={{ hover: { x: -2 } }}>
+                            <CornerDownLeft size={13} />
+                          </motion.span>
+                        </motion.button>
+                      </div>
                     </div>
-                    <div className="workspace-scroll min-h-0 flex-1 overflow-auto px-5 py-3 font-mono text-[13px] leading-6 text-[#DCE3E0] select-text">
-                      {preview?.id === active.id &&
-                        preview.lines.map((line, index) =>
-                          line.kind === "in" ? (
-                            <div key={index} className="flex justify-end">
-                              <span className="my-0.5 rounded-full bg-[#86F0C4]/15 px-3 text-[#A9F5D5]">{line.text}</span>
-                            </div>
-                          ) : line.kind === "err" ? (
-                            <div key={index} className="mt-1 rounded-md bg-[#F08A6C]/10 px-3 py-1.5 font-sans text-[12.5px] text-[#F5A68E]">
-                              {line.text}
-                            </div>
-                          ) : (
-                            <div key={index} className="whitespace-pre-wrap">
-                              {line.text || " "}
-                            </div>
-                          )
+                    {activeCopy?.learn && (
+                      <p className="mt-3 text-[13px] leading-[20px] text-white/70">
+                        <span className="font-medium text-white/90">{t.learn}: </span>
+                        {activeCopy.learn}
+                      </p>
+                    )}
+                    <div className="mt-2.5 flex flex-wrap gap-1">
+                      {active.concepts.map((concept) => (
+                        <span key={concept} className="rounded-full bg-white/[0.05] px-2 py-[2px] text-[11px] text-white/50">
+                          {t.concepts[concept] ?? concept}
+                        </span>
+                      ))}
+                    </div>
+                  </motion.div>
+                  <motion.div className="mt-3 flex items-center gap-0.5 border-b border-white/[0.07]" layout="position" role="tablist" transition={spring.smooth}>
+                    {(
+                      [
+                        ["code", t.tabCode],
+                        ["diagram", t.tabDiagram],
+                        ["output", t.tabOutput],
+                      ] as [PreviewTab, string][]
+                    ).map(([id, label]) => (
+                      <motion.button
+                        key={id}
+                        aria-selected={tab === id}
+                        className={`relative px-3 pt-1 pb-2 text-[12.5px] transition-colors ${tab === id ? "text-white" : "text-white/45 hover:text-white/80"}`}
+                        onClick={() => setTab(id)}
+                        role="tab"
+                        type="button"
+                        whileTap={press}
+                      >
+                        {label}
+                        {tab === id && (
+                          <motion.span
+                            className="absolute inset-x-2 -bottom-px h-[2px] rounded-full bg-[#7FE0B8]"
+                            layoutId="examples-tab"
+                            transition={spring.snappy}
+                          />
                         )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
+                      </motion.button>
+                    ))}
+                  </motion.div>
+                </div>
+                <motion.div className="min-h-0 flex-1" layout="position" transition={spring.smooth}>
+                  <motion.div
+                    key={tab}
+                    animate={{ opacity: 1 }}
+                    className="h-full"
+                    initial={{ opacity: 0 }}
+                    transition={{ duration: duration.fast, ease: easeOut }}
+                  >
+                    {tab === "code" && (
+                      <CodeEditor currentLine={null} diagnostics={[]} fontSize={13} onChange={() => {}} readOnly value={active.source} />
+                    )}
+                    {tab === "diagram" && (
+                      <FlowDiagram
+                        activeLine={null}
+                        routineName={null}
+                        settings={normalizeEngineSettings(active.settings)}
+                        source={active.source}
+                        visitedLines={new Set()}
+                      />
+                    )}
+                    {tab === "output" && (
+                      <div className="flex h-full flex-col">
+                        <div className="flex shrink-0 items-center justify-between gap-3 px-5 pt-3 text-[12px] text-white/45">
+                          <span className="truncate">
+                            {active.input ? `${t.sampleInput} ${active.input.split("\n").join(" · ")}` : t.noInput}
+                          </span>
+                          <motion.button
+                            className="flex shrink-0 items-center gap-1.5 text-white/55 transition-colors hover:text-white"
+                            onClick={() => setRunCount((n) => n + 1)}
+                            type="button"
+                            whileHover="hover"
+                            whileTap={press}
+                          >
+                            <motion.span className="flex" transition={spring.snappy} variants={{ hover: { rotate: -60 } }}>
+                              <RotateCcw size={12} />
+                            </motion.span>{" "}
+                            {t.rerun}
+                          </motion.button>
+                        </div>
+                        <div className="workspace-scroll min-h-0 flex-1 overflow-auto px-5 py-3 font-mono text-[13px] leading-6 text-[#DCE3E0] select-text">
+                          {preview?.id === active.id && (
+                            // Keyed by run, so a re-run visibly replays.
+                            <motion.div
+                              key={runCount}
+                              animate={{ opacity: 1, y: 0 }}
+                              initial={{ opacity: 0, y: 4 }}
+                              transition={{ ...spring.smooth, opacity: { duration: duration.fast, ease: easeOut } }}
+                            >
+                              {preview.lines.map((line, index) =>
+                                line.kind === "in" ? (
+                                  <div key={index} className="flex justify-end">
+                                    <span className="my-0.5 rounded-full bg-[#86F0C4]/15 px-3 text-[#A9F5D5]">{line.text}</span>
+                                  </div>
+                                ) : line.kind === "err" ? (
+                                  <div key={index} className="mt-1 rounded-md bg-[#F08A6C]/10 px-3 py-1.5 font-sans text-[12.5px] text-[#F5A68E]">
+                                    {line.text}
+                                  </div>
+                                ) : (
+                                  <div key={index} className="whitespace-pre-wrap">
+                                    {line.text || " "}
+                                  </div>
+                                )
+                              )}
+                            </motion.div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </motion.div>
+                </motion.div>
+              </section>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </LayoutGroup>
   );
 }

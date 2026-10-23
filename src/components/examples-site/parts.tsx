@@ -11,6 +11,7 @@ import { examplePath } from '@/src/lib/example-urls';
 import { serializeJsonLd } from '@/src/seo/structured-data';
 
 import CopyCodeButton from './copy-code-button';
+import motionStyles from './motion.module.css';
 import type { CodeToken, CodeTokenType, SampleRun } from './content';
 
 export function JsonLd({ data }: { data: unknown }) {
@@ -91,7 +92,7 @@ export function ExampleCard({
   const copy = dictionary.examples[example.id];
   const Heading = headingLevel === 2 ? 'h2' : 'h3';
   return (
-    <li className="group relative flex flex-col gap-3 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-4 transition hover:border-[var(--accent-soft)] hover:bg-[var(--panel-raised)] has-[a:focus-visible]:outline has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-[#7FE0B8]">
+    <li className={`group relative flex flex-col gap-3 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-4 ${motionStyles.card} hover:border-[var(--accent-soft)] hover:bg-[var(--panel-raised)] has-[a:focus-visible]:outline has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-[#7FE0B8]`}>
       <Heading className="text-base font-semibold leading-snug tracking-[-0.01em]">
         <Link
           className="outline-none after:absolute after:inset-0 after:rounded-xl"

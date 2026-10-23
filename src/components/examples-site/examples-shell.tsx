@@ -6,6 +6,8 @@ import type { Dictionary } from '@/src/i18n/types';
 import { examplesIndexPath } from '@/src/lib/example-urls';
 import { GitHubMark, LogoMark, REPOSITORY_URL } from '@/src/components/brand/logo-mark';
 
+import motionStyles from './motion.module.css';
+
 interface ExamplesShellProps {
   children: ReactNode;
   dictionary: Dictionary;
@@ -35,7 +37,7 @@ export default function ExamplesShell({ children, dictionary, locale, alternateH
 
   return (
     <div
-      className="min-h-[100dvh] bg-[#141719] text-[var(--foreground)]"
+      className={`min-h-[100dvh] bg-[#141719] text-[var(--foreground)] ${motionStyles.site}`}
       style={{ ...darkTokens, fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", var(--font-geist-sans), sans-serif' }}
     >
       <a
@@ -86,7 +88,7 @@ export default function ExamplesShell({ children, dictionary, locale, alternateH
           <GitHubMark size={14} />
         </a>
       </header>
-      <div className="px-4 pb-16 pt-6 sm:px-8 sm:pt-10" id="contenido">
+      <div className={`px-4 pb-16 pt-6 sm:px-8 sm:pt-10 ${motionStyles.content}`} id="contenido">
         {children}
       </div>
       <footer className="border-t border-[var(--line)] px-4 py-10 sm:px-8">

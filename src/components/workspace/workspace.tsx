@@ -92,8 +92,9 @@ const BlocksView = dynamic(() => import("./blocks/blocks-view").then((m) => m.Bl
   loading: () => <div className="h-full w-full bg-[#141719]" />,
 });
 import { ComplexityPanel } from "./complexity-panel";
-import { GitHubMark, LogoMark, REPOSITORY_URL } from "@/src/components/brand/logo-mark";
+import { GitHubMark, REPOSITORY_URL } from "@/src/components/brand/logo-mark";
 import { ExamplesBrowser } from "./examples-browser";
+import { LogoMarkAnimated } from "./motion/logo-mark-animated";
 import { ConsolePanel, DeskCheckPanel, formatValue, TranslationPanel, type TraceRow } from "./panels";
 import { profileLabel, ProfileDialog } from "./profile-dialog";
 import { ReferencePanel, useReferenceCatalog, type ReferenceEntry } from "./reference-panel";
@@ -321,6 +322,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
 
   const [paletteQuery, setPaletteQuery] = useState<string | null>(null);
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const examplesButtonRef = useRef<HTMLButtonElement>(null);
   const [hintShown, setHintShown] = useState(false);
   const [guideExpanded, setGuideExpanded] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -823,7 +825,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           <MenuBar
             compact={phone}
             leading={
-              <LogoMark className="mr-1.5 ml-1 shrink-0" />
+              <LogoMarkAnimated className="mr-1.5 ml-1 shrink-0" playing={player.wantPlay} />
             }
             menus={menus}
           />
@@ -838,6 +840,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
         </div>
         <button
           className="flex h-[24px] shrink-0 items-center gap-1.5 rounded-[6px] px-2 text-[12px] text-white/55 hover:bg-white/[0.06] hover:text-white"
+          ref={examplesButtonRef}
           onClick={() => setExamplesOpen(true)}
           title={`${t.examples.menu} (${k("E")})`}
           type="button"
@@ -871,7 +874,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Document tabs */}
           <div className="flex h-[32px] shrink-0 items-end gap-2 border-b border-white/[0.06] bg-[#181B1D] pl-2">
-            <div className="flex min-w-0 items-end gap-px overflow-x-auto [scrollbar-width:none]" role="tablist">
+            <div className="flex min-w-0 items-end gap-px overflow-x-auto [scrollbar-width:none]" data-doc-tablist="" role="tablist">
               {documents.map((d) => {
                 const active = d.id === doc.id;
                 const edited = d.source !== d.savedSource;
@@ -1379,7 +1382,18 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
       </AnimatePresence>
 
       {examplesOpen && (
-        <ExamplesBrowser dictionary={dictionary} locale={locale} onClose={() => setExamplesOpen(false)} onOpen={openExample} />
+        <ExamplesBrowser
+          dictionary={dictionary}
+          // An opened example flies into its new document tab.
+          getTabTargetRect={() =>
+            document.querySelector<HTMLElement>('[data-doc-tablist] [role="tab"][aria-selected="true"]')?.getBoundingClientRect() ?? null
+          }
+          locale={locale}
+          onClose={() => setExamplesOpen(false)}
+          onOpen={openExample}
+          // The sheet grows out of the Ejemplos button, also when opened with ⌘E or the menu.
+          originRect={examplesButtonRef.current?.getBoundingClientRect() ?? null}
+        />
       )}
 
       {paletteQuery !== null && (

@@ -3,6 +3,8 @@
 import { Check, Copy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import motionStyles from './motion.module.css';
+
 interface CopyCodeButtonProps {
   code: string;
   label: string;
@@ -32,7 +34,7 @@ export default function CopyCodeButton({ code, label, copiedLabel, failedLabel }
 
   return (
     <button
-      className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-xs text-white/70 transition hover:border-white/20 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7FE0B8]"
+      className={`inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-xs text-white/70 ${motionStyles.press} hover:border-white/20 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7FE0B8]`}
       onClick={copy}
       type="button"
     >
