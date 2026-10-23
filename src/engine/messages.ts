@@ -168,6 +168,11 @@ export const engineMessageTemplates = {
   RUNTIME_INTERNAL: "Internal error: {detail}",
   RUNTIME_WORKER_FAILED: "The interpreter stopped unexpectedly.",
 
+  // Evaluar (expressions typed while the program is paused)
+  EVAL_UNKNOWN_VARIABLE: 'There is no variable "{name}" at this step.',
+  EVAL_READS_INPUT: '"{name}" asks for input with Leer, so it cannot be evaluated here.',
+  EVAL_TOO_LONG: "The calculation took more than {steps} steps, so it was stopped.",
+
   // Code export
   EXPORT_FOREACH: 'Para Cada needs an array variable to be exported ({name}).',
   EXPORT_RESIZE_DIMENSIONS: "Redimensionar can only be exported for arrays of one or two dimensions ({name}).",

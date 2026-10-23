@@ -103,6 +103,7 @@ function routeEdges(
       targetHandle: edge.targetHandle,
       points,
       labelPosition,
+      ...(edge.slot ? { slot: edge.slot } : {}),
     }];
   });
 }

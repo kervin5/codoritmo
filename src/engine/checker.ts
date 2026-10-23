@@ -95,7 +95,7 @@ interface Spanned {
 class RoutineChecker {
   readonly env = new Map<string, StaticType>();
   /** Names dimensioned as arrays in this routine. */
-  private readonly arrays = new Set<string>();
+  readonly arrays = new Set<string>();
   private line = 1;
 
   constructor(
@@ -526,4 +526,33 @@ export function checkProgram(program: ProgramNode): Diagnostic | null {
     }
   }
   return first;
+}
+
+/**
+ * Type-checks one expression (the debugger's Evaluar) against known variable
+ * types, with the same rules as a program. Returns the first type error.
+ */
+export function checkStandaloneExpression(
+  expression: ExpressionNode,
+  types: Record<string, StaticType>,
+  arrays: Iterable<string>,
+  routines: RoutineNode[] = []
+): Diagnostic | null {
+  const byName = new Map(routines.map((routine) => [routine.name.toLowerCase(), routine]));
+  const returnTypes = new Map<string, MaybeType>(
+    routines.map((routine) => {
+      const target = routine.returnTarget?.toLowerCase();
+      return [routine.name.toLowerCase(), target ? routine.inferredTypes?.[target] ?? null : null];
+    })
+  );
+  const routine: MainRoutineNode = {
+    type: "MainRoutine",
+    headerKind: "Algoritmo",
+    name: "Evaluar",
+    body: [{ kind: "write", expressions: [expression], newline: true }],
+  };
+  const checker = new RoutineChecker(routine, byName, returnTypes, true);
+  for (const [name, type] of Object.entries(types)) checker.env.set(name.toLowerCase(), type);
+  for (const name of arrays) checker.arrays.add(name.toLowerCase());
+  return checker.run();
 }

@@ -45,7 +45,16 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { buildFlowDiagram, exportRoutineToPng, exportRoutineToSvg, layoutFlowDiagram } from "@/src/diagram";
+import {
+  applyIoShapes,
+  buildFlowDiagram,
+  exportNassiToPng,
+  exportNassiToSvg,
+  exportRoutineToPng,
+  exportRoutineToSvg,
+  layoutFlowDiagram,
+  layoutNassiRoutine,
+} from "@/src/diagram";
 import {
   examplePrograms,
   exportLanguages,
@@ -82,6 +91,7 @@ import {
   type WorkspacePrefs,
 } from "./documents";
 import FlowDiagram from "./flow-diagram";
+import NassiDiagram, { DiagramKindToggle } from "./nassi-diagram";
 import { registerLanguageServices, type LanguageCatalog } from "./language-services";
 import { MenuBar, type Menu, type MenuItem } from "./menu-bar";
 import { ArrayView } from "./array-view";
@@ -105,8 +115,7 @@ import { SPEEDS, usePlayer } from "./use-player";
 type SideTab = WorkspacePrefs["sideTab"];
 type BottomTab = WorkspacePrefs["bottomTab"];
 
-const LANGUAGE_NAMES: Record<string, string> = { c: "C", cpp: "C++", javascript: "JavaScript", python: "Python", java: "Java" };
-const SOON = ["C#", "PHP", "Pascal", "Visual Basic", "QBasic", "MatLab"];
+const LANGUAGE_NAMES: Record<string, string> = Object.fromEntries(Object.values(exportLanguages).map((l) => [l.id, l.name]));
 const LANGUAGES = Object.keys(exportLanguages).map((id) => ({
   id: id as ExportLanguage,
   name: LANGUAGE_NAMES[id] ?? id.toUpperCase(),
@@ -366,7 +375,12 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
   const phone = workspaceWidth < 560;
 
   /* ---------- engine ---------- */
-  const player = usePlayer(source, settings, { endOfProgram: t.endOfProgram, stopped: t.stoppedLine, pressEnter: t.pressEnter, line: t.line });
+  const player = usePlayer(
+    source,
+    settings,
+    { endOfProgram: t.endOfProgram, stopped: t.stoppedLine, pressEnter: t.pressEnter, line: t.line },
+    { inputList: doc.inputList }
+  );
   const catalog = useReferenceCatalog(dictionary, settings);
   const catalogRef = useRef<LanguageCatalog>(catalog);
   catalogRef.current = catalog;
@@ -497,7 +511,7 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
     () =>
       player.frames
         .slice(0, player.viewIndex + 1)
-        .map((frame, index) => ({ step: index, line: frame.line, variables: frame.variables }))
+        .map((frame, index) => ({ step: index, line: frame.line, variables: frame.variables, routine: frame.routine }))
         .filter((row) => row.variables.length > 0)
         .slice(-400),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -522,6 +536,35 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
     if (!instance || !selection || player.live) return;
     instance.executeEdits("reference", [{ range: selection, text, forceMoveMarkers: true }]);
     instance.focus();
+  };
+  /** An edit made in the flowchart: one undoable change in the code editor (or the source, in blocks mode). */
+  const applyDiagramEdit = (next: string) => {
+    const instance = editorRef.current;
+    const model = instance?.getModel();
+    if (blocksMode || !instance || !model || model.isDisposed()) return setSource(next);
+    const current = model.getValue();
+    let start = 0;
+    while (start < current.length && start < next.length && current[start] === next[start]) start++;
+    let endOld = current.length;
+    let endNew = next.length;
+    while (endOld > start && endNew > start && current[endOld - 1] === next[endNew - 1]) {
+      endOld--;
+      endNew--;
+    }
+    const from = model.getPositionAt(start);
+    const to = model.getPositionAt(endOld);
+    instance.pushUndoStop();
+    instance.executeEdits("diagram", [
+      {
+        range: { startLineNumber: from.lineNumber, startColumn: from.column, endLineNumber: to.lineNumber, endColumn: to.column },
+        text: next.slice(start, endNew),
+        forceMoveMarkers: true,
+      },
+    ]);
+    instance.pushUndoStop();
+  };
+  const diagramHistory = (action: "undo" | "redo") => {
+    if (!blocksMode) editorRef.current?.trigger("diagram", action, null);
   };
   const reveal = (line: number) => {
     setLinkLine(line);
@@ -586,15 +629,24 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
   const exportDiagram = async (format: "png" | "svg") => {
     const program = parseOrNotify();
     if (!program) return;
-    const layout = await layoutFlowDiagram(buildFlowDiagram(program));
-    const routine = layout.routines.find((r) => r.id === routineRef.current) ?? layout.routines[0];
-    if (!routine) return;
+    const model = applyIoShapes(buildFlowDiagram(program), prefs.ioShapes);
+    const flow = model.routines.find((r) => r.id === routineRef.current) ?? model.routines[0];
+    if (!flow) return;
     const base = doc.name.replace(/\.psc$/i, "");
-    const suffix = layout.routines.length > 1 ? `-${routine.label.replace(/[^\p{L}\p{N}]+/gu, "-")}` : "";
-    if (format === "svg") {
-      downloadText(`${base}${suffix}.svg`, exportRoutineToSvg(routine).svg, "image/svg+xml");
+    const suffix = model.routines.length > 1 ? `-${flow.label.replace(/[^\p{L}\p{N}]+/gu, "-")}` : "";
+    // Exports whichever diagram the Diagrama panel shows.
+    if (prefs.diagramKind === "nassi") {
+      const nassi = layoutNassiRoutine(flow);
+      if (format === "svg") downloadText(`${base}${suffix}.svg`, exportNassiToSvg(nassi).svg, "image/svg+xml");
+      else downloadUrl(`${base}${suffix}.png`, (await exportNassiToPng(nassi)).dataUrl);
     } else {
-      downloadUrl(`${base}${suffix}.png`, (await exportRoutineToPng(routine)).dataUrl);
+      const layout = await layoutFlowDiagram(model);
+      const routine = layout.routines.find((r) => r.id === flow.id) ?? layout.routines[0];
+      if (format === "svg") {
+        downloadText(`${base}${suffix}.svg`, exportRoutineToSvg(routine).svg, "image/svg+xml");
+      } else {
+        downloadUrl(`${base}${suffix}.png`, (await exportRoutineToPng(routine)).dataUrl);
+      }
     }
     notify(formatMessage(t.exported, { lang: format.toUpperCase() }));
   };
@@ -721,8 +773,6 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
                 openSide("traduccion");
               },
             })),
-            { separator: true },
-            ...SOON.map((name) => ({ label: name, disabled: true, hint: t.view.comingSoon })),
           ],
         },
         { separator: true },
@@ -812,9 +862,40 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
         </button>
       </div>
       <div className="relative min-h-0 flex-1">
+        {prefs.sideTab === "diagrama" && prefs.diagramKind === "nassi" && (
+          <NassiDiagram
+            activeLine={activeLine}
+            onPickLine={reveal}
+            onRoutineChange={(id) => {
+              routineRef.current = id;
+            }}
+            routineName={showPlayhead ? player.frame?.routine ?? null : null}
+            settings={settings}
+            source={source}
+            step={player.viewIndex}
+            finished={player.status === "done"}
+            visitedLines={visitedLines}
+          />
+        )}
         {prefs.sideTab === "diagrama" && (
+          <DiagramKindToggle
+            altShapes={prefs.ioShapes === "alternative"}
+            labels={t.diagramKind}
+            onAltShapesChange={(on) => updatePrefs({ ioShapes: on ? "alternative" : "classic" })}
+            onChange={(diagramKind) => updatePrefs({ diagramKind })}
+            value={prefs.diagramKind}
+          />
+        )}
+        {prefs.sideTab === "diagrama" && prefs.diagramKind !== "nassi" && (
           <FlowDiagram
             activeLine={activeLine}
+            describeError={(d) => formatDiagnostic(d, dictionary)}
+            editCopy={dictionary.flowEdit}
+            editable={!showPlayhead}
+            ioShapes={prefs.ioShapes}
+            onEdit={applyDiagramEdit}
+            onRedo={() => diagramHistory("redo")}
+            onUndo={() => diagramHistory("undo")}
             onPickLine={reveal}
             onRoutineChange={(id) => {
               routineRef.current = id;
@@ -1289,8 +1370,24 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
             </div>
             {prefs.bottomOpen && (
               <div className="min-h-0 flex-1 select-text">
-                {prefs.bottomTab === "consola" && <ConsolePanel dictionary={dictionary} onRun={player.play} player={player} />}
-                {prefs.bottomTab === "prueba" && <DeskCheckPanel dictionary={dictionary} onPickStep={player.seek} trace={trace} />}
+                {prefs.bottomTab === "consola" && (
+                  <ConsolePanel
+                    dictionary={dictionary}
+                    inputList={{ text: doc.inputList ?? "", onChange: (inputList) => updateDoc(doc.id, { inputList }), documentName: doc.name }}
+                    onRun={player.play}
+                    player={player}
+                  />
+                )}
+                {prefs.bottomTab === "prueba" && (
+                  <DeskCheckPanel
+                    dictionary={dictionary}
+                    onPickStep={player.seek}
+                    onWatchesChange={(watches) => updateDoc(doc.id, { watches })}
+                    player={player}
+                    trace={trace}
+                    watches={doc.watches}
+                  />
+                )}
                 {prefs.bottomTab === "arreglos" && (
                   <ArrayView
                     baseZero={settings.baseZeroArrays}

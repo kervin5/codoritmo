@@ -73,7 +73,7 @@ function edgeMarkup(edge: PositionedFlowEdge, offsetX: number, offsetY: number):
 function nodeMarkup(node: PositionedFlowNode, x: number, y: number): string {
   const palette = paletteForFlowNodeKind(node.kind);
   const { width, height } = node.size;
-  const shape = shapeGeometry(SHAPE_FOR_KIND[node.kind], width, height, x, y);
+  const shape = shapeGeometry(node.shape ?? SHAPE_FOR_KIND[node.kind], width, height, x, y);
   const parts = [
     `<path d="${shape.outline}" fill="${palette.fill}" stroke="${palette.stroke}" stroke-width="${node.kind === 'junction' ? 0 : 1.8}" />`,
   ];
@@ -115,7 +115,8 @@ function buildDiagramSvg(routine: PositionedFlowRoutineDiagram) {
   return { width, height, svg };
 }
 
-async function svgToPngDataUrl(svg: string, width: number, height: number) {
+/** Rasterises an export SVG at 2× on the light background (shared with the Nassi-Shneiderman export). */
+export async function svgToPngDataUrl(svg: string, width: number, height: number) {
   const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
 

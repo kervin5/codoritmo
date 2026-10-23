@@ -7,10 +7,29 @@ import type {
 } from "../types";
 import { CGenerator } from "./c";
 import { CppGenerator } from "./cpp";
+import { CSharpGenerator } from "./csharp";
+import { HtmlGenerator } from "./html";
 import { JavaGenerator } from "./java";
+import { MatLabGenerator } from "./matlab";
+import { PascalGenerator } from "./pascal";
+import { PhpGenerator } from "./php";
 import { PythonGenerator } from "./python";
+import { QBasicGenerator } from "./qbasic";
+import { VisualBasicGenerator } from "./vb";
 
-export type ExportLanguage = "javascript" | "c" | "cpp" | "python" | "java";
+export type ExportLanguage =
+  | "javascript"
+  | "c"
+  | "cpp"
+  | "python"
+  | "java"
+  | "csharp"
+  | "php"
+  | "pascal"
+  | "vb"
+  | "qbasic"
+  | "matlab"
+  | "html";
 
 export interface ExportOptions {
   settings?: Partial<EngineSettings>;
@@ -27,6 +46,8 @@ export interface ExportOptions {
  */
 export interface ExportLanguageDefinition {
   id: ExportLanguage;
+  /** Name shown to users. */
+  name: string;
   fileExtension: string;
   mimeType: string;
   /** Whether the export target selector (browser / Node.js) applies. */
@@ -37,6 +58,7 @@ export interface ExportLanguageDefinition {
 export const exportLanguages: Record<ExportLanguage, ExportLanguageDefinition> = {
   javascript: {
     id: "javascript",
+    name: "JavaScript",
     fileExtension: "js",
     mimeType: "text/javascript;charset=utf-8",
     supportsTargets: true,
@@ -47,6 +69,7 @@ export const exportLanguages: Record<ExportLanguage, ExportLanguageDefinition> =
   },
   c: {
     id: "c",
+    name: "C",
     fileExtension: "c",
     mimeType: "text/x-csrc;charset=utf-8",
     supportsTargets: false,
@@ -54,6 +77,7 @@ export const exportLanguages: Record<ExportLanguage, ExportLanguageDefinition> =
   },
   cpp: {
     id: "cpp",
+    name: "C++",
     fileExtension: "cpp",
     mimeType: "text/x-c++src;charset=utf-8",
     supportsTargets: false,
@@ -61,6 +85,7 @@ export const exportLanguages: Record<ExportLanguage, ExportLanguageDefinition> =
   },
   python: {
     id: "python",
+    name: "Python",
     fileExtension: "py",
     mimeType: "text/x-python;charset=utf-8",
     supportsTargets: false,
@@ -68,10 +93,67 @@ export const exportLanguages: Record<ExportLanguage, ExportLanguageDefinition> =
   },
   java: {
     id: "java",
+    name: "Java",
     fileExtension: "java",
     mimeType: "text/x-java-source;charset=utf-8",
     supportsTargets: false,
     generate: (program, options) => new JavaGenerator(options).generate(program),
+  },
+  csharp: {
+    id: "csharp",
+    name: "C#",
+    fileExtension: "cs",
+    mimeType: "text/x-csharp;charset=utf-8",
+    supportsTargets: false,
+    generate: (program, options) => new CSharpGenerator(options).generate(program),
+  },
+  php: {
+    id: "php",
+    name: "PHP",
+    fileExtension: "php",
+    mimeType: "application/x-httpd-php;charset=utf-8",
+    supportsTargets: false,
+    generate: (program, options) => new PhpGenerator(options).generate(program),
+  },
+  pascal: {
+    id: "pascal",
+    name: "Pascal",
+    fileExtension: "pas",
+    mimeType: "text/x-pascal;charset=utf-8",
+    supportsTargets: false,
+    generate: (program, options) => new PascalGenerator(options).generate(program),
+  },
+  vb: {
+    id: "vb",
+    name: "Visual Basic",
+    fileExtension: "vb",
+    mimeType: "text/x-vb;charset=utf-8",
+    supportsTargets: false,
+    generate: (program, options) => new VisualBasicGenerator(options).generate(program),
+  },
+  qbasic: {
+    id: "qbasic",
+    name: "QBasic",
+    fileExtension: "bas",
+    mimeType: "text/x-basic;charset=utf-8",
+    supportsTargets: false,
+    generate: (program, options) => new QBasicGenerator(options).generate(program),
+  },
+  matlab: {
+    id: "matlab",
+    name: "MatLab",
+    fileExtension: "m",
+    mimeType: "text/x-matlab;charset=utf-8",
+    supportsTargets: false,
+    generate: (program, options) => new MatLabGenerator(options).generate(program),
+  },
+  html: {
+    id: "html",
+    name: "HTML",
+    fileExtension: "html",
+    mimeType: "text/html;charset=utf-8",
+    supportsTargets: false,
+    generate: (program, options) => new HtmlGenerator(options).generate(program),
   },
 };
 
@@ -87,6 +169,18 @@ export function generateExport(
   return exportLanguages[language].generate(program, options);
 }
 
-export { CGenerator, CppGenerator, JavaGenerator, PythonGenerator };
+export {
+  CGenerator,
+  CppGenerator,
+  CSharpGenerator,
+  HtmlGenerator,
+  JavaGenerator,
+  MatLabGenerator,
+  PascalGenerator,
+  PhpGenerator,
+  PythonGenerator,
+  QBasicGenerator,
+  VisualBasicGenerator,
+};
 export { TypeInference } from "./type-inference";
 export type { InferredType, ProgramTypes, ScopeTypes, VariableInfo } from "./type-inference";

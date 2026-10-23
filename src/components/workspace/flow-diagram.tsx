@@ -10,10 +10,17 @@
 // - a decision's chosen way out (Sí / No) pops and brightens as the light leaves on it
 // - at the end of a run, Fin fills mint and sends out one ripple
 // - a new chart draws itself in top to bottom; edits ease blocks to their new places
+//
+// Editing (when not running): the chart is also an editor, like PSeInt's
+// psdraw. Double-click / Enter edits a block's text, the "+" on a connector
+// inserts a statement there, Delete removes a block. Every edit is a source
+// transformation from src/diagram/edit.ts handed to onEdit, so it lands in
+// the code editor's history (⌘Z works from here too, through onUndo/onRedo).
 
 import {
   Background,
   BackgroundVariant,
+  EdgeLabelRenderer,
   Handle,
   Position,
   ReactFlow,
@@ -25,10 +32,12 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { animate, useReducedMotion } from "motion/react";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { animate, motion, useReducedMotion } from "motion/react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import {
+  applyIoShapes,
   buildFlowDiagram,
   DARK_ACTIVE_COLOR,
   DARK_ACTIVE_FILL,
@@ -36,21 +45,35 @@ import {
   DARK_EDGE_COLORS,
   DARK_TOKEN_COLORS,
   darkPaletteForFlowNodeKind,
+  describeNode,
+  findNodeIdByRef,
+  insertStatement,
   ioMarkerPath,
   layoutFlowDiagram,
   polylinePath,
+  removeStatement,
+  replaceStatementText,
   SHAPE_FOR_KIND,
   shapeGeometry,
   tokenColor,
+  type FlowEditField,
+  type FlowEditResult,
+  type FlowFieldKey,
+  type FlowInsertKind,
   type FlowNode,
+  type FlowNodeEditRef,
+  type IoShapeStyle,
   type Point,
   type PositionedFlowDiagram,
   type PositionedFlowRoutineDiagram,
 } from "@/src/diagram";
 import { estimateEdgeLabelWidth, LABEL_FONT_FAMILY, LABEL_FONT_SIZE, LABEL_LINE_HEIGHT } from "@/src/diagram/label";
-import { Parser, type EngineSettings } from "@/src/engine";
-import { easeOut, prefersReducedMotion, stagger } from "@/src/lib/motion";
+import { Parser, type Diagnostic, type EngineSettings } from "@/src/engine";
+import { formatMessage } from "@/src/i18n/format";
+import { easeOut, prefersReducedMotion, spring, stagger } from "@/src/lib/motion";
 
+import { FlowEditConfirmDelete, FlowEditEditor, focusSoon, type FlowEditCopy } from "./flow-edit-editor";
+import { FlowEditPalette } from "./flow-edit-palette";
 import { FlowLight, type FlowLightHandle, type FlowRipple } from "./motion/flow-light";
 import styles from "./motion/flow-motion.module.css";
 import { findRoute, MIN_TRAVEL_MS, travelDuration, travelPath } from "./motion/flow-path";
@@ -66,7 +89,41 @@ type FlowNodeViewData = {
   introDelay?: number;
 };
 type FlowNodeView = Node<FlowNodeViewData>;
-type RoutedEdgeData = { points: Point[]; labelPosition?: Point; introDelay?: number };
+type RoutedEdgeData = {
+  points: Point[];
+  labelPosition?: Point;
+  introDelay?: number;
+  /** The diagram's own edge id (React Flow's is a stable alias). */
+  modelId: string;
+  /** Where the "+" sits, for connectors a block can be inserted on. */
+  plus?: Point;
+};
+
+/** What blocks and connectors need to offer editing (one context, so memoised blocks stay cheap). */
+interface FlowEditState {
+  canEdit: boolean;
+  copy: FlowEditCopy | null;
+  selectedId: string | null;
+  /** Gets the keyboard focus (roving tabindex): the selected block, else Inicio. */
+  focusId: string | null;
+  editing: { nodeId: string; fields: FlowEditField[]; error: string | null; errorField?: FlowFieldKey; key: number } | null;
+  confirming: { nodeId: string; nested: number } | null;
+  paletteEdge: string | null;
+  /** Connectors whose "+" shows (hovered, below the selected block, or the only one). */
+  plusEdges: Set<string>;
+  select: (nodeId: string | null) => void;
+  startEdit: (nodeId: string) => void;
+  commit: (values: Partial<Record<FlowFieldKey, string>>) => void;
+  cancel: () => void;
+  requestDelete: (nodeId: string) => void;
+  confirmDelete: (keepBody: boolean) => void;
+  openPalette: (edgeId: string | null) => void;
+  insert: (kind: FlowInsertKind) => void;
+  hoverEdge: (edgeId: string | null) => void;
+  onNodeKey: (event: ReactKeyboardEvent, nodeId: string) => void;
+}
+
+const FlowEditContext = createContext<FlowEditState | null>(null);
 type RoutedEdgeView = Edge<RoutedEdgeData>;
 
 // Every connector is routed by src/diagram (same as the PNG/SVG export), so
@@ -90,11 +147,17 @@ const FlowNodeViewCard = memo(function FlowNodeViewCard({ data }: NodeProps<Flow
   const lit = state === "active" || state === "finished";
   const active = state === "active";
   const { width, height } = node.size;
-  const shape = shapeGeometry(SHAPE_FOR_KIND[node.kind], width, height);
+  const shape = shapeGeometry(node.shape ?? SHAPE_FOR_KIND[node.kind], width, height);
   const stroke = lit ? DARK_ACTIVE_COLOR : colors.stroke;
   const tooltip = node.truncated || node.title !== node.label ? node.title : undefined;
   const reduced = useReducedMotion();
   const bodyRef = useRef<HTMLDivElement>(null);
+  const edit = useContext(FlowEditContext);
+  const navigable = node.kind !== "junction";
+  const selected = !!edit && edit.selectedId === node.id;
+  const editing = selected && edit?.editing?.nodeId === node.id ? edit.editing : null;
+  const confirming = selected && edit?.confirming?.nodeId === node.id ? edit.confirming : null;
+  const showTools = selected && !!edit?.canEdit && !!node.edit && !editing && !confirming;
 
   // Appear: staggered draw-in for a new chart, a quick fade for a block an edit added.
   const [introDelay] = useState(data.introDelay);
@@ -118,13 +181,32 @@ const FlowNodeViewCard = memo(function FlowNodeViewCard({ data }: NodeProps<Flow
 
   return (
     <div
-      className="relative h-full w-full transition-opacity duration-300"
-      style={{ opacity: state === "dim" ? 0.42 : 1 }}
-      title={tooltip}
+      aria-describedby={navigable && edit?.copy ? "flow-edit-hint" : undefined}
+      aria-label={navigable && edit?.copy ? formatMessage(edit.copy.blockLabel, { label: node.title }) : undefined}
+      className="relative h-full w-full outline-none transition-opacity duration-300"
+      data-flow-node={navigable ? node.id : undefined}
+      onFocus={(event) => {
+        if (event.target === event.currentTarget && navigable && !selected) edit?.select(node.id);
+      }}
+      onKeyDown={navigable && edit ? (event) => edit.onNodeKey(event, node.id) : undefined}
+      role={navigable && edit?.copy ? "button" : undefined}
+      style={{ opacity: state === "dim" && !selected ? 0.42 : 1 }}
+      tabIndex={navigable && edit ? (edit.focusId === node.id ? 0 : -1) : undefined}
+      title={editing || confirming ? undefined : tooltip}
     >
       {HANDLES}
       <div ref={bodyRef} className="absolute inset-0">
         <svg className="absolute inset-0 overflow-visible" height={height} width={width}>
+          {/* Selected (for editing): a quiet light halo, never mint (mint means running). */}
+          {navigable && (
+            <path
+              d={shape.outline}
+              fill="none"
+              stroke="#E4EAE7"
+              strokeWidth={node.kind === "junction" ? 0 : 5}
+              style={{ opacity: selected ? 0.22 : 0, transition: "opacity 160ms ease-out" }}
+            />
+          )}
           {/* The glow: a blurred mint outline that eases in and out (opacity only). */}
           {node.kind !== "junction" && (
             <path
@@ -187,9 +269,103 @@ const FlowNodeViewCard = memo(function FlowNodeViewCard({ data }: NodeProps<Flow
           </div>
         )}
       </div>
+      {showTools && edit?.copy && (
+        <div className="nodrag nopan absolute -top-[30px] right-0 flex gap-1" onDoubleClick={(event) => event.stopPropagation()}>
+          <ToolButton icon={Pencil} label={edit.copy.edit} onClick={() => edit.startEdit(node.id)} />
+          {node.edit?.part !== "routine" && <ToolButton icon={Trash2} label={edit.copy.delete} onClick={() => edit.requestDelete(node.id)} />}
+        </div>
+      )}
+      {editing && edit?.copy && (
+        <div className="absolute top-full left-1/2 z-10 mt-2 -translate-x-1/2">
+          <FlowEditEditor
+            key={editing.key}
+            copy={edit.copy}
+            error={editing.error}
+            errorField={editing.errorField}
+            fields={editing.fields}
+            onCancel={edit.cancel}
+            onCommit={edit.commit}
+          />
+        </div>
+      )}
+      {confirming && edit?.copy && (
+        <div className="absolute top-full left-1/2 z-10 mt-2 -translate-x-1/2">
+          <FlowEditConfirmDelete copy={edit.copy} nested={confirming.nested} onCancel={edit.cancel} onDelete={edit.confirmDelete} />
+        </div>
+      )}
     </div>
   );
 });
+
+function ToolButton({ icon: Icon, label, onClick }: { icon: typeof Pencil; label: string; onClick: () => void }) {
+  return (
+    <button
+      aria-label={label}
+      className="grid size-[24px] place-items-center rounded-full bg-[#232A2D] text-[#C9D3CF] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-[#2C3437] hover:text-white focus-visible:outline-2 focus-visible:outline-[#86F0C4]/60"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      tabIndex={-1}
+      title={label}
+      type="button"
+    >
+      <Icon size={13} strokeWidth={2} />
+    </button>
+  );
+}
+
+/** Where a connector's "+" goes: the middle of its run into the next block (or out of the last one). */
+function plusPoint(points: Point[], intoTarget: boolean): Point | undefined {
+  if (points.length < 2) return undefined;
+  const segments = points.slice(1).map((to, index) => ({ from: points[index], to }));
+  const ordered = intoTarget ? [...segments].reverse() : segments;
+  const segment = ordered.find((s) => Math.hypot(s.to.x - s.from.x, s.to.y - s.from.y) >= 24) ?? ordered[0];
+  return { x: (segment.from.x + segment.to.x) / 2, y: (segment.from.y + segment.to.y) / 2 };
+}
+
+function EdgePlus({ edgeId, at }: { edgeId: string; at: Point }) {
+  const edit = useContext(FlowEditContext);
+  if (!edit?.canEdit || !edit.copy) return null;
+  const open = edit.paletteEdge === edgeId;
+  const shown = open || edit.plusEdges.has(edgeId);
+  return (
+    <EdgeLabelRenderer>
+      <div
+        className="nodrag nopan absolute"
+        onMouseEnter={() => edit.hoverEdge(edgeId)}
+        onMouseLeave={() => edit.hoverEdge(null)}
+        style={{ transform: `translate(-50%, -50%) translate(${at.x}px, ${at.y}px)`, pointerEvents: "all", zIndex: open ? 1001 : 5 }}
+      >
+        <button
+          aria-expanded={open}
+          aria-haspopup="menu"
+          aria-label={edit.copy.insertHere}
+          className={`grid size-[20px] place-items-center rounded-full transition-[opacity,transform,background-color] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#86F0C4] ${
+            open ? "bg-[#86F0C4] text-[#0D1A14]" : "bg-[#2A3337] text-[#DCE4E0] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)] hover:bg-[#86F0C4] hover:text-[#0D1A14]"
+          }`}
+          data-flow-plus={edgeId}
+          onClick={(event) => {
+            event.stopPropagation();
+            edit.openPalette(open ? null : edgeId);
+          }}
+          style={{ opacity: shown ? 1 : 0, transform: `scale(${shown ? 1 : 0.6}) rotate(${open ? 45 : 0}deg)` }}
+          tabIndex={shown ? 0 : -1}
+          title={edit.copy.insertHere}
+          type="button"
+        >
+          <Plus size={13} strokeWidth={2.4} />
+        </button>
+        {open && (
+          <div className="absolute top-[26px] left-1/2 -translate-x-1/2">
+            <FlowEditPalette copy={edit.copy} onClose={() => edit.openPalette(null)} onPick={edit.insert} />
+          </div>
+        )}
+      </div>
+    </EdgeLabelRenderer>
+  );
+}
 
 /** Opts a path out of React Flow's marching dashes on animated (loop) edges. */
 const SOLID = { strokeDasharray: "none", animation: "none" } as const;
@@ -284,6 +460,7 @@ function RoutedEdge({ id, data, label, style }: EdgeProps<RoutedEdgeView>) {
           </g>
         </g>
       )}
+      {data.plus && <EdgePlus at={data.plus} edgeId={data.modelId} />}
     </>
   );
 }
@@ -310,6 +487,18 @@ interface FlowDiagramProps {
   stepMs?: number | null;
   /** The run reached the end. Optional: inferred from "no active line but visited lines". */
   finished?: boolean;
+  /** PSeInt's classic or alternative Leer / Escribir symbols. */
+  ioShapes?: IoShapeStyle;
+  /** Editing from the diagram is allowed (not while a program runs or is being replayed). */
+  editable?: boolean;
+  /** Applies an edited source (as one undoable change). Without it the diagram is view-only. */
+  onEdit?: (source: string) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  /** Strings for editing (dictionary.flowEdit). */
+  editCopy?: FlowEditCopy;
+  /** Puts an engine diagnostic into words, for a refused edit. */
+  describeError?: (diagnostic: Diagnostic) => string;
 }
 
 /**
@@ -350,8 +539,17 @@ function Canvas({
   step,
   stepMs,
   finished,
+  ioShapes,
+  editable = true,
+  onEdit,
+  onUndo,
+  onRedo,
+  editCopy,
+  describeError,
 }: FlowDiagramProps) {
   const [diagram, setDiagram] = useState<PositionedFlowDiagram | null>(null);
+  /** The source the diagram on screen was built from (edits only apply to what is shown). */
+  const [diagramSource, setDiagramSource] = useState<string | null>(null);
   const [pickedRoutine, setPickedRoutine] = useState<string | null>(null);
   const flow = useReactFlow();
 
@@ -359,13 +557,15 @@ function Canvas({
     const parsed = new Parser(source, { settings }).parse();
     if (!parsed.program) return;
     let cancelled = false;
-    void layoutFlowDiagram(buildFlowDiagram(parsed.program)).then((result) => {
-      if (!cancelled) setDiagram(result);
+    void layoutFlowDiagram(applyIoShapes(buildFlowDiagram(parsed.program), ioShapes)).then((result) => {
+      if (cancelled) return;
+      setDiagram(result);
+      setDiagramSource(source);
     });
     return () => {
       cancelled = true;
     };
-  }, [settings, source]);
+  }, [ioShapes, settings, source]);
 
   const routines = diagram?.routines ?? [];
   const playingRoutine = routineName
@@ -522,6 +722,334 @@ function Canvas({
   const shownVisited = held ?? visitedLines;
   const hasRun = shownVisited.size > 0;
 
+  /* ---------- editing ---------- */
+  const canEdit = editable && !!onEdit && !!editCopy && activeLine === null && diagramSource === source;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<FlowEditState["editing"]>(null);
+  const [confirming, setConfirming] = useState<FlowEditState["confirming"]>(null);
+  const [paletteEdge, setPaletteEdge] = useState<string | null>(null);
+  const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
+  const [flash, setFlash] = useState<{ text: string; key: number; info?: boolean } | null>(null);
+  /** After an edit: the block to select (and maybe edit) once the new chart is on screen. */
+  const [pending, setPending] = useState<{ ref: FlowNodeEditRef; open: boolean; source: string } | null>(null);
+  const hoverTimer = useRef<number | null>(null);
+  const editKey = useRef(0);
+
+  const nodeById = useMemo(() => new Map(routine?.nodes.map((n) => [n.id, n]) ?? []), [routine]);
+  const selected = selectedId && nodeById.has(selectedId) ? selectedId : null;
+  const startId = routine?.nodes.find((n) => n.id.endsWith(":start"))?.id ?? null;
+
+  const say = useCallback((text: string, info = false) => {
+    counterRef.current += 1;
+    setFlash({ text, key: counterRef.current, info });
+  }, []);
+  useEffect(() => {
+    if (!flash) return;
+    const timer = window.setTimeout(() => setFlash(null), 2800);
+    return () => window.clearTimeout(timer);
+  }, [flash]);
+
+  const errorText = useCallback(
+    (result: Extract<FlowEditResult, { ok: false }>) => {
+      if (!editCopy) return "";
+      const detail = result.diagnostic ? (describeError?.(result.diagnostic) ?? result.diagnostic.message) : "";
+      return formatMessage(editCopy.errors[result.error], { message: detail });
+    },
+    [describeError, editCopy]
+  );
+
+  const focusNode = useCallback((nodeId: string) => {
+    focusSoon(() => wrapperRef.current?.querySelector<HTMLElement>(`[data-flow-node="${CSS.escape(nodeId)}"]`));
+  }, []);
+
+  /** Pans just enough to bring a rectangle (in chart coordinates) into view. */
+  const ensureVisible = useCallback(
+    (rect: { x: number; y: number; width: number; height: number }) => {
+      const box = wrapperRef.current?.getBoundingClientRect();
+      if (!box) return;
+      const { x, y, zoom } = flow.getViewport();
+      const margin = 24;
+      const left = rect.x * zoom + x;
+      const top = rect.y * zoom + y;
+      const right = left + rect.width * zoom;
+      const bottom = top + rect.height * zoom;
+      let dx = 0;
+      let dy = 0;
+      if (right > box.width - margin) dx = box.width - margin - right;
+      if (left + dx < margin) dx = margin - left;
+      if (bottom > box.height - margin) dy = box.height - margin - bottom;
+      if (top + dy < margin) dy = margin - top;
+      if (dx || dy) void flow.setViewport({ x: x + dx, y: y + dy, zoom }, { duration: 260 });
+    },
+    [flow]
+  );
+
+  /** A block, with room for its editor below it when it is open. */
+  const reveal = useCallback(
+    (nodeId: string, withEditor: boolean) => {
+      const node = nodeById.get(nodeId);
+      if (!node) return;
+      const cx = node.position.x + node.size.width / 2;
+      const width = Math.max(node.size.width, withEditor ? 290 : 0);
+      ensureVisible({ x: cx - width / 2, y: node.position.y - 32, width, height: node.size.height + 32 + (withEditor ? 190 : 0) });
+    },
+    [ensureVisible, nodeById]
+  );
+
+  const apply = useCallback(
+    (result: FlowEditResult, open: boolean) => {
+      if (!result.ok) return false;
+      if (result.source !== source) onEdit?.(result.source);
+      if (result.select) setPending({ ref: result.select, open, source: result.source });
+      return true;
+    },
+    [onEdit, source]
+  );
+
+  const startEdit = useCallback(
+    (nodeId: string) => {
+      if (!canEdit) {
+        if (editCopy && activeLine !== null) say(editCopy.runningHint, true);
+        return;
+      }
+      const description = describeNode(source, settings, nodeId);
+      if (!description || description.fields.length === 0) return;
+      setSelectedId(nodeId);
+      setConfirming(null);
+      setPaletteEdge(null);
+      editKey.current += 1;
+      setEditing({ nodeId, fields: description.fields, error: null, key: editKey.current });
+    },
+    [activeLine, canEdit, editCopy, say, settings, source]
+  );
+
+  const closeOverlays = useCallback((refocus: boolean) => {
+    const target = editing?.nodeId ?? confirming?.nodeId ?? null;
+    setEditing(null);
+    setConfirming(null);
+    setPaletteEdge(null);
+    if (refocus && target) focusNode(target);
+  }, [confirming, editing, focusNode]);
+
+  const commit = useCallback(
+    (values: Partial<Record<FlowFieldKey, string>>) => {
+      if (!editing) return;
+      const result = replaceStatementText(source, settings, editing.nodeId, values);
+      if (!result.ok) {
+        setEditing({ ...editing, error: errorText(result), errorField: result.field });
+        return;
+      }
+      apply(result, false);
+      setEditing(null);
+      if (result.source === source) focusNode(editing.nodeId);
+    },
+    [apply, editing, errorText, focusNode, settings, source]
+  );
+
+  const remove = useCallback(
+    (nodeId: string, keepBody: boolean) => {
+      const result = removeStatement(source, settings, nodeId, { keepBody });
+      setConfirming(null);
+      if (!result.ok) return say(errorText(result));
+      setSelectedId(null);
+      apply(result, false);
+      if (!result.select) focusNode(startId ?? nodeId);
+    },
+    [apply, errorText, focusNode, say, settings, source, startId]
+  );
+
+  const requestDelete = useCallback(
+    (nodeId: string) => {
+      if (!canEdit || !editCopy) return;
+      const description = describeNode(source, settings, nodeId);
+      if (!description) return;
+      if (!description.deletable) return say(editCopy.errors["not-deletable"]);
+      setEditing(null);
+      setPaletteEdge(null);
+      if (description.nested > 0) setConfirming({ nodeId, nested: description.nested });
+      else remove(nodeId, false);
+    },
+    [canEdit, editCopy, remove, say, settings, source]
+  );
+
+  const insert = useCallback(
+    (kind: FlowInsertKind) => {
+      if (!paletteEdge) return;
+      const result = insertStatement(source, settings, paletteEdge, kind);
+      setPaletteEdge(null);
+      if (!result.ok) return say(errorText(result));
+      apply(result, true);
+    },
+    [apply, errorText, paletteEdge, say, settings, source]
+  );
+
+  // The new chart is on screen: select (and maybe open) the block the edit pointed at.
+  useEffect(() => {
+    if (!pending || !diagram || diagramSource !== pending.source) return;
+    const found = findNodeIdByRef(diagram.routines, pending.ref);
+    setPending(null);
+    if (!found) return;
+    if (!routineName) setPickedRoutine(found.routineId);
+    setSelectedId(found.nodeId);
+    if (pending.open) {
+      const description = describeNode(pending.source, settings, found.nodeId);
+      if (description?.fields.length) {
+        editKey.current += 1;
+        setEditing({ nodeId: found.nodeId, fields: description.fields, error: null, key: editKey.current });
+      }
+    } else {
+      focusNode(found.nodeId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diagram, diagramSource, pending]);
+
+  // A new or moved block may be off screen: bring the selection (and its editor) into view.
+  useEffect(() => {
+    if (selected) reveal(selected, editing?.nodeId === selected || confirming?.nodeId === selected);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, routine, editing?.nodeId, confirming?.nodeId]);
+
+  // The palette opens below its "+": make room for it.
+  useEffect(() => {
+    if (!paletteEdge || !routine) return;
+    const edge = routine.edges.find((e) => e.id === paletteEdge);
+    const at = edge?.slot ? plusPoint(edge.points, edge.slot.index === 0 && edge.kind !== "loop") : undefined;
+    if (at) ensureVisible({ x: at.x - 124, y: at.y - 14, width: 248, height: 250 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paletteEdge]);
+
+  // Running (or replaying) closes any editor.
+  const [wasEditable, setWasEditable] = useState(canEdit);
+  if (wasEditable !== canEdit) {
+    setWasEditable(canEdit);
+    if (!canEdit) {
+      setEditing(null);
+      setConfirming(null);
+      setPaletteEdge(null);
+    }
+  }
+
+  /** The connector right below a block: where "insert after it" goes (Fin: the one into it). */
+  const afterEdge = useCallback(
+    (nodeId: string): string | null => {
+      if (!routine) return null;
+      const withSlot = routine.edges.filter((e) => e.slot);
+      const fromJunction = withSlot.find((e) => e.source === `${nodeId}:merge` || e.source === `${nodeId}:exit`);
+      if (fromJunction) return fromJunction.id;
+      const node = nodeById.get(nodeId);
+      const own = withSlot.filter((e) => e.source === nodeId);
+      const out = node?.kind === "decision" && node.edit?.part === "statement" ? own.find((e) => e.kind !== "branch") : own[0];
+      return out?.id ?? own[0]?.id ?? withSlot.find((e) => e.target === nodeId)?.id ?? null;
+    },
+    [nodeById, routine]
+  );
+
+  /** Arrow keys: the nearest block in that direction (the flow runs down; branches sit side by side). */
+  const neighbour = useCallback(
+    (nodeId: string, key: string): string | null => {
+      const from = nodeById.get(nodeId);
+      if (!routine || !from) return null;
+      const cx = from.position.x + from.size.width / 2;
+      const cy = from.position.y + from.size.height / 2;
+      let best: { id: string; score: number } | null = null;
+      for (const n of routine.nodes) {
+        if (n.id === nodeId || n.kind === "junction") continue;
+        const dx = n.position.x + n.size.width / 2 - cx;
+        const dy = n.position.y + n.size.height / 2 - cy;
+        const along = key === "ArrowDown" ? dy : key === "ArrowUp" ? -dy : key === "ArrowRight" ? dx : -dx;
+        const across = key === "ArrowDown" || key === "ArrowUp" ? Math.abs(dx) : Math.abs(dy);
+        if (along <= 4) continue;
+        const score = along + across * 2.5;
+        if (!best || score < best.score) best = { id: n.id, score };
+      }
+      return best?.id ?? null;
+    },
+    [nodeById, routine]
+  );
+
+  const onNodeKey = useCallback(
+    (event: ReactKeyboardEvent, nodeId: string) => {
+      if (event.target !== event.currentTarget) return;
+      const mod = event.metaKey || event.ctrlKey;
+      const key = event.key;
+      const handled = () => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      if (key.startsWith("Arrow")) {
+        const next = neighbour(nodeId, key);
+        handled();
+        if (next) {
+          setSelectedId(next);
+          focusNode(next);
+        }
+      } else if (key === "Enter" || key === "F2") {
+        handled();
+        startEdit(nodeId);
+      } else if ((key === "Delete" || key === "Backspace") && !mod) {
+        handled();
+        requestDelete(nodeId);
+      } else if ((key === "+" || key === "Insert") && canEdit) {
+        handled();
+        setEditing(null);
+        setPaletteEdge(afterEdge(nodeId));
+      } else if (key === "Escape") {
+        handled();
+        setSelectedId(null);
+        (event.currentTarget as HTMLElement).blur();
+      }
+    },
+    [afterEdge, canEdit, focusNode, neighbour, requestDelete, startEdit]
+  );
+
+  const hoverEdge = useCallback((edgeId: string | null) => {
+    if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = null;
+    if (edgeId) setHoveredEdge(edgeId);
+    // Leaving waits a moment, so the pointer can travel from the line onto its "+".
+    else hoverTimer.current = window.setTimeout(() => setHoveredEdge(null), 160);
+  }, []);
+
+  const plusEdges = useMemo(() => {
+    const shown = new Set<string>();
+    if (hoveredEdge) shown.add(hoveredEdge);
+    if (selected) {
+      const below = afterEdge(selected);
+      if (below) shown.add(below);
+    }
+    // An empty routine: Inicio → Fin is the only place to start, so its "+" always shows.
+    if (routine && routine.nodes.length === 2) routine.edges.forEach((e) => e.slot && shown.add(e.id));
+    return shown;
+  }, [afterEdge, hoveredEdge, routine, selected]);
+
+  const editState = useMemo<FlowEditState>(
+    () => ({
+      canEdit,
+      copy: editCopy ?? null,
+      selectedId: selected,
+      focusId: selected ?? startId,
+      editing,
+      confirming,
+      paletteEdge,
+      plusEdges,
+      select: setSelectedId,
+      startEdit,
+      commit,
+      cancel: () => closeOverlays(true),
+      requestDelete,
+      confirmDelete: (keepBody: boolean) => confirming && remove(confirming.nodeId, keepBody),
+      openPalette: (edgeId: string | null) => {
+        setEditing(null);
+        setConfirming(null);
+        setPaletteEdge(edgeId);
+      },
+      insert,
+      hoverEdge,
+      onNodeKey,
+    }),
+    [canEdit, closeOverlays, commit, confirming, editCopy, editing, hoverEdge, insert, onNodeKey, paletteEdge, plusEdges, remove, requestDelete, selected, startEdit, startId]
+  );
+
   // Rank blocks top to bottom for the draw-in stagger.
   const introDelays = useMemo(() => {
     if (!routine || !introOn) return null;
@@ -544,11 +1072,13 @@ function Canvas({
               : hasRun && node.kind !== "terminator" && node.kind !== "junction"
                 ? "dim"
                 : "idle";
+      const raised = node.id === selected || node.id === editing?.nodeId;
       return {
         id: ids.nodeIds.get(node.id) ?? node.id,
         type: "flow",
         position: node.position,
         draggable: false,
+        zIndex: raised ? 1000 : undefined,
         style: { width: node.size.width, height: node.size.height },
         data: {
           node,
@@ -559,7 +1089,7 @@ function Canvas({
         },
       };
     });
-  }, [arrival, finishedShown, hasRun, ids, introDelays, routine, shownActive, shownVisited]);
+  }, [arrival, editing?.nodeId, finishedShown, hasRun, ids, introDelays, routine, selected, shownActive, shownVisited]);
 
   const edges = useMemo<RoutedEdgeView[]>(() => {
     if (!routine || !ids) return [];
@@ -573,7 +1103,13 @@ function Canvas({
         targetHandle: edge.targetHandle,
         label: edge.label,
         type: "routed",
-        data: { points: edge.points, labelPosition: edge.labelPosition, introDelay: introDelays?.get(edge.source) },
+        data: {
+          points: edge.points,
+          labelPosition: edge.labelPosition,
+          introDelay: introDelays?.get(edge.source),
+          modelId: edge.id,
+          plus: edge.slot ? plusPoint(edge.points, edge.slot.index === 0 && edge.kind !== "loop") : undefined,
+        },
         // Loops stay dashed (static: the travelling light is the only thing that moves).
         style: { stroke: color, strokeWidth: edge.kind === "loop" ? 1.8 : 1.5, strokeDasharray: edge.kind === "loop" ? "5 4" : undefined },
       };
@@ -615,7 +1151,26 @@ function Canvas({
   }, [activeLine]);
 
   return (
-    <div ref={wrapperRef} className={`relative h-full w-full ${styles.canvas}`}>
+    <FlowEditContext.Provider value={editState}>
+    <div
+      ref={wrapperRef}
+      className={`relative h-full w-full ${styles.canvas}`}
+      onKeyDown={(event) => {
+        // ⌘Z / ⌘⇧Z from the diagram go to the code editor's history.
+        const target = event.target as HTMLElement;
+        if (!(event.metaKey || event.ctrlKey) || target.closest("input, textarea, .monaco-editor")) return;
+        const key = event.key.toLowerCase();
+        if (key === "z" || key === "y") {
+          event.preventDefault();
+          event.stopPropagation();
+          setEditing(null);
+          setConfirming(null);
+          setPaletteEdge(null);
+          if (key === "y" || event.shiftKey) onRedo?.();
+          else onUndo?.();
+        }
+      }}
+    >
       {routines.length > 1 && (
         <div className="absolute top-3 left-3 z-10 flex gap-1 rounded-full bg-black/30 p-1 backdrop-blur">
           {routines.map((r) => (
@@ -640,14 +1195,65 @@ function Canvas({
         nodes={nodes}
         nodesConnectable={false}
         nodesDraggable={false}
-        onNodeClick={(_event, node) => node.data.line && onPickLine?.(node.data.line)}
+        nodesFocusable={false}
+        edgesFocusable={false}
+        elementsSelectable={false}
+        disableKeyboardA11y
+        deleteKeyCode={null}
+        selectionKeyCode={null}
+        multiSelectionKeyCode={null}
+        zoomOnDoubleClick={false}
+        onEdgeMouseEnter={(_event, edge) => edge.data?.plus && hoverEdge(edge.data.modelId)}
+        onEdgeMouseLeave={() => hoverEdge(null)}
+        onNodeClick={(_event, node) => {
+          const id = node.data.node.id;
+          if (node.data.node.kind !== "junction" && editCopy) {
+            setSelectedId(id);
+            setPaletteEdge(null);
+          }
+          if (node.data.line) onPickLine?.(node.data.line);
+          // Picking the line focuses the code editor; keep the keyboard here.
+          if (node.data.node.kind !== "junction" && editCopy) focusNode(id);
+        }}
+        onNodeDoubleClick={(_event, node) => node.data.node.edit && startEdit(node.data.node.id)}
+        onPaneClick={() => {
+          setSelectedId(null);
+          closeOverlays(false);
+        }}
         proOptions={{ hideAttribution: true }}
         style={{ background: "transparent" }}
       >
         <Background color="#22292D" gap={22} size={1.4} variant={BackgroundVariant.Dots} />
         <FlowLight handleRef={lightRef} ripple={ripple} />
       </ReactFlow>
+      {editCopy && (
+        <p className="sr-only" id="flow-edit-hint">
+          {editCopy.keyboardHint}
+        </p>
+      )}
+      {editCopy && canEdit && selected && !editing && !confirming && !paletteEdge && (
+        <div className="pointer-events-none absolute top-3 right-3 z-10 max-w-[min(62%,420px)] truncate rounded-full bg-black/40 px-3 py-1 text-[11px] text-[#8E9A95] backdrop-blur">
+          {editCopy.keyboardHint}
+        </div>
+      )}
+      {flash && (
+        <motion.div
+          key={flash.key}
+          animate={{ opacity: 1, y: 0 }}
+          className={`pointer-events-none absolute bottom-16 left-1/2 z-20 max-w-[90%] -translate-x-1/2 rounded-[12px] px-3 py-2 text-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.4)] ${
+            flash.info
+              ? "bg-[#222A2D] text-[#C9D3CF] shadow-[0_8px_24px_rgba(0,0,0,0.4),inset_0_0_0_1px_rgba(255,255,255,0.1)]"
+              : "bg-[#2A2224] text-[#F4C4C4] shadow-[0_8px_24px_rgba(0,0,0,0.4),inset_0_0_0_1px_rgba(240,138,138,0.25)]"
+          }`}
+          initial={{ opacity: 0, y: 6 }}
+          role="status"
+          transition={spring.snappy}
+        >
+          {flash.text}
+        </motion.div>
+      )}
     </div>
+    </FlowEditContext.Provider>
   );
 }
 

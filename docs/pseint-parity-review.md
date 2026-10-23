@@ -1,5 +1,11 @@
 # PSeInt Parity Review (2026-10-20)
 
+> **Status update (2026-10-23).** Most of this review has been addressed since it was written:
+> - The interpreter now passes 192/192 of upstream's `test/interp` cases (`src/__tests__/upstream-interp.test.ts`).
+> - Done: step-by-step execution, desk check (prueba de escritorio) with watched expressions, evaluating expressions while paused, Stop, opening `.psc` files, predefined input lists (load/save `.txt`), all 463 school profiles, autocomplete and hover help, SVG export, Nassi-Shneiderman diagrams and alternative I/O shapes, building and editing the program from the flowchart, and export to C, C++, Java, Python, JavaScript, C#, PHP, Pascal, Visual Basic, QBasic, MatLab/Octave and HTML.
+> - Remaining differences: Codoritmo needs a browser (no offline desktop app), and rare edge cases may still differ.
+> The original findings below are kept for history.
+
 ## 1. Where upstream actually is
 
 - `tmp/pseint` is a **stale GitHub mirror** (miguelinux/pseint), frozen at **20210609**. All our profiles and assumptions came from it.

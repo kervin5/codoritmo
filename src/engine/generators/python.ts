@@ -12,6 +12,8 @@ import type {
   SwitchStatementNode,
 } from "../types";
 import {
+  containsCall,
+  countersReadOutside,
   escapeString,
   forDirection,
   invertCondition,
@@ -19,7 +21,7 @@ import {
   makeIdentifier,
   offsetExpression,
   Rendered,
-  walk,
+  uninitializedReads,
   wrap,
   writesVariable,
 } from "./shared";
@@ -190,7 +192,7 @@ export class PythonGenerator {
     const body: string[] = [];
     // Python cannot read a variable before assigning it; PSeInt reads the
     // default value of its type, so those variables start with it.
-    for (const key of [...this.uninitializedReads(statements, scope)].sort()) {
+    for (const key of [...uninitializedReads(statements, scope)].sort()) {
       const info = scope.vars.get(key)!;
       if (info.array) continue;
       body.push(`${this.name(info.name)}${this.annotation(info)} = ${this.defaultValue(info.type)}`);
@@ -250,108 +252,6 @@ export class PythonGenerator {
         // Untyped variables print as nothing in PSeInt, like an empty text.
         return '""';
     }
-  }
-
-  /**
-   * Variables that may be read before anything is assigned to them, found
-   * with a definite-assignment pass over the statements.
-   */
-  private uninitializedReads(statements: StatementNode[], scope: ScopeTypes): Set<string> {
-    const found = new Set<string>();
-    const reads = (node: unknown, assigned: Set<string>) =>
-      walk(node, (child) => {
-        if (child.kind !== "identifier") return;
-        const key = normalizeName((child as { name: string }).name);
-        const info = scope.vars.get(key);
-        if (info && !info.forEachAlias && !assigned.has(key)) found.add(key);
-      });
-    const intersect = (sets: Set<string>[]) =>
-      new Set([...sets[0]].filter((key) => sets.every((set) => set.has(key))));
-    const target = (expression: AssignableExpressionNode, assigned: Set<string>) => {
-      if (expression.kind === "identifier") assigned.add(normalizeName(expression.name));
-      else reads(expression, assigned);
-    };
-
-    const flow = (body: StatementNode[], assigned: Set<string>): Set<string> => {
-      for (const statement of body) {
-        switch (statement.kind) {
-          case "dimension":
-            for (const item of statement.items) {
-              reads(item.dimensions, assigned);
-              assigned.add(normalizeName(item.name));
-            }
-            break;
-          case "assignment":
-            reads(statement.value, assigned);
-            target(statement.target, assigned);
-            break;
-          case "read":
-            statement.targets.forEach((expression) => target(expression, assigned));
-            break;
-          case "write":
-            reads(statement.expressions, assigned);
-            break;
-          case "if": {
-            reads(statement.condition, assigned);
-            const then = flow(statement.thenBranch, new Set(assigned));
-            const otherwise = flow(statement.elseBranch, new Set(assigned));
-            assigned = intersect([then, otherwise]);
-            break;
-          }
-          case "while":
-            reads(statement.condition, assigned);
-            flow(statement.body, new Set(assigned));
-            break;
-          case "repeat":
-            assigned = flow(statement.body, assigned);
-            reads(statement.condition, assigned);
-            break;
-          case "for": {
-            reads([statement.start, statement.end, statement.step], assigned);
-            const key = normalizeName(statement.variable);
-            flow(statement.body, new Set([...assigned, key]));
-            // The counter is always assigned when it is read after the loop
-            // (the loop is then a while loop that starts by assigning it).
-            assigned.add(key);
-            break;
-          }
-          case "forEach":
-            reads(statement.collection, assigned);
-            flow(statement.body, new Set([...assigned, normalizeName(statement.variable)]));
-            break;
-          case "switch": {
-            reads(statement.expression, assigned);
-            statement.cases.forEach((switchCase) => reads(switchCase.values, assigned));
-            const branches = statement.cases.map((switchCase) =>
-              flow(switchCase.body, new Set(assigned))
-            );
-            branches.push(flow(statement.defaultCase, new Set(assigned)));
-            assigned = intersect(branches);
-            break;
-          }
-          case "expression":
-            if (statement.expression.kind !== "identifier") reads(statement.expression, assigned);
-            break;
-          case "wait":
-            reads(statement.durationMs, assigned);
-            break;
-          case "return":
-            reads(statement.expression, assigned);
-            break;
-          default:
-            break;
-        }
-      }
-      return assigned;
-    };
-
-    const initial = new Set<string>();
-    if (scope.routine) {
-      for (const param of scope.routine.params) initial.add(normalizeName(param.name));
-    }
-    const assigned = flow(statements, initial);
-    if (scope.returnKey && !assigned.has(scope.returnKey)) found.add(scope.returnKey);
-    return found;
   }
 
   // ---------------------------------------------------------------------------
@@ -1059,59 +959,4 @@ export class PythonGenerator {
     }
     return blocks;
   }
-}
-
-function containsCall(expression: ExpressionNode): boolean {
-  let found = false;
-  walk(expression, (node) => {
-    if (node.kind === "call") found = true;
-  });
-  return found;
-}
-
-/**
- * Para counters whose value is read outside the loops that count with them
- * (after the loop, before it...). Those loops cannot use range(), which
- * leaves the counter on the last value instead of one step past the limit.
- */
-function countersReadOutside(statements: StatementNode[]): Set<string> {
-  const counters = new Set<string>();
-  walk(statements, (node) => {
-    if (node.kind === "for") counters.add(normalizeName((node as { variable: string }).variable));
-  });
-  const result = new Set<string>();
-  const visit = (node: unknown, active: Set<string>): void => {
-    if (Array.isArray(node)) {
-      node.forEach((child) => visit(child, active));
-      return;
-    }
-    if (!node || typeof node !== "object") return;
-    const value = node as StatementNode | ExpressionNode;
-    switch (value.kind) {
-      case "for": {
-        visit([value.start, value.end, value.step], active);
-        visit(value.body, new Set([...active, normalizeName(value.variable)]));
-        return;
-      }
-      case "identifier": {
-        const key = normalizeName(value.name);
-        if (counters.has(key) && !active.has(key)) result.add(key);
-        return;
-      }
-      case "assignment":
-        if (value.target.kind === "arrayAccess") visit(value.target, active);
-        visit(value.value, active);
-        return;
-      case "read":
-        for (const target of value.targets) {
-          if (target.kind === "arrayAccess") visit(target, active);
-        }
-        return;
-    }
-    for (const [key, child] of Object.entries(value)) {
-      if (key !== "span") visit(child, active);
-    }
-  };
-  visit(statements, new Set());
-  return result;
 }

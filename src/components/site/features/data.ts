@@ -4,6 +4,7 @@
 
 import {
   examplePrograms,
+  exportLanguages,
   generateExport,
   Interpreter,
   normalizeEngineSettings,
@@ -58,13 +59,9 @@ export const TRANSLATION_LANGUAGE: Partial<Record<FeatureId, ExportLanguage>> = 
   "to-java": "java",
 };
 
-export const LANGUAGE_NAMES: Record<ExportLanguage, string> = {
-  python: "Python",
-  c: "C",
-  cpp: "C++",
-  java: "Java",
-  javascript: "JavaScript",
-};
+export const LANGUAGE_NAMES = Object.fromEntries(
+  Object.values(exportLanguages).map((definition) => [definition.id, definition.name])
+) as Record<ExportLanguage, string>;
 
 /* ---------------- translations ---------------- */
 

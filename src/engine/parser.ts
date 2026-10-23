@@ -218,6 +218,29 @@ export class Parser {
     }
   }
 
+  /**
+   * Parses the whole source as one expression (the debugger's Evaluar).
+   * `routineNames` are the program's own functions, so `f(x)` is a call.
+   */
+  parseStandaloneExpression(routineNames: Iterable<string> = []): {
+    expression: ExpressionNode | null;
+    diagnostics: Diagnostic[];
+  } {
+    for (const name of routineNames) this.routineNames.add(name.toLowerCase());
+    try {
+      if (this.isAtEnd()) this.failExpected('PARSE_EXPRESSION');
+      const expression = this.parseExpression();
+      this.skipTerminators();
+      if (!this.isAtEnd()) {
+        this.fail(this.peek(), 'PARSE_UNEXPECTED_TOKEN', { token: this.peek().lexeme });
+      }
+      return { expression, diagnostics: [] };
+    } catch (error) {
+      if (error instanceof ParserError) return { expression: null, diagnostics: [error.diagnostic] };
+      throw error;
+    }
+  }
+
   // Routine names are known before parsing bodies so that `name(...)` can be
   // told apart from array indexing with parentheses, and `name` alone from a
   // variable.

@@ -23,6 +23,10 @@ export interface WorkspaceDocument {
   /** Set when opened from the example library: shows its guide above the editor. */
   exampleId?: string;
   guideDismissed?: boolean;
+  /** Expressions followed as columns in the desk check (Prueba de escritorio). */
+  watches?: string[];
+  /** Answers for Leer, one per line, used before the console asks. */
+  inputList?: string;
 }
 
 export interface WorkspacePrefs {
@@ -37,6 +41,10 @@ export interface WorkspacePrefs {
   speedIndex: number;
   /** PROTOTYPE: edit as text or as Scratch-style blocks. */
   editorMode?: "code" | "blocks";
+  /** Diagrama panel: the classic flowchart or a Nassi-Shneiderman diagram (also what File → Export draws). */
+  diagramKind: "flowchart" | "nassi";
+  /** Flowchart Leer/Escribir symbols: one parallelogram, or PSeInt's alternative shapes. */
+  ioShapes: "classic" | "alternative";
 }
 
 export interface WorkspaceSnapshot {
@@ -60,6 +68,8 @@ export const defaultPrefs: WorkspacePrefs = {
   bottomHeight: 220,
   sideWidth: 420,
   speedIndex: 1,
+  diagramKind: "flowchart",
+  ioShapes: "classic",
 };
 
 export function createId(): string {

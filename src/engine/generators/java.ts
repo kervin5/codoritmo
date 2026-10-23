@@ -12,6 +12,8 @@ import type {
   SwitchStatementNode,
 } from "../types";
 import {
+  containsCall,
+  declaredAtSite,
   escapeString,
   forDirection,
   invertCondition,
@@ -1114,38 +1116,4 @@ export class JavaGenerator {
     }
     return blocks;
   }
-}
-
-function containsCall(expression: ExpressionNode): boolean {
-  let found = false;
-  walk(expression, (node) => {
-    if (node.kind === "call") found = true;
-  });
-  return found;
-}
-
-/**
- * Arrays dimensioned exactly once, directly in the body of the routine (not
- * inside a block): they are declared right there (`int[] a = new int[5];`).
- */
-function declaredAtSite(statements: StatementNode[], scope: ScopeTypes): Set<string> {
-  const counts = new Map<string, number>();
-  walk(statements, (node) => {
-    const statement = node as StatementNode;
-    if (statement.kind !== "dimension" || statement.resize) return;
-    for (const item of statement.items) {
-      const key = normalizeName(item.name);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-  });
-  const result = new Set<string>();
-  for (const statement of statements) {
-    if (statement.kind !== "dimension" || statement.resize) continue;
-    for (const item of statement.items) {
-      const key = normalizeName(item.name);
-      const info = scope.vars.get(key);
-      if (counts.get(key) === 1 && info?.array && !info.param) result.add(key);
-    }
-  }
-  return result;
 }

@@ -90,6 +90,26 @@ function snapshotValue(value: RuntimeValue): VariableSnapshotValue {
   return value;
 }
 
+/** Rebuilds an array from its snapshot (row-major nested lists). */
+function arrayFromSnapshot(items: VariableSnapshotValue[], dataType: string | undefined): ArrayValue {
+  const first = items[0];
+  const inner = Array.isArray(first) ? arrayFromSnapshot(first, dataType) : null;
+  return {
+    kind: "array",
+    dimensions: [items.length, ...(inner ? inner.dimensions : [])],
+    items: items.map((item) =>
+      Array.isArray(item)
+        ? arrayFromSnapshot(item, dataType)
+        : { value: item, initialized: item !== null, protectedCounter: false, dataType }
+    ),
+  };
+}
+
+/** The result of evaluating an expression on its own (see Interpreter.evaluateDetached). */
+export type DetachedEvaluation =
+  | { ok: true; value: VariableSnapshotValue }
+  | { ok: false; diagnostic: Diagnostic };
+
 class Scope {
   /** Array cells created by Dimension/Redimensionar while running in this scope. */
   ownedArrayCells = 0;
@@ -1796,6 +1816,66 @@ export class Interpreter {
           "RUNTIME_FUNCTION",
           { name }
         );
+    }
+  }
+
+  /**
+   * Evaluates one expression against a copy of recorded variables: the
+   * debugger's Evaluar. Values are rebuilt from the snapshots, so nothing a
+   * running program owns can change, not even through a function that
+   * modifies its arguments. Escribir inside a called function is discarded
+   * and Leer is refused (`EVAL_READS_INPUT`); set `limits.maxSteps` to bound
+   * calls that loop for too long.
+   */
+  async evaluateDetached(
+    expression: ExpressionNode,
+    variables: VariableSnapshot[],
+    options: { routines?: RoutineNode[]; inferredTypes?: Record<string, StaticType>; readerName?: string } = {}
+  ): Promise<DetachedEvaluation> {
+    const scope = new Scope(options.inferredTypes);
+    for (const variable of variables) {
+      const isArray = Array.isArray(variable.value);
+      scope.define(variable.name, {
+        value: Array.isArray(variable.value)
+          ? arrayFromSnapshot(variable.value, variable.dataType)
+          : variable.value,
+        initialized: isArray || variable.initialized,
+        dataType: variable.dataType,
+        origin: "define",
+      });
+    }
+    const routines = new Map<string, RoutineNode>();
+    for (const routine of options.routines ?? []) routines.set(routine.name.toLowerCase(), routine);
+    // Leer wraps whatever read() throws, so remember that it was refused.
+    let refusedInput = false;
+    const refuseInput = (): never => {
+      refusedInput = true;
+      throw new Error("Leer");
+    };
+    const runtime: Runtime = {
+      write() {},
+      read: async () => refuseInput(),
+      clear() {},
+      sleep: async () => {},
+      waitForKey: async () => {},
+    };
+    this.metrics = emptyMetrics();
+    const context = this.createContext(runtime, createOutputBuffer(0), routines);
+    try {
+      const value = await this.evaluateExpression(expression, scope, context);
+      return { ok: true, value: snapshotValue(value) };
+    } catch (error) {
+      if (error instanceof RuntimeError) {
+        if (refusedInput) {
+          const params = { name: options.readerName ?? "Leer" };
+          return {
+            ok: false,
+            diagnostic: { ...error.diagnostic, message: engineMessage("EVAL_READS_INPUT", params), code: "EVAL_READS_INPUT", params },
+          };
+        }
+        return { ok: false, diagnostic: error.diagnostic };
+      }
+      throw error;
     }
   }
 

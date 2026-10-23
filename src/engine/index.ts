@@ -20,6 +20,8 @@ export {
 } from "./messages";
 export type { DiagnosticParams, EngineMessageCode } from "./messages";
 export { Parser } from "./parser";
+export { EVALUATION_MAX_STEPS, evaluateExpressionAt } from "./evaluate";
+export type { EvaluationOptions, EvaluationResult } from "./evaluate";
 export { Interpreter } from "./interpreter";
 export type {
   InterpreterHooks,

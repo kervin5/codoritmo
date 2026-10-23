@@ -27,6 +27,7 @@ import type {
 
 import { LABEL_CHAR_WIDTH, LABEL_LINE_HEIGHT, wrapLabel, type LabelToken } from './label';
 import { hexagonInset, PARALLELOGRAM_SKEW, PREDEFINED_BAR_INSET } from './shapes';
+import type { FlowNodeShape } from './shapes';
 
 export type FlowNodeKind =
   | 'call'
@@ -62,6 +63,33 @@ export const TRUE_LABEL = 'Sí';
 export const FALSE_LABEL = 'No';
 export const DEFAULT_CASE_LABEL = 'De Otro Modo';
 
+/**
+ * Where a block lives in the source, so the diagram can edit it: the start
+ * offset of its statement (or routine) and which part of it the block shows.
+ */
+export interface FlowNodeEditRef {
+  offset: number;
+  /** statement: the whole statement; condition: a Repetir's closing condition; routine: a routine's header. */
+  part: 'condition' | 'routine' | 'statement';
+}
+
+/**
+ * A place a connector stands for in the source: position `index` of one of
+ * the statement lists of the routine or statement starting at `owner`.
+ */
+export interface FlowInsertSlot {
+  owner: number;
+  /** body (routines, loops), then / else (Si), case-N / default (Segun). */
+  list: string;
+  index: number;
+}
+
+/** A statement list being built, for the slots of its connectors. */
+interface FlowListRef {
+  owner: number;
+  list: string;
+}
+
 export interface FlowNodeSize {
   height: number;
   width: number;
@@ -72,6 +100,8 @@ export interface FlowNode {
   kind: FlowNodeKind;
   /** Text inside the symbol (a decision shows only its condition, like PSeInt). */
   label: string;
+  /** Symbol to draw, when it differs from the kind's usual one (see applyIoShapes). */
+  shape?: FlowNodeShape;
   /** Wrapped, tokenized label; the last line ends in "…" when it was cut. */
   lines: LabelToken[][];
   /** Full statement for the tooltip (e.g. "Mientras i <= n"). */
@@ -84,6 +114,8 @@ export interface FlowNode {
   traceLine?: number;
   /** Line that marks this block as visited (defaults to traceLine). */
   visitLine?: number;
+  /** Set for blocks that can be edited from the diagram (not junctions). */
+  edit?: FlowNodeEditRef;
 }
 
 export interface FlowEdge {
@@ -94,6 +126,8 @@ export interface FlowEdge {
   sourceHandle: FlowSourceHandle;
   target: string;
   targetHandle: FlowTargetHandle;
+  /** Where a block inserted on this connector goes (none for loop exits and Repetir's way back). */
+  slot?: FlowInsertSlot;
 }
 
 export interface FlowRoutineDiagram {
@@ -295,6 +329,18 @@ function routineEndLabel(routine: MainRoutineNode | RoutineNode): string {
     : end;
 }
 
+function slotAt(list: FlowListRef | null, index: number): FlowInsertSlot | undefined {
+  return list ? { owner: list.owner, list: list.list, index } : undefined;
+}
+
+function listOf(owner: { span?: SourceSpan } | undefined, list: string): FlowListRef | null {
+  return owner?.span ? { owner: owner.span.start.offset, list } : null;
+}
+
+function statementRef(statement: StatementNode, part: FlowNodeEditRef['part'] = 'statement'): FlowNodeEditRef | undefined {
+  return statement.span ? { offset: statement.span.start.offset, part } : undefined;
+}
+
 class FlowDiagramBuilder {
   private edgeCounter = 0;
   private readonly edges: FlowEdge[] = [];
@@ -317,12 +363,14 @@ class FlowDiagramBuilder {
       label: routineStartLabel(routine),
       sourceSpan: routine.span,
       visitLine: routine.type === 'Routine' ? routineLine : undefined,
+      edit: routine.span ? { offset: routine.span.start.offset, part: 'routine' } : undefined,
     });
 
     // A trailing Retornar flows into Fin like any other block.
     const body = routine.body;
     const last = body[body.length - 1];
-    const bodyFlow = this.buildStatements(body, `${this.routineId}:body`, last?.kind === 'return' ? last : undefined);
+    const list = listOf(routine, 'body');
+    const bodyFlow = this.buildStatements(body, `${this.routineId}:body`, list, last?.kind === 'return' ? last : undefined);
 
     this.addNode({
       id: endNodeId,
@@ -334,10 +382,10 @@ class FlowDiagramBuilder {
     });
 
     if (bodyFlow.entryId) {
-      this.addEdge({ source: startNodeId, target: bodyFlow.entryId });
-      this.connectExits(bodyFlow.exits, endNodeId, 'top');
+      this.addEdge({ source: startNodeId, target: bodyFlow.entryId, slot: slotAt(list, 0) });
+      this.connectExits(bodyFlow.exits, endNodeId, 'top', undefined, slotAt(list, body.length));
     } else {
-      this.addEdge({ source: startNodeId, target: endNodeId });
+      this.addEdge({ source: startNodeId, target: endNodeId, slot: slotAt(list, 0) });
     }
 
     return {
@@ -357,7 +405,12 @@ class FlowDiagramBuilder {
     };
   }
 
-  private buildStatements(statements: StatementNode[], path: string, trailingReturn?: StatementNode): FlowFragment {
+  private buildStatements(
+    statements: StatementNode[],
+    path: string,
+    list: FlowListRef | null,
+    trailingReturn?: StatementNode,
+  ): FlowFragment {
     let entryId: string | null = null;
     let exits: FlowExit[] = [];
     let started = false;
@@ -379,7 +432,7 @@ class FlowDiagramBuilder {
         started = true;
       } else {
         // After a Retornar nothing flows in: the rest is unreachable.
-        this.connectExits(exits, fragment.entryId, 'top');
+        this.connectExits(exits, fragment.entryId, 'top', undefined, slotAt(list, index));
       }
 
       exits = fragment.exits;
@@ -396,7 +449,8 @@ class FlowDiagramBuilder {
     };
   }
 
-  private addEdge(edge: Omit<FlowEdge, 'id' | 'kind' | 'sourceHandle' | 'targetHandle'> & {
+  private addEdge(edge: Omit<FlowEdge, 'id' | 'kind' | 'sourceHandle' | 'targetHandle' | 'slot'> & {
+    slot?: FlowInsertSlot;
     kind?: FlowEdgeKind;
     sourceHandle?: FlowSourceHandle;
     targetHandle?: FlowTargetHandle;
@@ -410,6 +464,7 @@ class FlowDiagramBuilder {
       sourceHandle: edge.sourceHandle ?? 'bottom',
       target: edge.target,
       targetHandle: edge.targetHandle ?? 'top',
+      ...(edge.slot ? { slot: edge.slot } : {}),
     });
     return id;
   }
@@ -422,6 +477,7 @@ class FlowDiagramBuilder {
     sourceSpan?: SourceSpan;
     traceLine?: number;
     visitLine?: number;
+    edit?: FlowNodeEditRef;
   }) {
     const limits = LABEL_LIMITS[node.kind];
     const wrapped = node.kind === 'junction'
@@ -439,6 +495,7 @@ class FlowDiagramBuilder {
       sourceSpan: node.sourceSpan,
       traceLine: node.traceLine,
       visitLine: node.visitLine ?? node.traceLine,
+      ...(node.edit ? { edit: node.edit } : {}),
     });
   }
 
@@ -553,19 +610,22 @@ class FlowDiagramBuilder {
       title: `Si ${condition} Entonces`,
       sourceSpan: statement.span,
       traceLine: statement.span?.start.line,
+      edit: statementRef(statement),
     });
 
-    const thenFlow = this.buildStatements(statement.thenBranch, `${path}:then`);
-    const elseFlow = this.buildStatements(statement.elseBranch, `${path}:else`);
+    const thenList = listOf(statement, 'then');
+    const elseList = listOf(statement, 'else');
+    const thenFlow = this.buildStatements(statement.thenBranch, `${path}:then`, thenList);
+    const elseFlow = this.buildStatements(statement.elseBranch, `${path}:else`, elseList);
     const reachesEnd = (flow: FlowFragment) => !flow.entryId || flow.exits.length > 0;
     const hasJunction = reachesEnd(thenFlow) || reachesEnd(elseFlow);
     if (hasJunction) this.addJunction(junctionId);
 
     // Sí leaves through the right corner, No through the left one.
-    const arm = (flow: FlowFragment, handle: 'left' | 'right', label: string) => {
+    const arm = (flow: FlowFragment, handle: 'left' | 'right', label: string, list: FlowListRef | null, length: number) => {
       if (flow.entryId) {
-        const id = this.addEdge({ source: decisionId, sourceHandle: handle, target: flow.entryId, label, kind: 'branch' });
-        this.connectExits(flow.exits, junctionId, handle === 'right' ? 'right-in' : 'left-in', 'merge');
+        const id = this.addEdge({ source: decisionId, sourceHandle: handle, target: flow.entryId, label, kind: 'branch', slot: slotAt(list, 0) });
+        this.connectExits(flow.exits, junctionId, handle === 'right' ? 'right-in' : 'left-in', 'merge', slotAt(list, length));
         return id;
       }
       return this.addEdge({
@@ -575,11 +635,12 @@ class FlowDiagramBuilder {
         targetHandle: handle === 'right' ? 'right-in' : 'left-in',
         label,
         kind: 'branch',
+        slot: slotAt(list, 0),
       });
     };
 
-    const thenEdgeId = arm(thenFlow, 'right', TRUE_LABEL);
-    const elseEdgeId = arm(elseFlow, 'left', FALSE_LABEL);
+    const thenEdgeId = arm(thenFlow, 'right', TRUE_LABEL, thenList, statement.thenBranch.length);
+    const elseEdgeId = arm(elseFlow, 'left', FALSE_LABEL, elseList, statement.elseBranch.length);
 
     return {
       entryId: decisionId,
@@ -606,14 +667,15 @@ class FlowDiagramBuilder {
     bodyStatements: StatementNode[],
     path: string,
     labels: { body?: string; exit?: string },
+    list: FlowListRef | null,
   ): FlowFragment {
     const junctionId = `${headerId}:exit`;
-    const bodyFlow = this.buildStatements(bodyStatements, `${path}:body`);
+    const bodyFlow = this.buildStatements(bodyStatements, `${path}:body`, list);
     this.addJunction(junctionId);
     const backEdgeIds: string[] = [];
 
     if (bodyFlow.entryId) {
-      this.addEdge({ source: headerId, target: bodyFlow.entryId, label: labels.body, kind: labels.body ? 'branch' : 'default' });
+      this.addEdge({ source: headerId, target: bodyFlow.entryId, label: labels.body, kind: labels.body ? 'branch' : 'default', slot: slotAt(list, 0) });
       bodyFlow.exits.forEach((exit) => {
         backEdgeIds.push(this.addEdge({
           source: exit.fromId,
@@ -622,6 +684,7 @@ class FlowDiagramBuilder {
           targetHandle: 'left-in',
           label: exit.label,
           kind: 'loop',
+          slot: slotAt(list, bodyStatements.length),
         }));
       });
     } else {
@@ -632,6 +695,7 @@ class FlowDiagramBuilder {
         targetHandle: 'left-in',
         label: labels.body,
         kind: 'loop',
+        slot: slotAt(list, 0),
       }));
     }
 
@@ -661,8 +725,9 @@ class FlowDiagramBuilder {
       title: `Mientras ${condition} Hacer`,
       sourceSpan: statement.span,
       traceLine: statement.span?.start.line,
+      edit: statementRef(statement),
     });
-    return this.buildPretestLoop(decisionId, statement.body, path, { body: TRUE_LABEL, exit: FALSE_LABEL });
+    return this.buildPretestLoop(decisionId, statement.body, path, { body: TRUE_LABEL, exit: FALSE_LABEL }, listOf(statement, 'body'));
   }
 
   private buildLoop(
@@ -679,8 +744,9 @@ class FlowDiagramBuilder {
       title: `${label} Hacer`,
       sourceSpan: statement.span,
       traceLine: statement.span?.start.line,
+      edit: statementRef(statement),
     });
-    return this.buildPretestLoop(loopId, body, path, {});
+    return this.buildPretestLoop(loopId, body, path, {}, listOf(statement, 'body'));
   }
 
   /**
@@ -698,7 +764,8 @@ class FlowDiagramBuilder {
       : statement.span;
 
     this.addJunction(entryId, statement.span, line);
-    const bodyFlow = this.buildStatements(statement.body, `${path}:body`);
+    const list = listOf(statement, 'body');
+    const bodyFlow = this.buildStatements(statement.body, `${path}:body`, list);
     this.addNode({
       id: conditionId,
       kind: 'decision',
@@ -706,13 +773,14 @@ class FlowDiagramBuilder {
       title: `${until ? 'Hasta Que' : 'Mientras Que'} ${condition}`,
       sourceSpan: conditionSpan,
       visitLine: line,
+      edit: statementRef(statement, 'condition'),
     });
 
     if (bodyFlow.entryId) {
-      this.addEdge({ source: entryId, target: bodyFlow.entryId });
-      this.connectExits(bodyFlow.exits, conditionId, 'top');
+      this.addEdge({ source: entryId, target: bodyFlow.entryId, slot: slotAt(list, 0) });
+      this.connectExits(bodyFlow.exits, conditionId, 'top', undefined, slotAt(list, statement.body.length));
     } else {
-      this.addEdge({ source: entryId, target: conditionId });
+      this.addEdge({ source: entryId, target: conditionId, slot: slotAt(list, 0) });
     }
 
     // Hasta Que repeats while the condition is false; Mientras Que while it is true.
@@ -747,6 +815,7 @@ class FlowDiagramBuilder {
       title: `Segun ${expression} Hacer`,
       sourceSpan: statement.span,
       traceLine: statement.span?.start.line,
+      edit: statementRef(statement),
     });
 
     // Without De Otro Modo an unmatched value still goes on: draw that path too.
@@ -758,7 +827,8 @@ class FlowDiagramBuilder {
       })),
       { key: 'default', label: DEFAULT_CASE_LABEL, body: statement.defaultCase },
     ];
-    const flows = branches.map((branch) => this.buildStatements(branch.body, `${path}:${branch.key}:body`));
+    const lists = branches.map((branch) => listOf(statement, branch.key === 'default' ? 'default' : branch.key));
+    const flows = branches.map((branch, index) => this.buildStatements(branch.body, `${path}:${branch.key}:body`, lists[index]));
     const reachesEnd = flows.some((flow) => !flow.entryId || flow.exits.length > 0);
     if (reachesEnd) this.addJunction(junctionId);
 
@@ -767,11 +837,19 @@ class FlowDiagramBuilder {
       const flow = flows[index];
       const mergeHandle: FlowTargetHandle = index < middle ? 'left-in' : index > middle ? 'right-in' : 'top';
       let edgeId: string;
+      const list = lists[index];
       if (flow.entryId) {
-        edgeId = this.addEdge({ source: switchId, target: flow.entryId, label: branch.label, kind: 'branch' });
-        this.connectExits(flow.exits, junctionId, mergeHandle, 'merge');
+        edgeId = this.addEdge({ source: switchId, target: flow.entryId, label: branch.label, kind: 'branch', slot: slotAt(list, 0) });
+        this.connectExits(flow.exits, junctionId, mergeHandle, 'merge', slotAt(list, branch.body.length));
       } else {
-        edgeId = this.addEdge({ source: switchId, target: junctionId, targetHandle: mergeHandle, label: branch.label, kind: 'branch' });
+        edgeId = this.addEdge({
+          source: switchId,
+          target: junctionId,
+          targetHandle: mergeHandle,
+          label: branch.label,
+          kind: 'branch',
+          slot: slotAt(list, 0),
+        });
       }
       return { body: flow.layout, edgeId, label: branch.label };
     });
@@ -788,6 +866,7 @@ class FlowDiagramBuilder {
     target: string,
     targetHandle: FlowTargetHandle,
     kind?: FlowEdgeKind,
+    slot?: FlowInsertSlot,
   ) {
     exits.forEach((exit) => {
       this.addEdge({
@@ -797,6 +876,7 @@ class FlowDiagramBuilder {
         targetHandle,
         label: exit.label,
         kind: exit.kind ?? kind ?? 'default',
+        slot,
       });
     });
   }
@@ -809,6 +889,7 @@ class FlowDiagramBuilder {
       label,
       sourceSpan: statement.span,
       traceLine: statement.span?.start.line,
+      edit: statementRef(statement),
     });
 
     return {

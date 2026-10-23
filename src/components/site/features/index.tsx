@@ -16,7 +16,7 @@ import { absoluteUrl, exampleFlowcharts, highlightSource, pageAlternates } from 
 import ExamplesShell from "@/src/components/examples-site/examples-shell";
 import { Breadcrumbs, CodeBlock, ExampleCard, JsonLd, SectionHeading } from "@/src/components/examples-site/parts";
 import { conceptSegment, hasConcept } from "@/src/components/site/concepts";
-import type { ExampleProgram } from "@/src/engine";
+import { exportLanguages, type ExampleProgram } from "@/src/engine";
 import { locales, type Locale } from "@/src/i18n/config";
 import { formatMessage } from "@/src/i18n/format";
 import { getDictionary } from "@/src/i18n/server";
@@ -365,7 +365,7 @@ function Showcase({
 
   if (language) {
     const generated = translateExample(example, language);
-    const extension = { python: "py", c: "c", cpp: "cpp", java: "java", javascript: "js" }[language];
+    const extension = exportLanguages[language].fileExtension;
     const base = codeTitle(example).replace(/\.psc$/, "");
     return (
       <div className="space-y-3">

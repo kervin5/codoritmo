@@ -2,7 +2,7 @@
 
 // Panel contents for the workspace: console, desk check, and code translation.
 
-import { Check, Copy, CornerDownLeft, RotateCcw } from "lucide-react";
+import { Check, Copy, CornerDownLeft, ListChecks, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { AnimatePresence, motion, useAnimate, useReducedMotion } from "motion/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -12,6 +12,9 @@ import { formatDiagnostic } from "@/src/i18n/diagnostics";
 import { formatPlural } from "@/src/i18n/format";
 import type { Dictionary } from "@/src/i18n/types";
 import { duration, easeOut, spring } from "@/src/lib/motion";
+import { EvalField, evaluationText, formatEvaluated } from "./eval-bar";
+import { addWatch, useWatchValues, watchKey } from "./eval-watch";
+import { InputListControl } from "./inputs-panel";
 import consoleMotion from "./motion/console-motion.module.css";
 import { useFreshFrom } from "./motion/panel-fresh";
 import panelMotion from "./motion/panel-motion.module.css";
@@ -44,7 +47,18 @@ interface AnswerFlight {
 }
 
 /** The echoed answer: settles into the console from where it was typed. */
-function EchoLine({ text, flight, fresh }: { text: string; flight: AnswerFlight | null; fresh: boolean }) {
+function EchoLine({
+  text,
+  flight,
+  fresh,
+  fromListLabel,
+}: {
+  text: string;
+  flight: AnswerFlight | null;
+  fresh: boolean;
+  /** Set when the answer came from the answer list rather than the keyboard. */
+  fromListLabel?: string;
+}) {
   const [scope, animate] = useAnimate<HTMLSpanElement>();
   const reduceMotion = useReducedMotion();
   useLayoutEffect(() => {
@@ -66,6 +80,11 @@ function EchoLine({ text, flight, fresh }: { text: string; flight: AnswerFlight 
       <span ref={scope} className="inline-block text-[#A9F5D5]">
         {text || " "}
       </span>
+      {fromListLabel && (
+        <span className="inline-flex items-center gap-1 self-center font-sans text-[11px] text-white/30" title={fromListLabel}>
+          <ListChecks aria-hidden size={11} /> {fromListLabel}
+        </span>
+      )}
     </div>
   );
 }
@@ -118,11 +137,14 @@ export function ConsolePanel({
   player,
   dictionary,
   onRun,
+  inputList,
 }: {
   player: Player;
   dictionary: Dictionary;
   /** Starts the program from the empty console's invitation. */
   onRun?: () => void;
+  /** The document's answers for Leer, editable from the console. */
+  inputList?: { text: string; onChange: (text: string) => void; documentName: string };
 }) {
   const t = dictionary.studio;
   const [draft, setDraft] = useState("");
@@ -140,7 +162,20 @@ export function ConsolePanel({
   }, [lines.length, asking]);
 
   return (
-    <div className="workspace-scroll relative h-full overflow-auto px-5 py-4 font-mono text-[14px] leading-7 text-[#DCE3E0]">
+    <div className="relative flex h-full flex-col">
+      {inputList && (
+        // Spans the console's height so the answer sheet never overflows the panel.
+        <div className="pointer-events-none absolute inset-y-2 right-3 z-20">
+          <InputListControl
+            dictionary={dictionary}
+            documentName={inputList.documentName}
+            onChange={inputList.onChange}
+            text={inputList.text}
+            usage={player.live ? player.listUsage : null}
+          />
+        </div>
+      )}
+    <div className="workspace-scroll relative min-h-0 flex-1 overflow-auto px-5 py-4 font-mono text-[14px] leading-7 text-[#DCE3E0]">
       {lines.length === 0 && !asking && (
         <div className="font-sans">
           <p className="text-[14px] text-white/75">{t.consoleInvite}</p>
@@ -150,7 +185,13 @@ export function ConsolePanel({
       {lines.map((line, index) => {
         const fresh = index >= freshFrom;
         return line.kind === "in" ? (
-          <EchoLine key={index} flight={index === echoIndex ? flight : null} fresh={fresh} text={line.text} />
+          <EchoLine
+            key={index}
+            flight={index === echoIndex ? flight : null}
+            fresh={fresh}
+            fromListLabel={line.fromList ? t.inputList.fromList : undefined}
+            text={line.text}
+          />
         ) : line.kind === "sys" && line.text === t.endOfProgram ? (
           <FinishedCard key={index} fresh={fresh} onRun={onRun} steps={player.frameCount} t={t} />
         ) : line.kind === "sys" ? (
@@ -208,6 +249,12 @@ export function ConsolePanel({
       </AnimatePresence>
       <div ref={endRef} />
     </div>
+      {player.canEvaluate && (
+        <div className="flex shrink-0 items-center border-t border-white/[0.05] px-3 py-1.5">
+          <EvalField dictionary={dictionary} player={player} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -217,18 +264,32 @@ export interface TraceRow {
   step: number;
   line: number;
   variables: VariableSnapshot[];
+  /** The routine the step ran in, so watch expressions use its types. */
+  routine?: string | null;
 }
+
+const NO_WATCHES: string[] = [];
+const noEvaluation: Player["evaluate"] = async () => ({ ok: true, value: null });
 
 export function DeskCheckPanel({
   trace,
   dictionary,
   onPickStep,
+  player,
+  watches = NO_WATCHES,
+  onWatchesChange,
 }: {
   trace: TraceRow[];
   dictionary: Dictionary;
   onPickStep?: (step: number) => void;
+  /** Enables Evaluar and watch columns. */
+  player?: Player;
+  /** Expressions followed as extra columns, evaluated at every row. */
+  watches?: string[];
+  onWatchesChange?: (watches: string[]) => void;
 }) {
   const t = dictionary.studio;
+  const watchValues = useWatchValues(trace, watches, player?.evaluate ?? noEvaluation, player?.runId ?? 0);
   const names = useMemo(() => {
     const seen: string[] = [];
     for (const row of trace) for (const v of row.variables) if (!seen.includes(v.name)) seen.push(v.name);
@@ -240,18 +301,56 @@ export function DeskCheckPanel({
     endRef.current?.scrollIntoView({ block: "nearest" });
   }, [trace.length]);
 
-  if (trace.length === 0) return <p className="px-5 py-4 text-[13px] text-[#5E6A66]">{t.deskCheckEmpty}</p>;
+  const header = player && (
+    <div className="flex shrink-0 items-center border-b border-white/[0.05] px-3 py-1.5">
+      <EvalField
+        dictionary={dictionary}
+        onWatch={onWatchesChange ? (expression) => onWatchesChange(addWatch(watches, expression)) : undefined}
+        player={player}
+      />
+    </div>
+  );
+
+  if (trace.length === 0)
+    return (
+      <div className="flex h-full flex-col">
+        {header}
+        <p className="px-5 py-4 text-[13px] text-[#5E6A66]">{t.deskCheckEmpty}</p>
+      </div>
+    );
 
   return (
-    <div className="workspace-scroll h-full overflow-auto">
+    <div className="flex h-full flex-col">
+      {header}
+    <div className="workspace-scroll min-h-0 flex-1 overflow-auto">
       <table className="w-full border-collapse font-mono text-[13px] text-[#DCE3E0]">
-        <thead className="sticky top-0 bg-[#141719]">
+        <thead className="sticky top-0 z-10 bg-[#141719] [&_th]:bg-[#141719]">
           <tr className="border-b border-white/10 text-left">
             <th className="px-3 py-2 font-sans text-[11px] font-medium tracking-wide text-white/40 uppercase">{t.stepColumn}</th>
             <th className="px-3 py-2 font-sans text-[11px] font-medium tracking-wide text-white/40 uppercase">{t.lineColumn}</th>
             {names.map((name) => (
               <th key={name} className="px-3 py-2 font-semibold">
                 {name}
+              </th>
+            ))}
+            {watches.map((expression) => (
+              <th key={`watch:${expression}`} className="px-2 py-1.5 font-normal">
+                <span className="inline-flex max-w-[220px] items-center gap-1 rounded-full bg-white/[0.06] py-0.5 pr-1 pl-2.5 whitespace-nowrap text-white/80">
+                  <span className="truncate" title={expression}>
+                    {expression}
+                  </span>
+                  {onWatchesChange && (
+                    <button
+                      aria-label={t.evaluate.removeWatch.replace("{expr}", expression)}
+                      className="shrink-0 rounded-full p-0.5 text-white/35 hover:bg-white/10 hover:text-white/80"
+                      onClick={() => onWatchesChange(watches.filter((w) => w !== expression))}
+                      title={t.evaluate.removeWatch.replace("{expr}", expression)}
+                      type="button"
+                    >
+                      <X size={11} />
+                    </button>
+                  )}
+                </span>
               </th>
             ))}
           </tr>
@@ -293,11 +392,41 @@ export function DeskCheckPanel({
                     </td>
                   );
                 })}
+                {watches.map((expression) => {
+                  const result = watchValues.get(watchKey(row.step, expression));
+                  const before = previous ? watchValues.get(watchKey(previous.step, expression)) : undefined;
+                  const text = result?.ok ? formatEvaluated(result.value) : "";
+                  const changed = !!result?.ok && !!before?.ok && text !== formatEvaluated(before.value);
+                  return (
+                    <td
+                      key={`watch:${expression}`}
+                      className={`px-3 py-1.5 ${changed ? "font-semibold text-[#86F0C4]" : ""}`}
+                      data-testid="watch-cell"
+                    >
+                      {result && !result.ok && result.diagnostic.code === "EVAL_UNKNOWN_VARIABLE" ? (
+                        // Its variables don't exist yet at this step: nothing to show, like an unset variable.
+                        <span title={evaluationText(result, dictionary)}>&nbsp;</span>
+                      ) : result && !result.ok ? (
+                        <span
+                          aria-label={evaluationText(result, dictionary)}
+                          className="inline-flex cursor-help text-[#F5A68E]/70"
+                          role="img"
+                          title={evaluationText(result, dictionary)}
+                        >
+                          <TriangleAlert size={12} />
+                        </span>
+                      ) : (
+                        text
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             );
           })}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }

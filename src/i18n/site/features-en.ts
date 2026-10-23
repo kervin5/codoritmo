@@ -132,14 +132,10 @@ export const featuresEn: FeaturesCopy = {
           "The trace table fills itself in with every variable.",
           "You can share an algorithm with a link.",
           "A blocks mode, an array visualiser and complexity measurement.",
+          "As in PSeInt, you can build and edit the program from the flowchart, view Nassi-Shneiderman diagrams, evaluate expressions while paused, use predefined input lists and export to C#, PHP, Pascal, Visual Basic, QBasic, MatLab and HTML.",
         ],
         desktop: [
           "It works offline, as an installed program for Windows, macOS and Linux.",
-          "Its flowchart can be edited and writes the code; in Codoritmo the flowchart comes from the code and is view-only (clicking a block jumps to its line).",
-          "It offers Nassi-Shneiderman (Chapin) diagrams and alternative input/output shapes.",
-          "You can evaluate any expression while the program is paused.",
-          "It saves and loads predefined input lists.",
-          "It exports to more languages: C#, PHP, Pascal, Visual Basic, QBasic, MatLab and HTML.",
           "It is the official tool: if your course grades with PSeInt, test your final submission there. Codoritmo follows its syntax closely, but isn't identical in every case.",
         ],
       },
@@ -192,7 +188,7 @@ export const featuresEn: FeaturesCopy = {
         {
           title: "When to use which",
           paragraphs: [
-            "Use PSeInt if your teacher requires it for submissions, if you need to work offline, or if you want to build the algorithm by drawing the flowchart.",
+            "Use PSeInt if your teacher requires it for submissions or if you need to work offline.",
             "Use Codoritmo if you're on a computer where you can't install software, if you want to watch your algorithm run forwards and backwards, or if you're moving from pseudocode to Python, C or Java.",
             "You can also use both: a .psc file opens in either.",
           ],
@@ -207,13 +203,13 @@ export const featuresEn: FeaturesCopy = {
           { feature: "School profiles", codoritmo: "PSeInt's {profiles}, with adjustable rules", desktop: "Its own, with adjustable rules" },
           { feature: "Step-by-step runs", codoritmo: "Forwards and backwards, with a timeline", desktop: "Forwards" },
           { feature: "Trace table (desk check)", codoritmo: "Automatic, with every variable", desktop: "You choose which variables or expressions to follow" },
-          { feature: "Evaluate an expression while paused", codoritmo: "No", desktop: "Yes" },
-          { feature: "Flowchart", codoritmo: "Generated from the code and animated as it runs; not editable", desktop: "Generated, and editable too: you can build the program from the diagram" },
-          { feature: "Nassi-Shneiderman (Chapin) diagrams and alternative input/output shapes", codoritmo: "No: classic flowcharts only", desktop: "Yes" },
-          { feature: "Predefined input lists", codoritmo: "No: you answer each Leer in the console", desktop: "Yes, saved to and loaded from a file" },
+          { feature: "Evaluate an expression while paused", codoritmo: "Yes, at any step, also when stepping back", desktop: "Yes" },
+          { feature: "Flowchart", codoritmo: "Generated from the code, animated as it runs, and editable too: you can build the program from the diagram", desktop: "Generated, and editable too: you can build the program from the diagram" },
+          { feature: "Nassi-Shneiderman (Chapin) diagrams and alternative input/output shapes", codoritmo: "Yes", desktop: "Yes" },
+          { feature: "Predefined input lists", codoritmo: "Yes, saved to and loaded from a .txt file", desktop: "Yes, saved to and loaded from a file" },
           { feature: "Flowchart export", codoritmo: "PNG and SVG", desktop: "Image, and SVG in recent versions" },
           { feature: "Scratch-like blocks", codoritmo: "Yes, linked to the code both ways", desktop: "No" },
-          { feature: "Translate to other languages", codoritmo: "C, C++, Java, Python and JavaScript", desktop: "Those plus C#, PHP, Pascal, Visual Basic, QBasic, MatLab and HTML" },
+          { feature: "Translate to other languages", codoritmo: "C, C++, Java, Python, JavaScript, C#, PHP, Pascal, Visual Basic, QBasic, MatLab and HTML", desktop: "The same languages" },
           { feature: "Arrays and complexity", codoritmo: "Array visualiser and big-O measurement", desktop: "Not included" },
           { feature: "Sharing", codoritmo: "A link that opens your algorithm", desktop: "The .psc file" },
           { feature: "License", codoritmo: "Open source, GPL v2 or later", desktop: "Open source, GPL v2" },
@@ -280,17 +276,17 @@ export const featuresEn: FeaturesCopy = {
           "The flowchart builds itself and always matches the code.",
           "It animates during the run, step by step, forwards and backwards.",
           "It downloads as PNG or as SVG, which stays sharp at any size.",
+          "As in PSeInt, you can edit it to write the code, switch to Nassi-Shneiderman and use the alternative input/output shapes.",
         ],
         desktop: [
-          "You can edit the flowchart and PSeInt writes the code. In Codoritmo, dragging flowchart blocks only moves them; it doesn't change the code.",
-          "It offers Nassi-Shneiderman (Chapin) diagrams as well as the classic flowchart.",
-          "It has style options for the input and output shapes.",
+          "It works offline, as an installed program.",
+          "It is the official tool: if your course grades with PSeInt, test your final submission there.",
         ],
       },
       faq: [
         {
           q: "Can I make a flowchart without writing code?",
-          a: "In Codoritmo the flowchart comes from the pseudocode. If you'd rather not type, use Blocks mode: you build the algorithm by dragging pieces and the flowchart is generated the same way.",
+          a: "Yes. Press the + on any arrow in the flowchart to add an instruction, double-click a block to change its text, and Codoritmo writes the pseudocode for you. You can also use Blocks mode and drag pieces, Scratch style.",
         },
         {
           q: "Which symbols does it use?",
@@ -352,10 +348,10 @@ export const featuresEn: FeaturesCopy = {
           "The table fills itself in with every variable, with nothing to set up.",
           "You can step back and click any row to return to that step.",
           "Arrays appear as boxes in the Arrays tab.",
+          "As in PSeInt, you can evaluate an expression at any step and add it as a column to follow, such as suma / cantidad.",
         ],
         desktop: [
-          "You choose what to follow, and it can be an expression such as suma / cantidad; Codoritmo only shows variables.",
-          "You can evaluate any expression while the program is paused.",
+          "It works offline, as an installed program.",
         ],
       },
       faq: [
@@ -411,11 +407,10 @@ export const featuresEn: FeaturesCopy = {
       differences: {
         intro: "PSeInt desktop also exports to other languages. These are the differences.",
         codoritmo: [
-          "You see the translation next to the pseudocode, and it updates as you type.",
+          "You see the translation next to the pseudocode, and it updates as you type.", "It also exports to C#, PHP, Pascal, Visual Basic, QBasic, MatLab and HTML, like PSeInt.",
           "The translation follows the chosen profile, such as 0-based or 1-based arrays.",
         ],
         desktop: [
-          "It exports to more languages: C#, PHP, Pascal, Visual Basic, QBasic, MatLab and HTML.",
           "Its exporter has many years of classroom use; Codoritmo's is newer, so review the code before you hand it in.",
         ],
       },
@@ -471,9 +466,8 @@ export const featuresEn: FeaturesCopy = {
       ],
       differences: {
         intro: "PSeInt desktop also exports to C. These are the differences.",
-        codoritmo: ["You see the translation next to the pseudocode, and it updates as you type.", "It generates C and C++."],
+        codoritmo: ["You see the translation next to the pseudocode, and it updates as you type.", "It also exports to C#, PHP, Pascal, Visual Basic, QBasic, MatLab and HTML, like PSeInt.", "It generates C and C++."],
         desktop: [
-          "It exports to more languages: C#, PHP, Pascal, Visual Basic, QBasic, MatLab and HTML.",
           "Its exporter has many years of classroom use; Codoritmo's is newer, so review the code before you hand it in.",
         ],
       },
@@ -528,11 +522,10 @@ export const featuresEn: FeaturesCopy = {
       differences: {
         intro: "PSeInt desktop also exports to Java. These are the differences.",
         codoritmo: [
-          "You see the translation next to the pseudocode, and it updates as you type.",
+          "You see the translation next to the pseudocode, and it updates as you type.", "It also exports to C#, PHP, Pascal, Visual Basic, QBasic, MatLab and HTML, like PSeInt.",
           "The translation follows the chosen profile, such as 0-based or 1-based arrays.",
         ],
         desktop: [
-          "It exports to more languages: C#, PHP, Pascal, Visual Basic, QBasic, MatLab and HTML.",
           "Its exporter has many years of classroom use; Codoritmo's is newer, so review the code before you hand it in.",
         ],
       },
@@ -597,7 +590,7 @@ export const featuresEn: FeaturesCopy = {
         codoritmo: ["A Scratch-like blocks mode, linked to the code both ways.", "The flowchart updates as you assemble the blocks."],
         desktop: [
           "Its commands panel inserts a template of each instruction into the code.",
-          "Its flowchart editor lets you build the algorithm by drawing it, which Codoritmo doesn't have.",
+          "It works offline, as an installed program.",
         ],
       },
       faq: [

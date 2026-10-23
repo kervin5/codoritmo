@@ -95,6 +95,28 @@ export interface Dictionary {
     waitingForInput: string;
     waitingForKey: string;
   };
+  /** Building and editing the program from the flowchart. */
+  flowEdit: {
+    insertHere: string;
+    insertTitle: string;
+    edit: string;
+    delete: string;
+    done: string;
+    cancel: string;
+    optional: string;
+    kinds: Record<"write" | "read" | "assign" | "if" | "ifElse" | "switch" | "while" | "repeat" | "for" | "define" | "call", string>;
+    fields: Record<
+      "code" | "collection" | "condition" | "end" | "expression" | "name" | "names" | "start" | "step" | "target" | "targets" | "type" | "value" | "values" | "variable",
+      string
+    >;
+    nested: { one: string; other: string };
+    deleteAll: string;
+    keepBody: string;
+    errors: Record<"not-found" | "empty" | "multiline" | "invalid" | "structure" | "not-deletable" | "no-subprocess", string>;
+    blockLabel: string;
+    keyboardHint: string;
+    runningHint: string;
+  };
   diagram: {
     buildInProgress: string;
     classicFlow: string;
@@ -279,6 +301,31 @@ export interface Dictionary {
     deskCheckEmpty: string;
     stepColumn: string;
     lineColumn: string;
+    /** Evaluar: an expression's value at the step on screen, and watch columns. */
+    evaluate: {
+      label: string;
+      placeholder: string;
+      hint: string;
+      unavailable: string;
+      addWatch: string;
+      removeWatch: string;
+      watchesEmpty: string;
+    };
+    /** Predefined answers for Leer, per document. */
+    inputList: {
+      button: string;
+      count: { one: string; other: string };
+      used: string;
+      title: string;
+      body: string;
+      placeholder: string;
+      load: string;
+      save: string;
+      clear: string;
+      close: string;
+      fromList: string;
+      fileSuffix: string;
+    };
     problemsEmpty: string;
     translationNeedsFix: string;
     copy: string;
@@ -303,6 +350,7 @@ export interface Dictionary {
     profiles: { title: string; search: string; builtIn: string; schools: string; settings: string; done: string; flexible: string };
     hover: { variable: string; firstSeen: string; counter: string };
     activity: { diagram: string; code: string; reference: string };
+    diagramKind: { group: string; flowchart: string; nassi: string; altShapes: string; altShapesHint: string };
     visualizer: {
       arraysTab: string;
       complexityTab: string;

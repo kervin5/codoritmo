@@ -132,14 +132,10 @@ export const featuresEs: FeaturesCopy = {
           "La prueba de escritorio se llena sola con todas las variables.",
           "Compartes un algoritmo con un enlace.",
           "Modo de bloques, visualizador de arreglos y medición de complejidad.",
+          "Como en PSeInt, puedes armar y editar el programa desde el diagrama de flujo, ver diagramas de Nassi-Shneiderman, evaluar expresiones en pausa, usar listas de respuestas predefinidas y exportar a C#, PHP, Pascal, Visual Basic, QBasic, MatLab y HTML.",
         ],
         desktop: [
           "Funciona sin internet, como programa instalado en Windows, macOS y Linux.",
-          "Su diagrama de flujo se puede editar y escribe el código; en Codoritmo el diagrama se genera del código y solo se mira (al hacer clic en un bloque vas a su línea).",
-          "Ofrece diagramas de Nassi-Shneiderman (Chapin) y formas alternativas de entrada y salida.",
-          "Puedes evaluar una expresión cualquiera con el programa en pausa.",
-          "Guarda y carga listas de entradas predefinidas.",
-          "Exporta a más lenguajes: C#, PHP, Pascal, Visual Basic, QBasic, MatLab y HTML.",
           "Es la herramienta oficial: si tu curso corrige con PSeInt, prueba allí tu entrega final. Codoritmo sigue su sintaxis de cerca, pero no es idéntico en todos los casos.",
         ],
       },
@@ -192,7 +188,7 @@ export const featuresEs: FeaturesCopy = {
         {
           title: "Cuándo conviene cada uno",
           paragraphs: [
-            "Usa PSeInt si tu docente lo pide para entregar, si necesitas trabajar sin internet o si quieres armar el algoritmo dibujando el diagrama de flujo.",
+            "Usa PSeInt si tu docente lo pide para entregar o si necesitas trabajar sin internet.",
             "Usa Codoritmo si estás en una computadora donde no puedes instalar programas, si quieres ver tu algoritmo correr hacia adelante y hacia atrás, o si vas a pasar del pseudocódigo a Python, C o Java.",
             "También puedes usar los dos: un archivo .psc se abre en ambos.",
           ],
@@ -207,13 +203,13 @@ export const featuresEs: FeaturesCopy = {
           { feature: "Perfiles de instituciones", codoritmo: "Los {profiles} de PSeInt, con reglas ajustables", desktop: "Los suyos, con reglas ajustables" },
           { feature: "Paso a paso", codoritmo: "Hacia adelante y hacia atrás, con línea de tiempo", desktop: "Hacia adelante" },
           { feature: "Prueba de escritorio", codoritmo: "Automática, con todas las variables", desktop: "Eliges qué variables o expresiones seguir" },
-          { feature: "Evaluar una expresión en pausa", codoritmo: "No", desktop: "Sí" },
-          { feature: "Diagrama de flujo", codoritmo: "Se genera del código y se anima al ejecutar; no se edita", desktop: "Se genera y también se edita: puedes armar el programa desde el diagrama" },
-          { feature: "Diagrama de Nassi-Shneiderman (Chapin) y formas alternativas de entrada y salida", codoritmo: "No: solo el diagrama de flujo clásico", desktop: "Sí" },
-          { feature: "Listas de entradas predefinidas", codoritmo: "No: respondes cada Leer en la consola", desktop: "Sí, se guardan y se cargan desde un archivo" },
+          { feature: "Evaluar una expresión en pausa", codoritmo: "Sí, en cualquier paso, también al retroceder", desktop: "Sí" },
+          { feature: "Diagrama de flujo", codoritmo: "Se genera del código, se anima al ejecutar y también se edita: puedes armar el programa desde el diagrama", desktop: "Se genera y también se edita: puedes armar el programa desde el diagrama" },
+          { feature: "Diagrama de Nassi-Shneiderman (Chapin) y formas alternativas de entrada y salida", codoritmo: "Sí", desktop: "Sí" },
+          { feature: "Listas de entradas predefinidas", codoritmo: "Sí, se guardan y se cargan desde un archivo .txt", desktop: "Sí, se guardan y se cargan desde un archivo" },
           { feature: "Exportar el diagrama", codoritmo: "PNG y SVG", desktop: "Imagen, y SVG en las versiones recientes" },
           { feature: "Bloques tipo Scratch", codoritmo: "Sí, conectados al código en los dos sentidos", desktop: "No" },
-          { feature: "Traducir a otros lenguajes", codoritmo: "C, C++, Java, Python y JavaScript", desktop: "Además de esos, C#, PHP, Pascal, Visual Basic, QBasic, MatLab y HTML" },
+          { feature: "Traducir a otros lenguajes", codoritmo: "C, C++, Java, Python, JavaScript, C#, PHP, Pascal, Visual Basic, QBasic, MatLab y HTML", desktop: "Los mismos lenguajes" },
           { feature: "Arreglos y complejidad", codoritmo: "Visualizador de arreglos y medición de O grande", desktop: "No incluido" },
           { feature: "Compartir", codoritmo: "Un enlace que abre tu algoritmo", desktop: "El archivo .psc" },
           { feature: "Licencia", codoritmo: "Código abierto, GPL v2 o posterior", desktop: "Código abierto, GPL v2" },
@@ -280,17 +276,17 @@ export const featuresEs: FeaturesCopy = {
           "El diagrama se genera solo y siempre coincide con el código.",
           "Se anima durante la ejecución, paso a paso, hacia adelante y hacia atrás.",
           "Se descarga en PNG o en SVG, que se ve nítido a cualquier tamaño.",
+          "Como en PSeInt, puedes editarlo para escribir el código, cambiar a Nassi-Shneiderman y usar las formas alternativas de entrada y salida.",
         ],
         desktop: [
-          "Puedes editar el diagrama y PSeInt escribe el código. En Codoritmo, arrastrar bloques del diagrama solo cambia su posición, no el código.",
-          "Ofrece diagramas de Nassi-Shneiderman (Chapin) además del diagrama de flujo clásico.",
-          "Tiene opciones de estilo para las formas de entrada y salida.",
+          "Funciona sin internet, como programa instalado.",
+          "Es la herramienta oficial: si tu curso corrige con PSeInt, prueba allí tu entrega final.",
         ],
       },
       faq: [
         {
           q: "¿Puedo hacer un diagrama de flujo sin escribir código?",
-          a: "En Codoritmo el diagrama sale del pseudocódigo. Si prefieres no escribir, usa el modo Bloques: armas el algoritmo arrastrando piezas y el diagrama se genera igual.",
+          a: "Sí. Toca el + sobre cualquier flecha del diagrama para agregar una instrucción, haz doble clic en un bloque para cambiar su texto, y Codoritmo escribe el pseudocódigo por ti. También puedes usar el modo Bloques, arrastrando piezas como en Scratch.",
         },
         {
           q: "¿Qué símbolos usa?",
@@ -355,10 +351,10 @@ export const featuresEs: FeaturesCopy = {
           "La tabla se llena sola con todas las variables, sin configurar nada.",
           "Puedes retroceder y hacer clic en cualquier fila para volver a ese paso.",
           "Los arreglos se ven como casillas en la pestaña Arreglos.",
+          "Como en PSeInt, puedes evaluar una expresión en cualquier paso y agregarla como columna para seguirla, por ejemplo suma / cantidad.",
         ],
         desktop: [
-          "Eliges qué seguir, y puede ser una expresión como suma / cantidad; Codoritmo solo muestra variables.",
-          "Puedes evaluar cualquier expresión mientras el programa está en pausa.",
+          "Funciona sin internet, como programa instalado.",
         ],
       },
       faq: [
@@ -414,11 +410,10 @@ export const featuresEs: FeaturesCopy = {
       differences: {
         intro: "PSeInt de escritorio también exporta a otros lenguajes. Estas son las diferencias.",
         codoritmo: [
-          "Ves la traducción al lado del pseudocódigo y cambia mientras escribes.",
+          "Ves la traducción al lado del pseudocódigo y cambia mientras escribes.", "Exporta también a C#, PHP, Pascal, Visual Basic, QBasic, MatLab y HTML, como PSeInt.",
           "La traducción respeta el perfil elegido, por ejemplo arreglos desde 0 o desde 1.",
         ],
         desktop: [
-          "Exporta a más lenguajes: C#, PHP, Pascal, Visual Basic, QBasic, MatLab y HTML.",
           "Su exportación tiene muchos años de uso en aulas; la de Codoritmo es más reciente, así que revisa el código antes de entregarlo.",
         ],
       },
@@ -474,9 +469,8 @@ export const featuresEs: FeaturesCopy = {
       ],
       differences: {
         intro: "PSeInt de escritorio también exporta a C. Estas son las diferencias.",
-        codoritmo: ["Ves la traducción al lado del pseudocódigo y cambia mientras escribes.", "Genera C y también C++."],
+        codoritmo: ["Ves la traducción al lado del pseudocódigo y cambia mientras escribes.", "Exporta también a C#, PHP, Pascal, Visual Basic, QBasic, MatLab y HTML, como PSeInt.", "Genera C y también C++."],
         desktop: [
-          "Exporta a más lenguajes: C#, PHP, Pascal, Visual Basic, QBasic, MatLab y HTML.",
           "Su exportación tiene muchos años de uso en aulas; la de Codoritmo es más reciente, así que revisa el código antes de entregarlo.",
         ],
       },
@@ -537,11 +531,10 @@ export const featuresEs: FeaturesCopy = {
       differences: {
         intro: "PSeInt de escritorio también exporta a Java. Estas son las diferencias.",
         codoritmo: [
-          "Ves la traducción al lado del pseudocódigo y cambia mientras escribes.",
+          "Ves la traducción al lado del pseudocódigo y cambia mientras escribes.", "Exporta también a C#, PHP, Pascal, Visual Basic, QBasic, MatLab y HTML, como PSeInt.",
           "La traducción respeta el perfil elegido, por ejemplo arreglos desde 0 o desde 1.",
         ],
         desktop: [
-          "Exporta a más lenguajes: C#, PHP, Pascal, Visual Basic, QBasic, MatLab y HTML.",
           "Su exportación tiene muchos años de uso en aulas; la de Codoritmo es más reciente, así que revisa el código antes de entregarlo.",
         ],
       },
@@ -606,7 +599,7 @@ export const featuresEs: FeaturesCopy = {
         codoritmo: ["Modo de bloques tipo Scratch, conectado al código en los dos sentidos.", "El diagrama de flujo se actualiza mientras armas los bloques."],
         desktop: [
           "Su panel de comandos inserta en el código una plantilla de cada instrucción.",
-          "Su editor de diagramas de flujo permite armar el algoritmo dibujándolo, algo que Codoritmo no tiene.",
+          "Funciona sin internet, como programa instalado.",
         ],
       },
       faq: [

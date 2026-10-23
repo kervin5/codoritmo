@@ -2,12 +2,14 @@
 // SVG path data, plus the points where connectors attach. Both the live
 // diagram and the PNG/SVG export draw from here.
 
-import type { FlowNodeKind, FlowSourceHandle, FlowTargetHandle } from './model';
+import type { FlowDiagram, FlowNodeKind, FlowSourceHandle, FlowTargetHandle } from './model';
 
 export type FlowNodeShape =
   | 'connector'
   | 'decision'
+  | 'display'
   | 'input-output'
+  | 'manual-input'
   | 'predefined-process'
   | 'preparation'
   | 'process'
@@ -24,6 +26,45 @@ export const SHAPE_FOR_KIND: Record<FlowNodeKind, FlowNodeShape> = {
   switch: 'decision',
   terminator: 'terminator',
 };
+
+/**
+ * PSeInt's "usar formas alternativas para entrada/salida": instead of one
+ * parallelogram for both, Leer draws as a manual input (a box with a slanted
+ * top) and Escribir as a display (pointed left side, rounded right side).
+ */
+export type IoShapeStyle = 'classic' | 'alternative';
+
+/** The symbol a block of this kind draws with, in the given input/output style. */
+export function shapeForKind(kind: FlowNodeKind, ioShapes: IoShapeStyle = 'classic'): FlowNodeShape {
+  if (ioShapes === 'alternative') {
+    if (kind === 'input') return 'manual-input';
+    if (kind === 'output') return 'display';
+  }
+  return SHAPE_FOR_KIND[kind];
+}
+
+/**
+ * Marks every Leer / Escribir block with the symbol of the chosen style (the
+ * renderers draw `node.shape ?? SHAPE_FOR_KIND[node.kind]`). Same sizes, so
+ * the layout is unchanged; the classic style returns the diagram as is.
+ */
+export function applyIoShapes(diagram: FlowDiagram, ioShapes: IoShapeStyle = 'classic'): FlowDiagram {
+  if (ioShapes === 'classic') return diagram;
+  return {
+    ...diagram,
+    routines: diagram.routines.map((routine) => ({
+      ...routine,
+      nodes: routine.nodes.map((node) => (
+        node.kind === 'input' || node.kind === 'output' ? { ...node, shape: shapeForKind(node.kind, ioShapes) } : node
+      )),
+    })),
+  };
+}
+
+/** Rise of a manual input's slanted top (half above the box, half inside it, so connectors still meet it at the centre). */
+export const MANUAL_INPUT_SLANT = 14;
+/** Depth of a display's pointed left side and of its rounded right side. */
+export const DISPLAY_CURVE = 18;
 
 /** Horizontal slant of the input/output parallelogram. */
 export const PARALLELOGRAM_SKEW = 16;
@@ -57,6 +98,16 @@ export function shapeGeometry(shape: FlowNodeShape, width: number, height: numbe
     case 'input-output': {
       const s = PARALLELOGRAM_SKEW;
       return { outline: `M ${p(s, 0)} L ${p(w, 0)} L ${p(w - s, h)} L ${p(0, h)} Z` };
+    }
+    case 'manual-input': {
+      const s = MANUAL_INPUT_SLANT / 2;
+      return { outline: `M ${p(0, s)} L ${p(w, -s)} L ${p(w, h)} L ${p(0, h)} Z` };
+    }
+    case 'display': {
+      const c = DISPLAY_CURVE;
+      return {
+        outline: `M ${p(0, h / 2)} L ${p(c, 0)} L ${p(w - c, 0)} A ${c} ${h / 2} 0 0 1 ${p(w - c, h)} L ${p(c, h)} Z`,
+      };
     }
     case 'decision':
       return { outline: `M ${p(w / 2, 0)} L ${p(w, h / 2)} L ${p(w / 2, h)} L ${p(0, h / 2)} Z` };

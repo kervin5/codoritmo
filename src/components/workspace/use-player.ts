@@ -7,8 +7,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Interpreter, Parser, type Diagnostic, type EngineSettings, type Runtime } from "@/src/engine";
-import type { ExecutionMetrics, VariableSnapshot } from "@/src/engine/types";
+import {
+  evaluateExpressionAt,
+  Interpreter,
+  Parser,
+  type Diagnostic,
+  type EngineSettings,
+  type EvaluationResult,
+  type Runtime,
+} from "@/src/engine";
+import type { ExecutionMetrics, ProgramNode, VariableSnapshot } from "@/src/engine/types";
+
+import { parseInputList } from "./inputs-list";
 
 export type PlayerStatus = "idle" | "playing" | "paused" | "input" | "done" | "error" | "stopped";
 
@@ -17,6 +27,8 @@ export interface PlayerLine {
   text: string;
   /** On "err" lines, so the console can show it in the current language. */
   diagnostic?: Diagnostic;
+  /** On "in" lines: the answer came from the document's answer list, not the keyboard. */
+  fromList?: boolean;
 }
 
 export interface Frame {
@@ -51,9 +63,16 @@ const MAX_FRAMES = 20_000;
 
 class Stopped extends Error {}
 
-export function usePlayer(source: string, settings: EngineSettings, text: PlayerText) {
+export interface PlayerOptions {
+  /** Answers for Leer, one per line, used in order before the console asks. */
+  inputList?: string;
+}
+
+export function usePlayer(source: string, settings: EngineSettings, text: PlayerText, options: PlayerOptions = {}) {
   const textRef = useRef(text);
   textRef.current = text;
+  const inputListRef = useRef(options.inputList);
+  inputListRef.current = options.inputList;
   const [status, setStatus] = useState<PlayerStatus>("idle");
   const [lines, setLines] = useState<PlayerLine[]>([]);
   const [frameCount, setFrameCount] = useState(0);
@@ -63,6 +82,12 @@ export function usePlayer(source: string, settings: EngineSettings, text: Player
   /** The user's intent (play vs pause), independent of input waits. */
   const [wantPlay, setWantPlayState] = useState(false);
   const [runtimeError, setRuntimeError] = useState<Diagnostic | null>(null);
+  /** Changes on every run, so caches keyed by step know the frames are new. */
+  const [runId, setRunId] = useState(0);
+  /** Answers taken from the answer list this run, out of how many it had. */
+  const [listUsage, setListUsage] = useState({ used: 0, total: 0 });
+  /** The program and rules of the current run, for Evaluar (the editor may change meanwhile). */
+  const runRef = useRef<{ program: ProgramNode | null; settings: EngineSettings } | null>(null);
 
   const framesRef = useRef<Frame[]>([]);
   const linesRef = useRef<PlayerLine[]>([]);
@@ -140,6 +165,11 @@ export function usePlayer(source: string, settings: EngineSettings, text: Player
       setWantPlay(mode === "play");
       stepTokensRef.current = 0;
       setStatusBoth(mode === "play" ? "playing" : "paused");
+      setRunId((id) => id + 1);
+      runRef.current = { program: new Parser(source, { settings }).parse().program, settings };
+      const answers = parseInputList(inputListRef.current);
+      let answersUsed = 0;
+      setListUsage({ used: 0, total: answers.length });
 
       const runtime: Runtime = {
         write(value, newline = true) {
@@ -152,6 +182,13 @@ export function usePlayer(source: string, settings: EngineSettings, text: Player
         },
         read() {
           flushPending();
+          if (answersUsed < answers.length) {
+            const value = answers[answersUsed];
+            answersUsed += 1;
+            setListUsage({ used: answersUsed, total: answers.length });
+            pushLine({ kind: "in", text: value, fromList: true });
+            return value;
+          }
           const resumeStatus: PlayerStatus = playingRef.current ? "playing" : "paused";
           setStatusBoth("input");
           return new Promise<string>((resolve, reject) => {
@@ -270,6 +307,18 @@ export function usePlayer(source: string, settings: EngineSettings, text: Player
 
   const live = status === "playing" || status === "paused" || status === "input";
 
+  /** Evaluar: an expression's value with the variables of a recorded step. Never touches the run. */
+  const evaluate = useCallback(
+    (expression: string, variables: VariableSnapshot[], routine: string | null = null): Promise<EvaluationResult> => {
+      const run = runRef.current;
+      return evaluateExpressionAt(expression, variables, run?.settings ?? settings, {
+        program: run?.program ?? null,
+        routine,
+      });
+    },
+    [settings]
+  );
+
   const play = useCallback(() => {
     if (!live) {
       void start("play");
@@ -371,6 +420,9 @@ export function usePlayer(source: string, settings: EngineSettings, text: Player
     }
   }
 
+  // Evaluar needs a step on screen that isn't racing past: paused, asking, scrubbed, or finished.
+  const canEvaluate = frame !== null && status !== "idle" && !(status === "playing" && cursor === null) && !(wantPlay && cursor !== null);
+
   const changed = new Set<string>();
   if (previous && frame && previous.variables.length && frame.variables.length) {
     for (const v of frame.variables) {
@@ -394,6 +446,10 @@ export function usePlayer(source: string, settings: EngineSettings, text: Player
     consoleLines,
     parseDiagnostics,
     runtimeError,
+    runId,
+    listUsage,
+    canEvaluate,
+    evaluate,
     speedIndex,
     setSpeedIndex,
     play,
