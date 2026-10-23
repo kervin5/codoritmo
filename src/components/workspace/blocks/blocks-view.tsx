@@ -9,6 +9,7 @@ import * as Blockly from "blockly/core";
 import * as En from "blockly/msg/en";
 import * as Es from "blockly/msg/es";
 import { LocateFixed, Minus, Plus } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 
 import type { EngineSettings } from "@/src/engine";
@@ -18,6 +19,24 @@ import { prefersReducedMotion } from "@/src/lib/motion";
 import { codeToBlocksState, lineToBlockMap } from "./blocks-from-code";
 import { buildToolbox, defineBlocks } from "./blocks-defs";
 import { pseudocode } from "./blocks-generator";
+import { spring } from "@/src/lib/motion";
+
+const STACK_HINT_KEY = "codoritmo:blocks-stack-hint";
+// Storage can be unavailable (private windows, blocked site data): the hint then just shows again next time.
+function readFlag(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeFlag(key: string) {
+  try {
+    window.localStorage.setItem(key, "1");
+  } catch {
+    // ignore
+  }
+}
 
 // Colours and sizes Blockly needs as values. Everything else about the look
 // lives in app/globals.css under "Blocks editor".
@@ -119,6 +138,17 @@ export function BlocksView({
   settingsRef.current = settings;
   const [error, setError] = useState<string | null>(null);
   const [scale, setScale] = useState(START_SCALE);
+  /** null: not triggered yet; true: showing; false: dismissed. */
+  const [stackHint, setStackHint] = useState<boolean | null>(null);
+  const dismissStackHint = () => {
+    setStackHint(false);
+    writeFlag(STACK_HINT_KEY);
+  };
+  useEffect(() => {
+    if (!stackHint) return;
+    const timer = window.setTimeout(dismissStackHint, 9000);
+    return () => window.clearTimeout(timer);
+  }, [stackHint]);
 
   // Create the Blockly workspace once.
   useEffect(() => {
@@ -164,6 +194,14 @@ export function BlocksView({
     };
     const listener = (event: Blockly.Events.Abstract) => {
       if (event.type === Blockly.Events.VIEWPORT_CHANGE) setScale(workspace.scale);
+      // The first time someone drags a block that carries the ones below it,
+      // tell them how to move just one (Blockly heals the stack with ⌘/Ctrl).
+      if (event.type === Blockly.Events.BLOCK_DRAG) {
+        const drag = event as Blockly.Events.BlockDrag;
+        if (drag.isStart && drag.blockId && workspace.getBlockById(drag.blockId)?.getNextBlock()) {
+          setStackHint((shown) => shown ?? (readFlag(STACK_HINT_KEY) ? false : true));
+        }
+      }
       if (event.isUiEvent || workspace.isDragging()) return;
       emit();
     };
@@ -277,6 +315,29 @@ export function BlocksView({
           <LocateFixed size={14} strokeWidth={1.9} />
         </button>
       </div>
+      <AnimatePresence>
+        {stackHint && (
+          <motion.div
+            animate={{ opacity: 1, y: 0 }}
+            className="absolute bottom-4 left-1/2 z-10 flex w-[min(460px,calc(100%-32px))] -translate-x-1/2 items-start gap-3 rounded-[14px] bg-[#2B3134] px-4 py-3 text-[13px] leading-[19px] text-white/80 shadow-[0_10px_30px_rgba(0,0,0,0.45)]"
+            exit={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 12 }}
+            role="status"
+            transition={spring.smooth}
+          >
+            <span className="flex-1">
+              {t.stackHint.replace("{key}", typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl")}
+            </span>
+            <button
+              className="shrink-0 rounded-full px-2.5 py-0.5 text-[12.5px] font-medium text-[#A9F0D2] hover:bg-white/[0.06]"
+              onClick={dismissStackHint}
+              type="button"
+            >
+              {t.gotIt}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {error && (
         <div className="absolute inset-x-4 top-4 z-10 rounded-[10px] border border-[#F08A6C]/40 bg-[#2A1E1B]/95 px-4 py-3 text-[13px] text-[#F5C2B3] shadow-lg backdrop-blur">
           <b className="font-semibold">{t.cannotConvert}</b> {t.fixFirst} <span className="opacity-70">({error})</span>

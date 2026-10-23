@@ -322,6 +322,9 @@ export interface Dictionary {
       modeCode: string;
       modeBlocks: string;
       modeHint: string;
+      /** First time a whole stack is dragged: how to move just one block. */
+      stackHint: string;
+      gotIt: string;
       cannotConvert: string;
       fixFirst: string;
       zoomIn: string;

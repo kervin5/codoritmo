@@ -688,6 +688,8 @@ export const esDictionary: Dictionary = {
     blocks: {
       modeCode: "Código",
       modeBlocks: "Bloques",
+      stackHint: "Los bloques de abajo vienen con el que arrastras, como en Scratch. Para mover solo uno, mantén {key} mientras lo arrastras.",
+      gotIt: "Entendido",
       modeHint: "Arma tu algoritmo con bloques; el código se escribe solo.",
       cannotConvert: "No puedo convertir este código en bloques.",
       fixFirst: "Corrige los errores en la vista de código y vuelve a intentarlo.",

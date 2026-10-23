@@ -688,6 +688,8 @@ export const enDictionary: Dictionary = {
     blocks: {
       modeCode: "Code",
       modeBlocks: "Blocks",
+      stackHint: "The blocks below come along with the one you drag, like in Scratch. To move just one, hold {key} while you drag it.",
+      gotIt: "Got it",
       modeHint: "Build your algorithm with blocks; the code writes itself.",
       cannotConvert: "I can't turn this code into blocks.",
       fixFirst: "Fix the errors in the code view and try again.",
