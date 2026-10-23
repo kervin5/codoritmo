@@ -799,6 +799,17 @@ export const esDictionary: Dictionary = {
     profiles: { title: "Perfil del lenguaje", search: "Buscar institución o perfil…", builtIn: "Perfiles generales", schools: "Instituciones", settings: "Reglas del perfil", done: "Listo", flexible: "Flexible" },
     hover: { variable: "variable", firstSeen: "Aparece por primera vez en la línea {n}.", counter: "contador" },
     activity: { diagram: "Diagrama", code: "Código {lang}", reference: "Referencia" },
+    diagramExport: {
+      button: "Exportar",
+      copy: "Copiar imagen",
+      copyHint: "Pégala en un documento, una presentación o una tarea",
+      png: "Descargar PNG",
+      pngHint: "Una imagen lista para imprimir o subir",
+      svg: "Descargar SVG",
+      svgHint: "Se ve nítido a cualquier tamaño",
+      copied: "Diagrama copiado: pégalo donde lo necesites",
+      copyFallback: "No se pudo copiar la imagen, así que se descargó como PNG",
+    },
     diagramKind: {
       group: "Tipo de diagrama",
       flowchart: "Diagrama de flujo",

@@ -92,6 +92,7 @@ import {
 } from "./documents";
 import FlowDiagram from "./flow-diagram";
 import NassiDiagram, { DiagramKindToggle } from "./nassi-diagram";
+import { DiagramExportMenu } from "./diagram-export-menu";
 import { registerLanguageServices, type LanguageCatalog } from "./language-services";
 import { MenuBar, type Menu, type MenuItem } from "./menu-bar";
 import { ArrayView } from "./array-view";
@@ -626,29 +627,50 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
     downloadText(doc.name.replace(/\.psc$/i, "") + (target === "node" ? ".node" : "") + `.${ext}`, code, exportLanguages[id].mimeType);
     notify(formatMessage(t.exported, { lang: LANGUAGE_NAMES[id] ?? id }));
   };
-  const exportDiagram = async (format: "png" | "svg") => {
+  /** Renders the diagram on screen (flowchart or Nassi-Shneiderman, current routine) for export. */
+  const renderDiagram = async (format: "png" | "svg"): Promise<{ filename: string; svg?: string; dataUrl?: string } | null> => {
     const program = parseOrNotify();
-    if (!program) return;
+    if (!program) return null;
     const model = applyIoShapes(buildFlowDiagram(program), prefs.ioShapes);
     const flow = model.routines.find((r) => r.id === routineRef.current) ?? model.routines[0];
-    if (!flow) return;
+    if (!flow) return null;
     const base = doc.name.replace(/\.psc$/i, "");
     const suffix = model.routines.length > 1 ? `-${flow.label.replace(/[^\p{L}\p{N}]+/gu, "-")}` : "";
-    // Exports whichever diagram the Diagrama panel shows.
+    const filename = `${base}${suffix}.${format}`;
     if (prefs.diagramKind === "nassi") {
       const nassi = layoutNassiRoutine(flow);
-      if (format === "svg") downloadText(`${base}${suffix}.svg`, exportNassiToSvg(nassi).svg, "image/svg+xml");
-      else downloadUrl(`${base}${suffix}.png`, (await exportNassiToPng(nassi)).dataUrl);
-    } else {
-      const layout = await layoutFlowDiagram(model);
-      const routine = layout.routines.find((r) => r.id === flow.id) ?? layout.routines[0];
-      if (format === "svg") {
-        downloadText(`${base}${suffix}.svg`, exportRoutineToSvg(routine).svg, "image/svg+xml");
-      } else {
-        downloadUrl(`${base}${suffix}.png`, (await exportRoutineToPng(routine)).dataUrl);
-      }
+      return format === "svg" ? { filename, svg: exportNassiToSvg(nassi).svg } : { filename, dataUrl: (await exportNassiToPng(nassi)).dataUrl };
     }
+    const layout = await layoutFlowDiagram(model);
+    const routine = layout.routines.find((r) => r.id === flow.id) ?? layout.routines[0];
+    return format === "svg" ? { filename, svg: exportRoutineToSvg(routine).svg } : { filename, dataUrl: (await exportRoutineToPng(routine)).dataUrl };
+  };
+  const exportDiagram = async (format: "png" | "svg") => {
+    const rendered = await renderDiagram(format);
+    if (!rendered) return;
+    if (rendered.svg) downloadText(rendered.filename, rendered.svg, "image/svg+xml");
+    else if (rendered.dataUrl) downloadUrl(rendered.filename, rendered.dataUrl);
     notify(formatMessage(t.exported, { lang: format.toUpperCase() }));
+  };
+  /** Copies the diagram as a PNG, ready to paste into a document or a class assignment. */
+  const copyDiagram = async () => {
+    // The ClipboardItem is created synchronously with a promise of the image, as Safari
+    // requires for clipboard writes that follow async work; Chrome accepts it too.
+    const png = renderDiagram("png").then(async (rendered) => {
+      if (!rendered?.dataUrl) throw new Error("no diagram");
+      return (await fetch(rendered.dataUrl)).blob();
+    });
+    try {
+      if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) throw new Error("clipboard unavailable");
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+      notify(t.diagramExport.copied);
+    } catch {
+      // Clipboard images can be blocked or unsupported: fall back to downloading the PNG.
+      const rendered = await renderDiagram("png");
+      if (!rendered?.dataUrl) return;
+      downloadUrl(rendered.filename, rendered.dataUrl);
+      notify(t.diagramExport.copyFallback);
+    }
   };
   const share = async () => {
     const url = await buildShareUrl(doc);
@@ -857,7 +879,16 @@ export default function Workspace({ dictionary, locale }: { dictionary: Dictiona
           ]}
           value={prefs.sideTab}
         />
-        <button aria-label={t.closePanel} className="ml-auto shrink-0 rounded p-1 text-white/35 hover:text-white/80" onClick={() => setSideOpen(false)} title={t.closePanel} type="button">
+        {prefs.sideTab === "diagrama" && (
+          <div className="ml-auto shrink-0">
+            <DiagramExportMenu
+              labels={t.diagramExport}
+              onCopy={() => void copyDiagram()}
+              onDownload={(format) => void exportDiagram(format)}
+            />
+          </div>
+        )}
+        <button aria-label={t.closePanel} className={`${prefs.sideTab === "diagrama" ? "" : "ml-auto "}shrink-0 rounded p-1 text-white/35 hover:text-white/80`} onClick={() => setSideOpen(false)} title={t.closePanel} type="button">
           <X size={13} />
         </button>
       </div>

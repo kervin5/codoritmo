@@ -350,6 +350,10 @@ export interface Dictionary {
     profiles: { title: string; search: string; builtIn: string; schools: string; settings: string; done: string; flexible: string };
     hover: { variable: string; firstSeen: string; counter: string };
     activity: { diagram: string; code: string; reference: string };
+    diagramExport: {
+      button: string; copy: string; copyHint: string; png: string; pngHint: string; svg: string; svgHint: string;
+      copied: string; copyFallback: string;
+    };
     diagramKind: { group: string; flowchart: string; nassi: string; altShapes: string; altShapesHint: string };
     visualizer: {
       arraysTab: string;

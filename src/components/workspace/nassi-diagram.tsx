@@ -359,7 +359,7 @@ export interface DiagramKindToggleProps {
 /** The Diagrama panel's switch between the classic flowchart and Nassi-Shneiderman. */
 export function DiagramKindToggle({ value, onChange, labels, altShapes, onAltShapesChange }: DiagramKindToggleProps) {
   return (
-    <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5">
+    <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 whitespace-nowrap">
       {value === "flowchart" && (
         <motion.button
           aria-label={labels.altShapesHint}

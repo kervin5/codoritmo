@@ -799,6 +799,17 @@ export const enDictionary: Dictionary = {
     profiles: { title: "Language Profile", search: "Search school or profile…", builtIn: "General profiles", schools: "Schools", settings: "Profile rules", done: "Done", flexible: "Flexible" },
     hover: { variable: "variable", firstSeen: "First appears on line {n}.", counter: "counter" },
     activity: { diagram: "Flowchart", code: "{lang} Code", reference: "Reference" },
+    diagramExport: {
+      button: "Export",
+      copy: "Copy image",
+      copyHint: "Paste it into a document, slides or an assignment",
+      png: "Download PNG",
+      pngHint: "An image ready to print or upload",
+      svg: "Download SVG",
+      svgHint: "Stays sharp at any size",
+      copied: "Diagram copied: paste it wherever you need it",
+      copyFallback: "Couldn't copy the image, so it was downloaded as a PNG instead",
+    },
     diagramKind: {
       group: "Diagram type",
       flowchart: "Flowchart",
