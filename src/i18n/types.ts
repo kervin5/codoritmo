@@ -404,7 +404,7 @@ export interface Dictionary {
       zoomIn: string;
       zoomOut: string;
       resetZoom: string;
-      categories: Record<"io" | "variables" | "control" | "operators" | "text" | "arrays" | "screen", string>;
+      categories: Record<"io" | "variables" | "control" | "operators" | "text" | "arrays" | "routines" | "screen", string>;
     };
     examples: {
       title: string;

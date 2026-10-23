@@ -33,6 +33,12 @@ function blocksFor(source: string, settings: Partial<EngineSettings>): Blockly.W
   return workspace;
 }
 
+/** The same blocks with nothing remembered about how the code was written (as if built by hand). */
+function plain(workspace: Blockly.Workspace): Blockly.Workspace {
+  for (const block of workspace.getAllBlocks(false)) block.data = null;
+  return workspace;
+}
+
 /** Code → blocks → code, both ways under the same profile, as the Bloques mode does. */
 const roundTrip = (source: string, settings: Partial<EngineSettings>) =>
   pseudocode.workspaceToCode(blocksFor(source, settings), settings);
@@ -97,11 +103,11 @@ describe("Bloques keeps the profile's form", () => {
     expect(errorsOf(code, AIEP)).toEqual([]);
   });
 
-  it("writes symbol operators without ; (Estricto)", () => {
+  it("writes symbol operators, keeping the optional ; the program wrote (Estricto)", () => {
     const source = [
       "Algoritmo Logica",
       "\tDefinir a, b Como Logico;",
-      "\tDefinir x Como Entero;",
+      "\tDefinir x Como Entero",
       "\tLeer a, b, x;",
       "\tSi ~a && (b || x % 3 = 1) Entonces",
       '\t\tEscribir "si";',
@@ -111,8 +117,10 @@ describe("Bloques keeps the profile's form", () => {
     ].join("\n");
     expect(errorsOf(source, ESTRICTO)).toEqual([]);
     const code = roundTrip(source, ESTRICTO);
-    expect(code).toBe(source.replace(/;\n/g, "\n"));
+    expect(code).toBe(source);
     expect(errorsOf(code, ESTRICTO)).toEqual([]);
+    // Blocks built by hand get no optional ;.
+    expect(pseudocode.workspaceToCode(plain(blocksFor(source, ESTRICTO)), ESTRICTO)).toBe(source.replace(/;\n/g, "\n"));
   });
 
   it("puts the ; back on statements kept as code, and keeps the ones inside a Segun", () => {
@@ -150,14 +158,36 @@ describe("Bloques keeps the profile's form", () => {
 
   it("writes the desktop style without settings (the old behaviour)", () => {
     const code = roundTrip(semicolons, CUC);
-    const workspace = blocksFor(code, CUC);
-    const plain = pseudocode.workspaceToCode(workspace);
-    expect(plain).not.toContain(";");
-    expect(plain).toContain("total > 10 Y n MOD 2 = 0");
-    expect(plain).toContain("NO (n > 3 O n < 0)");
-    expect(errorsOf(plain, {})).toEqual([]);
-    // This is what editing in Bloques used to write for a CUC document: it no longer parses there.
-    expect(errorsOf(plain, CUC)).toEqual(expect.arrayContaining([expect.stringContaining("PARSE_MISSING_SEMICOLON")]));
+    // The student's own ; and symbols are valid in the desktop profile, so they stay.
+    expect(pseudocode.workspaceToCode(blocksFor(code, CUC))).toBe(code);
+    expect(errorsOf(code, {})).toEqual([]);
+    // Blocks built by hand are written in the desktop style: no ;, word operators.
+    const handMade = pseudocode.workspaceToCode(plain(blocksFor(code, CUC)));
+    expect(handMade).not.toContain(";");
+    expect(handMade).toContain("total > 10 Y n MOD 2 = 0");
+    expect(handMade).toContain("NO (n > 3 O n < 0)");
+    expect(errorsOf(handMade, {})).toEqual([]);
+    // That is what editing in Bloques used to write for a CUC document: it does not parse there.
+    expect(errorsOf(handMade, CUC)).toEqual(expect.arrayContaining([expect.stringContaining("PARSE_MISSING_SEMICOLON")]));
+  });
+
+  it("writes colloquial conditions only where the profile allows them", () => {
+    const source = "Algoritmo C\n\tSi n Es Par Y n Es Mayor Que 3 Y NO n Es Divisible Por 5 Entonces\n\t\tn <- 0\n\tFinSi\nFinAlgoritmo\n";
+    expect(roundTrip(source, {})).toBe(source);
+    const strict = { ...ESTRICTO, forceSemicolon: false };
+    const code = pseudocode.workspaceToCode(blocksFor(source, {}), strict);
+    expect(code).toContain("Si n % 2 = 0 && n > 3 && ~(n % 5 = 0) Entonces");
+    expect(errorsOf(code, strict)).toEqual([]);
+  });
+
+  it("leaves out optional keywords and writes `=` assignments only where the profile allows them", () => {
+    const lazy = "Algoritmo L\n\tPara i Desde 1 Hasta 3\n\t\tSi i > 1\n\t\t\tx = i\n\t\tFinSi\n\tFinPara\nFinAlgoritmo\n";
+    const flexible = { ...normalizeEngineSettings({}), overloadEqual: true };
+    expect(errorsOf(lazy, flexible)).toEqual([]);
+    expect(roundTrip(lazy, flexible)).toBe(lazy);
+    const strict = { ...ESTRICTO, forceSemicolon: false };
+    const code = pseudocode.workspaceToCode(blocksFor(lazy, flexible), strict);
+    expect(code).toBe("Algoritmo L\n\tPara i <- 1 Hasta 3 Hacer\n\t\tSi i > 1 Entonces\n\t\t\tx <- i\n\t\tFinSi\n\tFinPara\nFinAlgoritmo\n");
   });
 
   it("maps lines to blocks under the profile", () => {
@@ -183,8 +213,8 @@ describe("every example, written in a profile's style", () => {
   describe.each(styles)("%s", (_name, overrides) => {
     const settings = normalizeEngineSettings(overrides);
 
-    // Examples written entirely as blocks: code kept as text (a SubProceso, a
-    // Segun) is the student's own, written for the desktop profile, and is not rewritten.
+    // Examples written entirely as blocks (now all of them): code kept as text
+    // would be the student's own, written for the desktop profile, and not rewritten.
     const CODE_BLOCKS = new Set(["ps_raw", "ps_raw_top", "ps_expresion"]);
     const fallbackFree = examplePrograms.filter((example) =>
       blocksFor(example.source, {})
@@ -192,8 +222,8 @@ describe("every example, written in a profile's style", () => {
         .every((b) => !CODE_BLOCKS.has(b.type))
     );
 
-    it("covers a good share of the examples", () => {
-      expect(fallbackFree.length).toBeGreaterThanOrEqual(10);
+    it("covers every example", () => {
+      expect(fallbackFree.length).toBe(examplePrograms.length);
     });
 
     it.each(fallbackFree.map((example) => [example.id, example] as const))("%s", (_id, example) => {

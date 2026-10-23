@@ -17,8 +17,9 @@ import type { Locale } from "@/src/i18n/config";
 import type { Dictionary } from "@/src/i18n/types";
 import { prefersReducedMotion } from "@/src/lib/motion";
 import { codeToBlocksState, lineToBlockMap } from "./blocks-from-code";
-import { buildToolbox, defineBlocks } from "./blocks-defs";
+import { blockData, buildToolbox, defineBlocks, ROUTINES_CATEGORY } from "./blocks-defs";
 import { pseudocode } from "./blocks-generator";
+import { routinesFlyout } from "./blocks-routines";
 import { spring } from "@/src/lib/motion";
 
 const STACK_HINT_KEY = "codoritmo:blocks-stack-hint";
@@ -183,6 +184,8 @@ export function BlocksView({
       move: { scrollbars: true, drag: true, wheel: true },
     });
     workspaceRef.current = workspace;
+    // "Mis subprocesos": new definitions and a call block for each routine there is.
+    workspace.registerToolboxCategoryCallback(ROUTINES_CATEGORY, routinesFlyout);
 
     // Hide scrollbars with nothing to scroll whenever Blockly resizes a handle.
     const scrollbarObserver = new MutationObserver(() => syncIdleScrollbars(host));
@@ -257,13 +260,15 @@ export function BlocksView({
     Blockly.Events.disable();
     try {
       Blockly.serialization.workspaces.load(result.state, workspace);
+      stackTopBlocks(workspace);
     } finally {
       Blockly.Events.enable();
     }
     emittedRef.current = source;
     emittedSettingsRef.current = null;
-    lineMapRef.current = lineToBlockMap(workspace, pseudocode.workspaceToCode(workspace, settings), settings);
-    workspace.scrollCenter();
+    // The code stays the loaded text until a block changes, so playback runs its lines.
+    lineMapRef.current = result.lines;
+    showStart(workspace);
   }, [settings, source]);
 
   // Follow playback.
@@ -368,6 +373,33 @@ export function BlocksView({
       )}
     </div>
   );
+}
+
+/** Scrolls to the top left of the program (a long one doesn't fit; it starts at its first line). */
+function showStart(workspace: Blockly.WorkspaceSvg) {
+  const content = workspace.getMetricsManager().getContentMetrics();
+  const view = workspace.getMetricsManager().getViewMetrics();
+  if (content.height <= view.height && content.width <= view.width) {
+    workspace.scrollCenter();
+    return;
+  }
+  workspace.scroll(-content.left + 32, -content.top + 32);
+}
+
+/**
+ * Lays the program's parts (comments, SubProcesos, the Algoritmo) out top to
+ * bottom in code order, now that their real heights are known; a comment
+ * written right above a part sits right above its block.
+ */
+function stackTopBlocks(workspace: Blockly.WorkspaceSvg) {
+  const LEFT = 24;
+  let y = 24;
+  for (const block of workspace.getTopBlocks(true)) {
+    const tight = block.type !== "ps_comentario" && blockData(block).blank === 0;
+    if (y > 24) y += tight ? 8 : 40;
+    block.moveTo(new Blockly.utils.Coordinate(LEFT, y));
+    y += block.getHeightWidth().height;
+  }
 }
 
 /**

@@ -880,6 +880,7 @@ export const esDictionary: Dictionary = {
         operators: "Operadores",
         text: "Texto y funciones",
         arrays: "Arreglos",
+        routines: "Mis subprocesos",
         screen: "Pantalla y más",
       },
     },

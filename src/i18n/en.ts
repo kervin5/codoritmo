@@ -880,6 +880,7 @@ export const enDictionary: Dictionary = {
         operators: "Operators",
         text: "Text & functions",
         arrays: "Arrays",
+        routines: "My subprocesses",
         screen: "Screen & more",
       },
     },
