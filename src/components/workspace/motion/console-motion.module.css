@@ -58,8 +58,8 @@
   inset: -1px;
   border-radius: inherit;
   box-shadow:
-    0 0 0 1px rgba(134, 240, 196, 0.85),
-    0 0 22px rgba(134, 240, 196, 0.32);
+    0 0 0 1px rgba(134, 240, 196, 0.6),
+    0 0 10px rgba(134, 240, 196, 0.16);
   pointer-events: none;
   animation: console-breathe 2.6s ease-in-out infinite;
 }

@@ -50,8 +50,8 @@ function EchoLine({ text, flight, fresh }: { text: string; flight: AnswerFlight 
   useLayoutEffect(() => {
     if (!flight || !scope.current) return;
     const rect = scope.current.getBoundingClientRect();
-    // The echo pill pads its text by 12px; line the text up with where it was typed.
-    const dx = flight.left - 12 - rect.left;
+    // Line the echoed text up with where it was typed.
+    const dx = flight.left - rect.left;
     const dy = flight.top - rect.top;
     if (reduceMotion || (Math.abs(dx) < 1 && Math.abs(dy) < 1)) return;
     const controls = animate(scope.current, { x: [dx, 0], y: [dy, 0], scale: [1.06, 1] }, spring.smooth);
@@ -60,9 +60,11 @@ function EchoLine({ text, flight, fresh }: { text: string; flight: AnswerFlight 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <div className={`flex justify-end ${fresh && !flight ? consoleMotion.lineEnter : ""}`}>
-      <span ref={scope} className="my-0.5 inline-block rounded-full bg-[#86F0C4]/15 px-3 text-[#A9F5D5]">
-        {text}
+    // Your answer sits where you typed it, under the question, like a terminal.
+    <div className={`flex items-baseline gap-2 ${fresh && !flight ? consoleMotion.lineEnter : ""}`}>
+      <span aria-hidden className="text-[#86F0C4]/70">›</span>
+      <span ref={scope} className="inline-block text-[#A9F5D5]">
+        {text || " "}
       </span>
     </div>
   );
@@ -175,7 +177,7 @@ export function ConsolePanel({
           <motion.form
             key="answer"
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="mt-1 flex origin-right justify-end"
+            className="flex origin-left items-center gap-2"
             exit={{ opacity: 0, scale: 0.97, transition: { duration: duration.fast, ease: easeOut } }}
             initial={{ opacity: 0, y: 10, scale: 0.94 }}
             onSubmit={(event) => {
@@ -187,18 +189,19 @@ export function ConsolePanel({
             }}
             transition={spring.bouncy}
           >
+            <span aria-hidden className="text-[#86F0C4]">›</span>
             <div
-              className={`flex items-center gap-2 rounded-full bg-[#86F0C4]/10 px-3 py-0.5 ring-1 ring-[#86F0C4]/35 ${consoleMotion.waiting}`}
+              className={`flex min-w-0 flex-1 items-center gap-2 rounded-[8px] bg-[#86F0C4]/[0.06] px-2 sm:max-w-[360px] ${consoleMotion.waiting}`}
             >
               <input
                 ref={inputRef}
                 aria-label={t.inputPlaceholder}
-                className="w-44 bg-transparent font-mono text-[#EEF3F0] caret-[#86F0C4] outline-none placeholder:text-[#5E8A78]"
+                className="min-w-0 flex-1 bg-transparent font-mono text-[#EEF3F0] caret-[#86F0C4] outline-none placeholder:text-[#5E8A78]"
                 onChange={(event) => setDraft(event.target.value)}
                 placeholder={t.inputPlaceholder}
                 value={draft}
               />
-              <CornerDownLeft className="text-[#86F0C4]" size={13} />
+              <CornerDownLeft className="shrink-0 text-[#86F0C4]/70" size={13} />
             </div>
           </motion.form>
         )}
